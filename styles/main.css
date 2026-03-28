@@ -153,7 +153,7 @@ body.authenticated .container {
 #prizePool   { min-width: 48px; }
 #circulating { min-width: 88px; }
 #wallet      { min-width: 56px; }
-#uranium     { min-width: 52px; }
+#uranium     { min-width: 110px; }
 #stored      { min-width: 96px; }
 #power       { min-width: 54px; }
 #income      { min-width: 36px; }

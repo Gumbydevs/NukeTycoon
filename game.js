@@ -1,8 +1,9 @@
 // Game state
 const game = {
     playerWallet: 50000,
-    uranium: 0,
-    maxStorage: 5000,
+    uraniumRaw: 0,      // mined by Mine buildings
+    uraniumRefined: 0,  // converted by Processor buildings; consumed by Plants
+    maxStorage: 5000,   // total cap shared across raw + refined
     buildings: [],
     enemyBuildings: [],
     selectedMode: null,
@@ -508,7 +509,7 @@ function calculatePower() {
     });
 
     // Simplified: power is computed from plants and proximity; do NOT modify
-    // `game.uranium` here — production/consumption is handled in productionTick.
+    // uraniumRaw/uraniumRefined here — production/consumption is handled in productionTick.
     return totalPower;
 }
 
@@ -517,8 +518,9 @@ function calculatePower() {
  */
 function updateUI() {
     document.getElementById('wallet').textContent = game.playerWallet.toLocaleString();
-    document.getElementById('uranium').textContent = formatUranium(game.uranium);
-    document.getElementById('stored').textContent = formatUranium(game.uranium) + '/' + formatUranium(game.maxStorage);
+    document.getElementById('uranium').textContent = formatUranium(game.uraniumRaw) + ' / ' + formatUranium(game.uraniumRefined);
+    const totalStored = game.uraniumRaw + game.uraniumRefined;
+    document.getElementById('stored').textContent = formatUranium(totalStored) + '/' + formatUranium(game.maxStorage);
     
     const power = calculatePower();
     // show power with one decimal place to avoid long floats
@@ -554,7 +556,7 @@ function updateUI() {
     // portfolio value = wallet + uranium * market.price
     const portfolioEl = document.getElementById('portfolio');
     if (portfolioEl) {
-        const value = game.playerWallet + (game.uranium * game.market.price);
+        const value = game.playerWallet + ((game.uraniumRaw + game.uraniumRefined) * game.market.price);
         portfolioEl.textContent = '$' + value.toFixed(2).toLocaleString();
     }
 
@@ -688,8 +690,8 @@ function showProfile() {
     if (nameEl) nameEl.textContent = displayNames.player || 'You';
     const statsEl = document.getElementById('profileStats');
     if (statsEl) {
-        const portfolio = (game.playerWallet + (game.uranium * game.market.price)) || 0;
-        statsEl.textContent = `Tokens: ${game.playerWallet.toLocaleString()} — Uranium: ${formatUranium(game.uranium)} — Portfolio: $${portfolio.toFixed(2)}`;
+        const portfolio = (game.playerWallet + ((game.uraniumRaw + game.uraniumRefined) * game.market.price)) || 0;
+        statsEl.textContent = `Tokens: ${game.playerWallet.toLocaleString()} — Raw: ${formatUranium(game.uraniumRaw)} / Ref: ${formatUranium(game.uraniumRefined)} — Portfolio: $${portfolio.toFixed(2)}`;
     }
     modal.style.display = 'flex';
 }
@@ -749,8 +751,8 @@ function showMobileMenu() {
     if (!modal) return;
     const s = document.getElementById('mobileMenuStats');
     if (s) {
-        const portfolio = (game.playerWallet + (game.uranium * game.market.price)) || 0;
-        s.innerHTML = `Round: ${game.round} — Tokens: ${game.playerWallet.toLocaleString()} — Uranium: ${formatUranium(game.uranium)} — Stored: ${formatUranium(game.uranium)}/${formatUranium(game.maxStorage)} — Portfolio: $${portfolio.toFixed(2)}`;
+        const portfolio = (game.playerWallet + ((game.uraniumRaw + game.uraniumRefined) * game.market.price)) || 0;
+        s.innerHTML = `Round: ${game.round} — Tokens: ${game.playerWallet.toLocaleString()} — Raw: ${formatUranium(game.uraniumRaw)} / Ref: ${formatUranium(game.uraniumRefined)} — Portfolio: $${portfolio.toFixed(2)}`;
     }
     modal.style.display = 'block';
     document.body.classList.add('mobile-menu-open');
@@ -798,29 +800,44 @@ function productionTick() {
         if (b.type === 'plant') totalPlants++;
     });
 
-    // Each mine yields a small independent random amount per tick — organic feel,
-    // no fixed step. Range 0.10–0.35 per mine, average ~0.22 U/sec per mine.
+    // ── Mines → uraniumRaw ────────────────────────────────────────────────────
+    // Each mine independently yields a small random amount per tick (organic feel).
+    // Range 0.10–0.35 U/sec per mine, average ~0.22.
     let produced = 0;
     for (let i = 0; i < totalMines; i++) {
         produced += 0.10 + Math.random() * 0.25;
     }
-    const newU = Math.min(game.maxStorage, game.uranium + produced);
-    game.dailyProduced += Math.max(0, newU - game.uranium);
-    game.uranium = newU;
+    const totalStored = game.uraniumRaw + game.uraniumRefined;
+    const rawHeadroom = Math.max(0, game.maxStorage - totalStored);
+    const actualProduced = Math.min(rawHeadroom, produced);
+    game.dailyProduced += actualProduced;
+    game.uraniumRaw += actualProduced;
 
-    // Plants consume a small trickle of fuel per tick — much less than mines produce
-    // so uranium visibly accumulates. avg ~0.06 U/sec per plant.
+    // ── Processors → convert raw into refined ─────────────────────────────────
+    // Each processor converts a small random trickle per tick (avg ~0.15 U/sec).
+    // No processor = no refined uranium = no plant income.
+    let totalProcessors = 0;
+    game.buildings.forEach(b => { if (b.type === 'processor') totalProcessors++; });
+    let converted = 0;
+    for (let i = 0; i < totalProcessors; i++) {
+        converted += 0.08 + Math.random() * 0.14; // avg ~0.15 U/sec per processor
+    }
+    const actualConverted = Math.min(game.uraniumRaw, converted);
+    game.uraniumRaw     -= actualConverted;
+    game.uraniumRefined += actualConverted;
+
+    // ── Plants → consume refined uranium, generate income ─────────────────────
     const fuelPerPlantPerTick = 0.03 + Math.random() * 0.06; // avg ~0.06 U/sec per plant
     const requiredFuel = totalPlants * fuelPerPlantPerTick;
     let fuelConsumed = 0;
     let income = 0;
 
-    if (requiredFuel > 0 && game.uranium > 0) {
-        fuelConsumed = Math.min(requiredFuel, game.uranium);
+    if (requiredFuel > 0 && game.uraniumRefined > 0) {
+        fuelConsumed = Math.min(requiredFuel, game.uraniumRefined);
         const power = calculatePower();
         const powerFraction = fuelConsumed / requiredFuel;
         income = Math.floor(power * powerFraction * 2); // tokens per production tick
-        game.uranium -= fuelConsumed;
+        game.uraniumRefined -= fuelConsumed;
     }
 
     game.playerWallet += income;
@@ -1110,7 +1127,8 @@ function showEndOfDaySummary() {
     content.innerHTML = `
         <div>Day: ${game.time.day}</div>
         <div>Power (current): ${power.toFixed(1)} MW</div>
-        <div>Uranium produced today: ${formatUranium(dayProduced)}</div>
+        <div>Raw uranium mined today: ${formatUranium(dayProduced)}</div>
+        <div>Refined (current): ${formatUranium(game.uraniumRefined)}</div>
         <div>Income today: ${dayIncome.toLocaleString()} tokens</div>
         <div style="margin-top:8px; border-top:1px solid #333; padding-top:8px;">
             <strong>Token Economy</strong>
@@ -1127,7 +1145,7 @@ function showEndOfDaySummary() {
     // BACKEND_STUB: replace with server-sent scores from 'round:scores' event
     const entries = game.players.map(p => {
         if (p.isLocal) {
-            const portfolio = game.playerWallet + (game.uranium * game.market.price);
+            const portfolio = game.playerWallet + ((game.uraniumRaw + game.uraniumRefined) * game.market.price);
             return { name: p.name, isLocal: true, score: power + (portfolio / 1000), portfolio };
         }
         const botBuildings = game.enemyBuildings.filter(b => b.owner === p.name);
