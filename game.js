@@ -11,8 +11,18 @@ const game = {
     round: 1
 };
 
-// Simple dev password (client-side only) — change as needed for testing
-const DEV_PASSWORD = 'SplatterBros_NukeLab_2026';
+// Client-side password protection (hash only). Embeds SHA-256(hex) of the password
+// so the plaintext is not present in source. This is still client-side only.
+const EXPECTED_PASSWORD_HASH = 'b7e39e55e0913eff6b9aee210d3cb909df8da6b22ee6a8da8550bb35d4391ac4';
+
+// Helper: compute SHA-256 hex using browser WebCrypto
+async function sha256Hex(str) {
+    const enc = new TextEncoder();
+    const data = enc.encode(str);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
 // daily accumulators for summary
 game.dailyProduced = 0;
@@ -347,14 +357,20 @@ function authenticate() {
     startGame();
 }
 
-function checkPassword() {
+async function checkPassword() {
     const input = document.getElementById('passwordInput');
     if (!input) return;
     const v = input.value || '';
-    if (v === DEV_PASSWORD) {
-        authenticate();
-    } else {
-        alert('Incorrect password');
+    try {
+        const h = await sha256Hex(v);
+        if (h === EXPECTED_PASSWORD_HASH) {
+            authenticate();
+        } else {
+            alert('Incorrect password');
+        }
+    } catch (err) {
+        console.error('Hash error', err);
+        alert('Authentication error');
     }
 }
 
