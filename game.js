@@ -87,10 +87,14 @@ const enemies = [
 function initGrid() {
     const grid = document.getElementById('gameGrid');
     grid.innerHTML = '';
-    
+    // generate a simple terrain map (grass / dirt / road)
+    const terrain = generateTerrain(20, 20);
     for (let i = 0; i < 400; i++) {
         const cell = document.createElement('div');
         cell.className = 'cell';
+        // add terrain class for visuals (terrain-grass/terrain-dirt/terrain-road)
+        const t = terrain[i] || 'grass';
+        cell.classList.add('terrain-' + t);
         cell.tabIndex = -1;
         cell.dataset.id = i;
         cell.onclick = () => placeOrSelect(i);
@@ -116,6 +120,41 @@ function spawnEnemyBuildings() {
         game.enemyBuildings.push({ id: randomId, type, owner: enemy.name });
         renderBuilding(randomId, type, false);
     }
+}
+
+/**
+ * Generate a simple terrain map for the grid.
+ * Returns an array of length width*height with values 'grass'|'dirt'|'road'.
+ */
+function generateTerrain(width, height) {
+    const out = new Array(width * height).fill('grass');
+    // center vertical road
+    const centerX = Math.floor(width / 2);
+    for (let y = 0; y < height; y++) {
+        out[y * width + centerX] = 'road';
+        // occasional adjacent shoulder
+        if (Math.random() < 0.25) {
+            if (centerX - 1 >= 0) out[y * width + (centerX - 1)] = 'road';
+        }
+    }
+
+    // scatter dirt patches (clusters)
+    for (let i = 0; i < width * height * 0.08; i++) {
+        const cx = Math.floor(Math.random() * width);
+        const cy = Math.floor(Math.random() * height);
+        const radius = 1 + Math.floor(Math.random() * 2);
+        for (let dy = -radius; dy <= radius; dy++) {
+            for (let dx = -radius; dx <= radius; dx++) {
+                const x = cx + dx; const y = cy + dy;
+                if (x >= 0 && x < width && y >= 0 && y < height) {
+                    const idx = y * width + x;
+                    if (out[idx] !== 'road' && Math.random() > 0.25) out[idx] = 'dirt';
+                }
+            }
+        }
+    }
+
+    return out;
 }
 
 /**
