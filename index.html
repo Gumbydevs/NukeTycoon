@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nuclear Tycoon</title>
+    <link rel="stylesheet" href="styles/main.css">
+</head>
+<body>
+    <div class="container">
+        <div class="top-bar">
+            <div style="display: flex; gap: 16px;">
+                <span style="font-size: 16px; font-weight: 600;">Nuclear Tycoon</span>
+            </div>
+            
+            <div class="stat-item">
+                <span class="stat-label">Round:</span>
+                <span class="stat-val" id="round">1/8</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Tokens:</span>
+                <span class="stat-val" id="wallet">50,000</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Uranium:</span>
+                <span class="stat-val" id="uranium">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Stored:</span>
+                <span class="stat-val" id="stored">0/0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Power:</span>
+                <span class="stat-val" id="power">0 MW</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Rank:</span>
+                <span class="stat-val" id="rank">#1</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Day:</span>
+                <span class="stat-val" id="day">1</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Time:</span>
+                <span class="stat-val" id="time">00:00</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Market value:</span>
+                <span class="stat-val" id="marketPrice">$1.00</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Income:</span>
+                <span class="stat-val" id="income">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Portfolio:</span>
+                <span class="stat-val" id="portfolio">$50,000</span>
+            </div>
+
+            <div class="buttons">
+                <button class="btn" data-type="mine" onclick="selectBuilding('mine')">Mine (800)</button>
+                <button class="btn" data-type="processor" onclick="selectBuilding('processor')">Process (1200)</button>
+                <button class="btn" data-type="storage" onclick="selectBuilding('storage')">Store (1000)</button>
+                <button class="btn" data-type="plant" onclick="selectBuilding('plant')">Plant (1000)</button>
+                <button class="btn sabotage" data-type="sabotage" onclick="selectBuilding('sabotage')">Sabotage (600-800)</button>
+                <button class="btn" id="devToggle" onclick="toggleDevPanel()">Dev</button>
+            </div>
+        </div>
+
+        <div class="grid-area">
+            <div class="grid" id="gameGrid"></div>
+        </div>
+    </div>
+
+    <div class="legend">
+        <div class="legend-item">
+            <div class="legend-icon m">M</div>
+            <span class="legend-text">Mine</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-icon p">P</div>
+            <span class="legend-text">Processor</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-icon s">S</div>
+            <span class="legend-text">Storage</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-icon r">R</div>
+            <span class="legend-text">Reactor</span>
+        </div>
+    </div>
+
+    <div id="devPanel" style="display:none; position:fixed; right:16px; top:60px; background:rgba(0,0,0,0.9); border:1px solid #333; padding:12px; z-index:20; font-size:12px;">
+        <div style="margin-bottom:8px; font-weight:600; color:#fff;">Dev Tools</div>
+        <div style="display:flex; gap:8px; margin-bottom:8px;">
+            <button class="btn" onclick="advanceHours(1)">+1 Hour</button>
+            <button class="btn" onclick="advanceHours(6)">+6 Hours</button>
+            <button class="btn" onclick="advanceHours(24)">+24 Hours</button>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+            <input id="advanceInput" type="number" value="1" style="width:64px; padding:4px; background:#111; border:1px solid #333; color:#fff;" />
+            <button class="btn" onclick="advanceHours(Number(document.getElementById('advanceInput').value))">Advance Hours</button>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+            <label style="color:#888;">Speed:</label>
+            <select id="speedSelect" onchange="setSimSpeed(Number(this.value))" style="background:#111; border:1px solid #333; color:#fff; padding:4px;">
+                <option value="0.0166667" selected>Real time (1 day = 24 hrs)</option>
+                <option value="1">1 min/sec</option>
+                <option value="5">5 min/sec</option>
+                <option value="60">60 min/sec</option>
+                <option value="1440">1 day/sec</option>
+            </select>
+        </div>
+    </div>
+    <div id="tooltip" style="display:none; position:fixed; z-index:50;
+        background:rgba(0,0,0,0.9); color:#fff; padding:8px; border:1px solid #333; font-size:12px; border-radius:4px; pointer-events:none;">
+    </div>
+
+    <div id="endOfDayModal" style="display:none; position:fixed; left:0; top:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:60; align-items:center; justify-content:center;">
+        <div style="background:#0d0d0d; border:1px solid #333; padding:16px; width:420px; margin:60px auto; color:#fff;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <div style="font-weight:700;">End of Day Summary</div>
+                <button class="btn" onclick="closeEndOfDay()">Close</button>
+            </div>
+            <div id="endOfDayContent" style="font-size:13px; color:#ccc;"></div>
+            <div style="margin-top:12px; font-weight:700;">Leaderboard</div>
+            <div id="leaderboard" style="margin-top:8px; font-size:13px; color:#ccc;"></div>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>
