@@ -11,6 +11,9 @@ const game = {
     round: 1
 };
 
+// Simple dev password (client-side only) — change as needed for testing
+const DEV_PASSWORD = 'SplatterBros_NukeLab_2026';
+
 // daily accumulators for summary
 game.dailyProduced = 0;
 game.dailyIncome = 0;
@@ -324,14 +327,53 @@ function updateUI() {
 /**
  * Initialize game on page load
  */
-document.addEventListener('DOMContentLoaded', function() {
+function startGame() {
     initGrid();
     updateUI();
-    console.log('Game initialized');
+    console.log('Game started');
     // start simulation loops
     startSimLoops();
     // attach button tooltips
     addButtonTooltips();
+}
+
+function authenticate() {
+    // mark body as authenticated to reveal UI
+    document.body.classList.add('authenticated');
+    const modal = document.getElementById('loginModal');
+    if (modal) modal.style.display = 'none';
+    // persist session for the tab
+    sessionStorage.setItem('nuke_auth', '1');
+    startGame();
+}
+
+function checkPassword() {
+    const input = document.getElementById('passwordInput');
+    if (!input) return;
+    const v = input.value || '';
+    if (v === DEV_PASSWORD) {
+        authenticate();
+    } else {
+        alert('Incorrect password');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    // if session token present, bypass login
+    if (sessionStorage.getItem('nuke_auth') === '1') {
+        document.body.classList.add('authenticated');
+        // hide modal if present
+        const modal = document.getElementById('loginModal');
+        if (modal) modal.style.display = 'none';
+        startGame();
+        return;
+    }
+
+    // show login modal and wire events
+    const loginBtn = document.getElementById('loginBtn');
+    const pwd = document.getElementById('passwordInput');
+    if (loginBtn) loginBtn.addEventListener('click', checkPassword);
+    if (pwd) pwd.addEventListener('keyup', (e) => { if (e.key === 'Enter') checkPassword(); });
 });
 
 /**
