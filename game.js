@@ -51,11 +51,28 @@ game.market.baseDemand = 1000; // baseline demand units (tunable)
 game.market.driftFactor = 0.0008; // per-second drift scaling (tunable)
 
 // Building type definitions
+// Use emoji icons as a visual; we'll render monochrome SVG versions so they
+// can be tinted to the player's theme color. `svg` gives consistent coloring.
+const USE_SVG_ICONS = false; // use emoji characters instead of SVG shapes
+const PLAYER_COLOR = '#ffb84d';
+const ENEMY_COLOR = '#888888';
+
 const buildingTypes = {
-    mine: { cost: 800, icon: 'M', color: '#4CAF50', power: 0 },
-    processor: { cost: 1200, icon: 'P', color: '#ff6b6b', power: 0 },
-    storage: { cost: 1000, icon: 'S', color: '#4db8ff', power: 0 },
-    plant: { cost: 1000, icon: 'R', color: '#ffb84d', power: 100 }
+    mine: { cost: 800, emoji: '⛏️', color: '#4CAF50', power: 0 },
+    // Use factory emoji for processor (renders as 'Plant' in UI)
+    processor: { cost: 1200, emoji: '🏭', color: '#d98a3a', power: 0 },
+    // Use a filing-cabinet / vault emoji for storage and a warmer metal tone
+    storage: { cost: 1000, emoji: '🗄️', color: '#b08b4f', power: 0 },
+    // reactor (consumes fuel)
+    plant: { cost: 1000, emoji: '☢️', color: '#ffb84d', power: 100 }
+};
+
+// Display names used in UI (keep keys stable in logic)
+const displayNames = {
+    mine: 'Mine',
+    processor: 'Plant',
+    storage: 'Storage',
+    plant: 'Reactor'
 };
 
 // Enemy list
@@ -197,10 +214,36 @@ function sabotage(id) {
  */
 function renderBuilding(id, type, isPlayer) {
     const cell = document.querySelector('[data-id="' + id + '"]');
-    const icon = buildingTypes[type].icon;
-    cell.innerHTML = icon;
-    cell.className = 'cell owned ' + type;
-    if (!isPlayer) cell.classList.add('owned-enemy');
+    cell.className = 'cell owned ' + type + (isPlayer ? ' owned-player' : ' owned-enemy');
+
+    // Render either an SVG monochrome icon (tintable) or fallback to emoji text.
+    const tint = isPlayer ? PLAYER_COLOR : ENEMY_COLOR;
+    // Always render a proper SVG for `storage` so the vault/silo looks consistent.
+    if (USE_SVG_ICONS || type === 'storage') {
+        const svg = getIconSVG(type, tint);
+        cell.innerHTML = svg;
+    } else {
+        const emoji = buildingTypes[type].emoji || '';
+        cell.innerHTML = `<span class="icon-emoji" style="color:${tint};">${emoji}</span>`;
+    }
+}
+
+// Return a small inline SVG string for the given building type, monochrome so
+// it can be tinted via `fill`.
+function getIconSVG(type, fill) {
+    // Keep SVGs simple and small for grid clarity.
+    if (type === 'mine') {
+        return `<svg viewBox="0 0 24 24" width="20" height="20" xmlns="http://www.w3.org/2000/svg"><path fill="${fill}" d="M2 20h20L12 6 2 20z"/></svg>`;
+    }
+    if (type === 'processor') {
+        return `<svg viewBox="0 0 24 24" width="20" height="20" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="6" fill="${fill}"/></svg>`;
+    }
+    if (type === 'storage') {
+        // Silo / vault style storage icon (tintable)
+        return `<svg viewBox="0 0 24 24" width="22" height="22" xmlns="http://www.w3.org/2000/svg"><ellipse cx="12" cy="4.5" rx="6" ry="2" fill="${fill}"/><rect x="6" y="4.5" width="12" height="13" rx="2" ry="2" fill="${fill}"/><path d="M9 9h6v6H9z" fill="#ffffff" opacity="0.12"/></svg>`;
+    }
+    // plant / reactor
+    return `<svg viewBox="0 0 24 24" width="20" height="20" xmlns="http://www.w3.org/2000/svg"><path fill="${fill}" d="M12 2c-1.1 0-2 .9-2 2v3H8c-1.1 0-2 .9-2 2v3h12V9c0-1.1-.9-2-2-2h-2V4c0-1.1-.9-2-2-2z"/></svg>`;
 }
 
 /**
@@ -558,7 +601,8 @@ function onCellHover(id, e) {
         for (const en of game.enemyBuildings) {
             if (distance(id, en.id) <= game.proximityRange) pen++;
         }
-        content = `<div style="font-weight:700;">Place: ${type}</div>` +
+        const label = displayNames[type] || type;
+        content = `<div style="font-weight:700;">Place: ${label}</div>` +
             `<div>Same-type neighbors: ${same} (${same>0? '+'+ (same*25) +'% efficiency': 'no bonus'})</div>` +
             `<div>Nearby enemies: ${pen}</div>`;
         showTooltipAt(rect.right + 8, rect.top, content);
@@ -573,7 +617,8 @@ function onCellHover(id, e) {
             if (other.id !== player.id && other.type === type && distance(id, other.id) <= game.proximityRange) same++;
         }
         for (const en of game.enemyBuildings) if (distance(id, en.id) <= game.proximityRange) pen++;
-        content = `<div style="font-weight:700;">${type} (You)</div>` +
+        const label = displayNames[type] || type;
+        content = `<div style="font-weight:700;">${label} (You)</div>` +
             `<div>Same-type neighbors: ${same} (${same>0? '+'+ (same*25) +'%': 'none'})</div>` +
             `<div>Nearby enemies: ${pen}</div>`;
         showTooltipAt(rect.right + 8, rect.top, content);
@@ -584,7 +629,8 @@ function onCellHover(id, e) {
     if (enemy && !game.selectedMode) {
         const type = enemy.type;
         const sabotageCost = Math.max(0, buildingTypes[type].cost - 200);
-        content = `<div style="font-weight:700;">${type} (Enemy)</div>` +
+        const label = displayNames[type] || type;
+        content = `<div style="font-weight:700;">${label} (Enemy)</div>` +
             `<div>Sabotage cost: ${sabotageCost.toLocaleString()} tokens</div>` +
             `<div>Effect: destroys building, removes its production</div>`;
         showTooltipAt(rect.right + 8, rect.top, content);
@@ -719,19 +765,20 @@ function addButtonTooltips() {
     const buttons = document.querySelectorAll('.btn');
     buttons.forEach(btn => {
         btn.addEventListener('mouseenter', (e) => {
-            const type = btn.dataset.type || btn.textContent.trim();
-            let content = '<div style="font-weight:700;">' + btn.textContent.trim() + '</div>';
-            if (type === 'mine' || /mine/i.test(type)) {
+            const typeKey = btn.dataset.type || btn.textContent.trim();
+            const label = displayNames[typeKey] || btn.textContent.trim();
+            let content = '<div style="font-weight:700;">' + label + '</div>';
+            if (typeKey === 'mine' || /mine/i.test(typeKey)) {
                 content += '<div>Place a Mine to extract raw uranium from the ground. Cost: ' + buildingTypes.mine.cost + ' tokens.</div>';
-            } else if (type === 'processor' || /process/i.test(type)) {
-                content += '<div>Place a Processor to refine raw uranium into usable fuel. Cost: ' + buildingTypes.processor.cost + ' tokens.</div>';
-            } else if (type === 'storage' || /store/i.test(type)) {
-                content += '<div>Place Storage to increase fuel capacity. Cost: ' + buildingTypes.storage.cost + ' tokens.</div>';
-            } else if (type === 'plant' || /plant/i.test(type)) {
-                content += '<div>Place a Reactor (Plant) to consume fuel and generate power/income. Cost: ' + buildingTypes.plant.cost + ' tokens.</div>';
-            } else if (type === 'sabotage' || /sabotage/i.test(type)) {
+            } else if (typeKey === 'processor' || /process/i.test(typeKey)) {
+                content += '<div>Place a Plant to refine/transform raw material. Cost: ' + buildingTypes.processor.cost + ' tokens.</div>';
+            } else if (typeKey === 'storage' || /store/i.test(typeKey)) {
+                content += '<div>Place Storage (vault) to increase fuel capacity. Cost: ' + buildingTypes.storage.cost + ' tokens.</div>';
+            } else if (typeKey === 'plant' || /plant/i.test(typeKey)) {
+                content += '<div>Place a Reactor to consume fuel and generate power/income. Cost: ' + buildingTypes.plant.cost + ' tokens.</div>';
+            } else if (typeKey === 'sabotage' || /sabotage/i.test(typeKey)) {
                 content += '<div>Sabotage an enemy building. Click the Sabotage button then click an enemy cell. Cost varies by target.</div>';
-            } else if (type === 'dev' || /dev/i.test(type)) {
+            } else if (typeKey === 'dev' || /dev/i.test(typeKey)) {
                 content += '<div>Toggle developer tools: advance time, change simulation speed for testing.</div>';
             }
             const rect = btn.getBoundingClientRect();

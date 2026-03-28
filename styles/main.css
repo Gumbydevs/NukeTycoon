@@ -70,6 +70,19 @@ body.authenticated .container {
     white-space: nowrap;
 }
 
+/* Small emoji inside buttons */
+.btn .icon-emoji {
+    font-size: 14px;
+    margin-right: 6px;
+    line-height: 1;
+    vertical-align: middle;
+}
+
+/* SVG sizing rules for toolbar/legend/cells */
+.btn svg { width: 14px; height: 14px; margin-right: 6px; vertical-align: middle; }
+.legend-icon svg { width: 16px; height: 16px; }
+.cell svg { width: 26px; height: 26px; }
+
 .btn:hover {
     background: #2a2a2a;
     border-color: #555;
@@ -200,6 +213,23 @@ body.authenticated .container {
     border-radius: 1px;
     font-size: 9px;
 }
+
+/* Emoji icon used inside cells and legend. Make larger and centered. */
+.icon-emoji {
+    font-size: 18px;
+    line-height: 1;
+    display: inline-block;
+    transform: translateY(-1px);
+}
+
+/* Make emoji inside grid cells noticeably larger for readability */
+.cell .icon-emoji {
+    font-size: 26px;
+    transform: translateY(-2px);
+}
+
+/* Slight shadow to help emoji stand out on dark background */
+.cell .icon-emoji { text-shadow: 0 1px 0 rgba(0,0,0,0.6); }
 
 .legend-icon.m {
     color: #4CAF50;
