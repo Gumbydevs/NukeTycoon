@@ -799,18 +799,18 @@ function productionTick() {
     });
 
     // Each mine yields a small independent random amount per tick — organic feel,
-    // no fixed step. Range 0.05–0.20 per mine, average ~0.12 U/sec per mine.
+    // no fixed step. Range 0.10–0.35 per mine, average ~0.22 U/sec per mine.
     let produced = 0;
     for (let i = 0; i < totalMines; i++) {
-        produced += 0.05 + Math.random() * 0.15;
+        produced += 0.10 + Math.random() * 0.25;
     }
     const newU = Math.min(game.maxStorage, game.uranium + produced);
     game.dailyProduced += Math.max(0, newU - game.uranium);
     game.uranium = newU;
 
-    // Each plant consumes a slightly varied amount of fuel per tick
-    // — small noise keeps the income readout feeling live too.
-    const fuelPerPlantPerTick = 0.7 + Math.random() * 0.6; // avg ~1.0 U/sec per plant
+    // Plants consume a small trickle of fuel per tick — much less than mines produce
+    // so uranium visibly accumulates. avg ~0.06 U/sec per plant.
+    const fuelPerPlantPerTick = 0.03 + Math.random() * 0.06; // avg ~0.06 U/sec per plant
     const requiredFuel = totalPlants * fuelPerPlantPerTick;
     let fuelConsumed = 0;
     let income = 0;
