@@ -200,16 +200,16 @@ body.authenticated .container {
     left: 16px;
     background: rgba(0,0,0,0.8);
     border: 1px solid #333;
-    padding: 12px;
-    font-size: 10px;
+    padding: 16px;
+    font-size: 13px; /* increased ~30% for readability */
     border-radius: 2px;
     z-index: 10;
 }
 
 .legend-item {
     display: flex;
-    gap: 6px;
-    margin-bottom: 6px;
+    gap: 8px;
+    margin-bottom: 8px;
     align-items: center;
 }
 
@@ -218,14 +218,14 @@ body.authenticated .container {
 }
 
 .legend-icon {
-    width: 16px;
-    height: 16px;
+    width: 21px; /* ~30% larger */
+    height: 21px;
     border: 1px solid #444;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 1px;
-    font-size: 9px;
+    border-radius: 2px;
+    font-size: 12px;
 }
 
 /* Emoji icon used inside cells and legend. Make larger and centered. */
@@ -267,6 +267,7 @@ body.authenticated .container {
 
 .legend-text {
     color: #888;
+    font-size: 13px;
 }
 
 /* Prevent selection/highlight of interactive UI text */
