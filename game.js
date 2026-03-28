@@ -499,10 +499,38 @@ document.addEventListener('DOMContentLoaded', function() {
     const loginBtn = document.getElementById('loginBtn');
     const pwd = document.getElementById('passwordInput');
     const profileBtn = document.getElementById('profileBtn');
+    const mobileMenuBtn = document.getElementById('mobileMenuBtn');
     if (loginBtn) loginBtn.addEventListener('click', checkPassword);
     if (pwd) pwd.addEventListener('keyup', (e) => { if (e.key === 'Enter') checkPassword(); });
     if (profileBtn) profileBtn.addEventListener('click', toggleProfile);
+    if (mobileMenuBtn) mobileMenuBtn.addEventListener('click', toggleMobileMenu);
 });
+
+/* Mobile menu open/close */
+function showMobileMenu() {
+    const modal = document.getElementById('mobileMenu');
+    if (!modal) return;
+    const s = document.getElementById('mobileMenuStats');
+    if (s) {
+        const portfolio = (game.playerWallet + (game.uranium * game.market.price)) || 0;
+        s.innerHTML = `Round: ${game.round} — Tokens: ${game.playerWallet.toLocaleString()} — Uranium: ${game.uranium} — Stored: ${game.uranium}/${game.maxStorage} — Portfolio: $${portfolio.toFixed(2)}`;
+    }
+    modal.style.display = 'block';
+    document.body.classList.add('mobile-menu-open');
+}
+
+function closeMobileMenu() {
+    const modal = document.getElementById('mobileMenu');
+    if (!modal) return;
+    modal.style.display = 'none';
+    document.body.classList.remove('mobile-menu-open');
+}
+
+function toggleMobileMenu() {
+    const modal = document.getElementById('mobileMenu');
+    if (!modal) return showMobileMenu();
+    if (modal.style.display === 'none' || modal.style.display === '') showMobileMenu(); else closeMobileMenu();
+}
 
 /**
  * Start simulation intervals for production and clock.
