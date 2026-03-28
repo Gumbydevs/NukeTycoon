@@ -2,7 +2,7 @@
 const game = {
     playerWallet: 50000,
     uranium: 0,
-    maxStorage: 100,
+    maxStorage: 5000,
     buildings: [],
     enemyBuildings: [],
     selectedMode: null,
@@ -349,7 +349,7 @@ function buildBuilding(id, type) {
     game.buildings.push({ id, type, owner: 'YOU' });
 
     if (type === 'storage') {
-        game.maxStorage += 100;
+        game.maxStorage += 1000;
     }
 
     renderBuilding(id, type, true);
@@ -517,8 +517,8 @@ function calculatePower() {
  */
 function updateUI() {
     document.getElementById('wallet').textContent = game.playerWallet.toLocaleString();
-    document.getElementById('uranium').textContent = game.uranium;
-    document.getElementById('stored').textContent = game.uranium + '/' + game.maxStorage;
+    document.getElementById('uranium').textContent = formatUranium(game.uranium);
+    document.getElementById('stored').textContent = formatUranium(game.uranium) + '/' + formatUranium(game.maxStorage);
     
     const power = calculatePower();
     // show power with one decimal place to avoid long floats
@@ -577,6 +577,18 @@ function formatSupply(n) {
     if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 1 : 2) + 'M';
     if (n >= 1e3) return (n / 1e3).toFixed(n >= 1e4 ? 1 : 2) + 'K';
     return Math.floor(n).toLocaleString();
+}
+
+/**
+ * Format a uranium quantity:
+ *  - Under 1000 → always show 2 decimal places (e.g. "0.00", "45.72")
+ *  - 1 000+ → compact suffix with 2dp    (e.g. "1.50K", "2.30M")
+ */
+function formatUranium(n) {
+    if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+    if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(2) + 'K';
+    return (+n).toFixed(2);
 }
 
 /**
@@ -671,7 +683,7 @@ function showProfile() {
     const statsEl = document.getElementById('profileStats');
     if (statsEl) {
         const portfolio = (game.playerWallet + (game.uranium * game.market.price)) || 0;
-        statsEl.textContent = `Tokens: ${game.playerWallet.toLocaleString()} — Uranium: ${game.uranium} — Portfolio: $${portfolio.toFixed(2)}`;
+        statsEl.textContent = `Tokens: ${game.playerWallet.toLocaleString()} — Uranium: ${formatUranium(game.uranium)} — Portfolio: $${portfolio.toFixed(2)}`;
     }
     modal.style.display = 'flex';
 }
@@ -732,7 +744,7 @@ function showMobileMenu() {
     const s = document.getElementById('mobileMenuStats');
     if (s) {
         const portfolio = (game.playerWallet + (game.uranium * game.market.price)) || 0;
-        s.innerHTML = `Round: ${game.round} — Tokens: ${game.playerWallet.toLocaleString()} — Uranium: ${game.uranium} — Stored: ${game.uranium}/${game.maxStorage} — Portfolio: $${portfolio.toFixed(2)}`;
+        s.innerHTML = `Round: ${game.round} — Tokens: ${game.playerWallet.toLocaleString()} — Uranium: ${formatUranium(game.uranium)} — Stored: ${formatUranium(game.uranium)}/${formatUranium(game.maxStorage)} — Portfolio: $${portfolio.toFixed(2)}`;
     }
     modal.style.display = 'block';
     document.body.classList.add('mobile-menu-open');
@@ -780,15 +792,19 @@ function productionTick() {
         if (b.type === 'plant') totalPlants++;
     });
 
-    // Mines produce uranium per production tick
-    const mineProductionPerTick = 5; // prototype value per second
-    const produced = totalMines * mineProductionPerTick;
+    // Each mine yields a small independent random amount per tick — organic feel,
+    // no fixed step. Range 0.05–0.20 per mine, average ~0.12 U/sec per mine.
+    let produced = 0;
+    for (let i = 0; i < totalMines; i++) {
+        produced += 0.05 + Math.random() * 0.15;
+    }
     const newU = Math.min(game.maxStorage, game.uranium + produced);
     game.dailyProduced += Math.max(0, newU - game.uranium);
     game.uranium = newU;
 
-    // Plants consume fuel to generate income
-    const fuelPerPlantPerTick = 10; // prototype
+    // Each plant consumes a slightly varied amount of fuel per tick
+    // — small noise keeps the income readout feeling live too.
+    const fuelPerPlantPerTick = 0.7 + Math.random() * 0.6; // avg ~1.0 U/sec per plant
     const requiredFuel = totalPlants * fuelPerPlantPerTick;
     let fuelConsumed = 0;
     let income = 0;
@@ -1088,7 +1104,7 @@ function showEndOfDaySummary() {
     content.innerHTML = `
         <div>Day: ${game.time.day}</div>
         <div>Power (current): ${power.toFixed(1)} MW</div>
-        <div>Uranium produced today: ${dayProduced}</div>
+        <div>Uranium produced today: ${formatUranium(dayProduced)}</div>
         <div>Income today: ${dayIncome.toLocaleString()} tokens</div>
         <div style="margin-top:8px; border-top:1px solid #333; padding-top:8px;">
             <strong>Token Economy</strong>
