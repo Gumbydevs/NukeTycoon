@@ -20,64 +20,48 @@
     </div>
     <div class="container">
         <div class="top-bar">
-            <div style="display: flex; gap: 16px;">
-                <span style="font-size: 16px; font-weight: 600;">Nuclear Tycoon</span>
-            </div>
-            
-            <div class="stat-item">
-                <span class="stat-label">Round:</span>
-                <span class="stat-val" id="round">1/8</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-label">Tokens:</span>
-                <span class="stat-val" id="wallet">50,000</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-label">Uranium:</span>
-                <span class="stat-val" id="uranium">0</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-label">Stored:</span>
-                <span class="stat-val" id="stored">0/0</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-label">Power:</span>
-                <span class="stat-val" id="power">0 MW</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-label">Rank:</span>
-                <span class="stat-val" id="rank">#1</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-label">Day:</span>
-                <span class="stat-val" id="day">1</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-label">Time:</span>
-                <span class="stat-val" id="time">00:00</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-label">Market value:</span>
-                <span class="stat-val" id="marketPrice">$1.00</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-label">Income:</span>
-                <span class="stat-val" id="income">0</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-label">Portfolio:</span>
-                <span class="stat-val" id="portfolio">$50,000</span>
-            </div>
+            <div class="top-bar-title">Nuclear Tycoon</div>
 
-            <div class="buttons">
-                <button class="btn" data-type="mine" onclick="selectBuilding('mine')"><span class="icon-emoji">⛏️</span>Mine (800)</button>
-                <button class="btn" data-type="processor" onclick="selectBuilding('processor')"><span class="icon-emoji">🏭</span>Plant (1200)</button>
-                <button class="btn" data-type="storage" onclick="selectBuilding('storage')"><svg viewBox="0 0 24 24" width="14" height="14" xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle; margin-right:6px;"><ellipse cx="12" cy="4.5" rx="6" ry="2" fill="#b08b4f"/><rect x="6" y="4.5" width="12" height="13" rx="2" ry="2" fill="#b08b4f"/></svg>Storage (1000)</button>
-                <button class="btn" data-type="plant" onclick="selectBuilding('plant')"><span class="icon-emoji">☢️</span>Reactor (1000)</button>
-                <button class="btn sabotage" data-type="sabotage" onclick="selectBuilding('sabotage')">Sabotage (600-800)</button>
-                <button class="btn" id="profileBtn" title="Profile"><span class="avatar-small">YOU</span></button>
-                <button class="btn" id="mobileMenuBtn" title="Menu" style="display:none;">☰</button>
-                <button class="btn" id="devToggle" onclick="toggleDevPanel()">Dev</button>
+            <div class="stats-row">
+                <!-- Session -->
+                <div class="stat-group">
+                    <div class="stat-item"><span class="stat-label">Round</span><span class="stat-val" id="round">1/8</span></div>
+                    <div class="stat-item"><span class="stat-label">Day</span><span class="stat-val" id="day">1</span></div>
+                    <div class="stat-item"><span class="stat-label">Time</span><span class="stat-val" id="time">00:00:00</span></div>
+                </div>
+
+                <!-- Economy -->
+                <div class="stat-group">
+                    <div class="stat-item stat-item--prize"><span class="stat-label">Prize Pool</span><span class="stat-val" id="prizePool">0</span></div>
+                    <div class="stat-item"><span class="stat-label">Circulating</span><span class="stat-val" id="circulating">1,000,000,000</span></div>
+                    <div class="stat-item"><span class="stat-label">Wallet</span><span class="stat-val" id="wallet">50,000</span></div>
+                </div>
+
+                <!-- Production -->
+                <div class="stat-group">
+                    <div class="stat-item"><span class="stat-label">Uranium</span><span class="stat-val" id="uranium">0</span></div>
+                    <div class="stat-item"><span class="stat-label">Stored</span><span class="stat-val" id="stored">0/100</span></div>
+                    <div class="stat-item"><span class="stat-label">Power</span><span class="stat-val" id="power">0.0 MW</span></div>
+                    <div class="stat-item"><span class="stat-label">Income</span><span class="stat-val" id="income">0</span></div>
+                </div>
+
+                <!-- Market -->
+                <div class="stat-group">
+                    <div class="stat-item"><span class="stat-label">Market</span><span class="stat-val" id="marketPrice">$1.00</span></div>
+                    <div class="stat-item"><span class="stat-label">Rank</span><span class="stat-val" id="rank">#1</span></div>
+                    <div class="stat-item"><span class="stat-label">Portfolio</span><span class="stat-val" id="portfolio">$50,000.00</span></div>
+                </div>
+
+                <div class="buttons">
+                    <button class="btn" data-type="mine" onclick="selectBuilding('mine')"><span class="icon-emoji">⛏️</span>Mine (800)</button>
+                    <button class="btn" data-type="processor" onclick="selectBuilding('processor')"><span class="icon-emoji">🏭</span>Plant (1200)</button>
+                    <button class="btn" data-type="storage" onclick="selectBuilding('storage')"><svg viewBox="0 0 24 24" width="14" height="14" xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle; margin-right:6px;"><ellipse cx="12" cy="4.5" rx="6" ry="2" fill="#b08b4f"/><rect x="6" y="4.5" width="12" height="13" rx="2" ry="2" fill="#b08b4f"/></svg>Storage (1000)</button>
+                    <button class="btn" data-type="plant" onclick="selectBuilding('plant')"><span class="icon-emoji">☢️</span>Reactor (1000)</button>
+                    <button class="btn sabotage" data-type="sabotage" onclick="selectBuilding('sabotage')">Sabotage (600-800)</button>
+                    <button class="btn" id="profileBtn" title="Profile"><span class="avatar-small">YOU</span></button>
+                    <button class="btn" id="mobileMenuBtn" title="Menu" style="display:none;">☰</button>
+                    <button class="btn" id="devToggle" onclick="toggleDevPanel()">Dev</button>
+                </div>
             </div>
         </div>
 

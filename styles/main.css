@@ -88,34 +88,91 @@ body.authenticated .container {
 .top-bar {
     background: linear-gradient(180deg, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 100%);
     border-bottom: 1px solid #333;
-    padding: 12px 16px;
+    padding: 6px 14px 6px;
     display: flex;
-    gap: 16px;
-    align-items: center;
-    flex-wrap: wrap;
+    flex-direction: column;
+    gap: 4px;
     z-index: 10;
     font-size: 12px;
 }
 
+.top-bar-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: 0.04em;
+    line-height: 1;
+}
+
+.stats-row {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+}
+
+.stats-row::-webkit-scrollbar { display: none; }
+
+.stat-group {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 0 14px;
+    flex-shrink: 0;
+}
+
+.stat-group + .stat-group {
+    border-left: 1px solid #2a2a2a;
+}
+
 .stat-item {
     display: flex;
-    gap: 6px;
+    align-items: baseline;
+    gap: 5px;
     white-space: nowrap;
 }
 
 .stat-label {
-    color: #888;
+    color: #666;
+    font-size: 11px;
 }
 
 .stat-val {
-    font-weight: 500;
+    font-weight: 600;
     color: #4CAF50;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    display: inline-block;
+}
+
+/* Per-stat min-widths prevent layout shift as numbers update */
+#round       { min-width: 24px; }
+#day         { min-width: 14px; }
+#time        { min-width: 56px; }
+#prizePool   { min-width: 48px; }
+#circulating { min-width: 88px; }
+#wallet      { min-width: 56px; }
+#uranium     { min-width: 30px; }
+#stored      { min-width: 48px; }
+#power       { min-width: 54px; }
+#income      { min-width: 36px; }
+#marketPrice { min-width: 36px; }
+#rank        { min-width: 20px; }
+#portfolio   { min-width: 72px; }
+
+/* Prize pool: yellow label, green value (inherits .stat-val) */
+.stat-item--prize .stat-label {
+    color: #ffb84d;
 }
 
 .buttons {
     display: flex;
     gap: 8px;
     margin-left: auto;
+    padding-left: 14px;
+    border-left: 1px solid #2a2a2a;
+    flex-shrink: 0;
 }
 
 .btn {

@@ -8,7 +8,11 @@ const game = {
     selectedMode: null,
     selectedCell: null,
     proximityRange: 2,
-    round: 1
+    round: 1,
+    // Token economy
+    totalTokenSupply: 1000000000, // 1 billion tokens at launch
+    tokensBurned: 0,             // accumulates every time tokens are spent
+    prizePool: 0                 // 10% of every spend feeds the round prize pool
 };
 
 // Client-side password protection (hash only). Embeds SHA-256(hex) of the password
@@ -41,14 +45,25 @@ game.time = {
 
 game.market = {
     price: 1.00,
-    // hourly volatility (higher makes price swing more). 0.03 = ~3% hourly
-    volatility: 0.03 // hourly volatility
+    baseTokenPrice: 1.00,    // price when pool is 100% full (bonding curve anchor)
+    volatility: 0.03,        // hourly volatility (~3% per hour)
+    // ----- Bonding curve / AMM pool -----
+    // tokenPool represents available liquidity. As tokens are burned, the pool
+    // shrinks and price rises inversely: price = baseTokenPrice * (poolInitial / pool).
+    // When pool is 100% full  → price = baseTokenPrice ($1.00)
+    // When pool is 50% full   → price = $2.00
+    // When pool is 10% full   → price = $10.00  (scarcity premium)
+    tokenPool: 1000,         // current available liquidity (tunable start)
+    tokenPoolInitial: 1000,  // reference size — never changes
+    // Each token spent drains the pool: drain = cost / POOL_BURN_RATE
+    // Lower = more aggressive price impact. 50 → 1 Mine (800t) drains 16 units.
+    poolBurnRate: 50         // tunable
 };
 // per-second volatility is smaller (for stock-like per-second ticks)
 game.market.perSecondVol = game.market.volatility / 60;
-// demand model parameters
-game.market.baseDemand = 1000; // baseline demand units (tunable)
-game.market.driftFactor = 0.0008; // per-second drift scaling (tunable)
+// demand model parameters (legacy diurnal drift, kept for flavour)
+game.market.baseDemand = 1000;
+game.market.driftFactor = 0.0002; // reduced — bonding curve is now the main price driver
 
 // Building type definitions
 // Use emoji icons as a visual; we'll render monochrome SVG versions so they
@@ -207,6 +222,10 @@ function buildBuilding(id, type) {
     }
 
     game.playerWallet -= cost;
+    game.tokensBurned += cost;
+    game.prizePool += Math.floor(cost * 0.10);
+    // drain liquidity pool → pushes price up via bonding curve
+    game.market.tokenPool = Math.max(1, game.market.tokenPool - cost / game.market.poolBurnRate);
     game.buildings.push({ id, type, owner: 'YOU' });
 
     if (type === 'storage') {
@@ -236,6 +255,10 @@ function sabotage(id) {
     }
 
     game.playerWallet -= cost;
+    game.tokensBurned += cost;
+    game.prizePool += Math.floor(cost * 0.10);
+    // drain liquidity pool → pushes price up via bonding curve
+    game.market.tokenPool = Math.max(1, game.market.tokenPool - cost / game.market.poolBurnRate);
     const idx = game.enemyBuildings.findIndex(b => b.id === id);
     game.enemyBuildings.splice(idx, 1);
 
@@ -414,6 +437,26 @@ function updateUI() {
         const value = game.playerWallet + (game.uranium * game.market.price);
         portfolioEl.textContent = '$' + value.toFixed(2).toLocaleString();
     }
+
+    // Token economy stats
+    const circulatingEl = document.getElementById('circulating');
+    if (circulatingEl) {
+        const circ = game.totalTokenSupply - game.tokensBurned;
+        circulatingEl.textContent = formatSupply(circ);
+    }
+    const prizePoolEl = document.getElementById('prizePool');
+    if (prizePoolEl) prizePoolEl.textContent = formatSupply(game.prizePool);
+}
+
+/**
+ * Format a large token number as a compact string: 1B, 999.9M, 1.5M, 659K, 500
+ * Used anywhere the 1-billion supply is displayed.
+ */
+function formatSupply(n) {
+    if (n >= 1e9) return (n / 1e9).toFixed(n >= 1e10 ? 1 : 2) + 'B';
+    if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 1 : 2) + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(n >= 1e4 ? 1 : 2) + 'K';
+    return Math.floor(n).toLocaleString();
 }
 
 /**
@@ -595,25 +638,38 @@ function productionTick() {
 
 /**
  * Small per-second market tick to simulate stock-like movement.
+ *
+ * Price model (two components):
+ *  1. Bonding curve anchor — the "fair value" based on pool depletion.
+ *     bondingPrice = baseTokenPrice × (poolInitial / pool)
+ *     As tokens burn, pool shrinks → bondingPrice rises.
+ *  2. Random walk noise — price oscillates around bondingPrice via mean-reversion.
+ *     Prevents the chart from being a boring straight line.
  */
 function tickMarket() {
+    // 1. Bonding curve fair value
+    const bondingPrice = game.market.baseTokenPrice *
+        (game.market.tokenPoolInitial / Math.max(1, game.market.tokenPool));
+
+    // 2. Gaussian noise (Box-Muller)
     const vol = game.market.perSecondVol;
     const u = Math.random();
     const v = Math.random();
     const z = Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
-    const noiseChange = z * vol * game.market.price;
+    const noise = z * vol * game.market.price;
 
-    // Demand-driven drift: price moves up when demand > supply, down when supply > demand
-    // supply: approximate by total power output (higher supply -> downward pressure)
+    // 3. Diurnal demand drift (legacy flavour — small contribution)
     const supply = calculatePower();
-    // allow demand to vary with hour (diurnal pattern)
-    const diurnal = Math.sin((game.time.hour / 24) * Math.PI * 2) * 0.2; // -0.2..0.2
+    const diurnal = Math.sin((game.time.hour / 24) * Math.PI * 2) * 0.2;
     const demand = Math.max(10, game.market.baseDemand * (1 + diurnal));
-    const supplyDemandDelta = (demand - supply) / demand; // positive -> upward pressure
+    const supplyDemandDelta = (demand - supply) / demand;
     const drift = supplyDemandDelta * game.market.driftFactor * game.market.price;
 
-    const change = noiseChange + drift;
-    game.market.price = Math.max(0.01, +(game.market.price + change).toFixed(4));
+    // 4. Mean-revert toward bondingPrice (strength 0.04 per tick)
+    const reversion = (bondingPrice - game.market.price) * 0.04;
+
+    game.market.price = Math.max(0.01,
+        +(game.market.price + reversion + noise + drift).toFixed(6));
 }
 
 /**
@@ -655,10 +711,53 @@ function onDayAdvance() {
     if (game.time.day > 8) {
         game.time.day = 1;
         game.round = (game.round % 8) + 1;
+        distributePrizePool();
     }
     document.getElementById('day').textContent = game.time.day;
     // show end-of-day summary modal
     showEndOfDaySummary();
+}
+
+/**
+ * Distribute the prize pool to the top 3 players at the end of a round.
+ * Shares: 1st 50% / 2nd 30% / 3rd 20%.
+ * Currently awards the player their share based on their leaderboard rank.
+ */
+function distributePrizePool() {
+    if (game.prizePool <= 0) return;
+    const pool = game.prizePool;
+    const shares = [0.50, 0.30, 0.20];
+
+    // Determine player rank based on current leaderboard scores
+    const playerPortfolio = game.playerWallet + (game.uranium * game.market.price);
+    const playerScore = calculatePower() + (playerPortfolio / 1000);
+
+    const enemyScores = [];
+    const enemyMap = {};
+    game.enemyBuildings.forEach(b => {
+        if (!enemyMap[b.owner]) enemyMap[b.owner] = { plants: 0, mines: 0 };
+        if (b.type === 'plant') enemyMap[b.owner].plants++;
+        if (b.type === 'mine') enemyMap[b.owner].mines++;
+    });
+    for (const owner in enemyMap) {
+        const e = enemyMap[owner];
+        const estPower = e.plants * 100;
+        const estPortfolio = estPower + (e.mines * 50 * game.market.price);
+        enemyScores.push(estPower + (estPortfolio / 1000));
+    }
+
+    // Count how many enemies outrank the player
+    const playerRank = 1 + enemyScores.filter(s => s > playerScore).length;
+
+    if (playerRank <= 3) {
+        const award = Math.floor(pool * shares[playerRank - 1]);
+        game.playerWallet += award;
+        console.info(
+            `Round over! Prize pool: ${pool.toLocaleString()} tokens | ` +
+            `Your rank: #${playerRank} | Award: +${award.toLocaleString()} tokens`
+        );
+    }
+    game.prizePool = 0;
 }
 
 /**
@@ -806,11 +905,21 @@ function showEndOfDaySummary() {
     const dayIncome = game.dailyIncome;
     const power = calculatePower();
 
+    const circulatingNow = (game.totalTokenSupply - game.tokensBurned).toLocaleString();
     content.innerHTML = `
         <div>Day: ${game.time.day}</div>
         <div>Power (current): ${power.toFixed(1)} MW</div>
         <div>Uranium produced today: ${dayProduced}</div>
         <div>Income today: ${dayIncome.toLocaleString()} tokens</div>
+        <div style="margin-top:8px; border-top:1px solid #333; padding-top:8px;">
+            <strong>Token Economy</strong>
+        </div>
+        <div>Tokens circulating: ${circulatingNow}</div>
+        <div>Tokens burned (total): ${game.tokensBurned.toLocaleString()}</div>
+        <div style="margin-top:6px;">
+            <strong style="color:#ffb84d;">Prize Pool: ${game.prizePool.toLocaleString()} tokens</strong>
+        </div>
+        <div style="font-size:11px; color:#888;">Split at round end — 1st: 50% / 2nd: 30% / 3rd: 20%</div>
     `;
 
     // build simple leaderboard (You + enemies)
