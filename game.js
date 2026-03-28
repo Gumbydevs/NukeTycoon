@@ -573,8 +573,14 @@ function updateUI() {
  * Used anywhere the 1-billion supply is displayed.
  */
 function formatSupply(n) {
-    if (n >= 1e9) return (n / 1e9).toFixed(n >= 1e10 ? 1 : 2) + 'B';
-    if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 1 : 2) + 'M';
+    if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+    if (n >= 1e6) {
+        const decimals = n >= 1e8 ? 1 : 2;
+        const mStr = (n / 1e6).toFixed(decimals);
+        // if toFixed rounds up to 1000.x, promote to B to avoid "1000.0M"
+        if (parseFloat(mStr) >= 1000) return (n / 1e9).toFixed(2) + 'B';
+        return mStr + 'M';
+    }
     if (n >= 1e3) return (n / 1e3).toFixed(n >= 1e4 ? 1 : 2) + 'K';
     return Math.floor(n).toLocaleString();
 }
