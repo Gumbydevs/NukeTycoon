@@ -11,8 +11,31 @@ const game = {
     round: 1,
     // Token economy
     totalTokenSupply: 1000000000, // 1 billion tokens at launch
-    tokensBurned: 0,             // accumulates every time tokens are spent
-    prizePool: 0                 // 10% of every spend feeds the round prize pool
+    tokensBurned: 0,              // accumulates every time tokens are spent
+    prizePool: 0,                 // funded by buy-ins + 10% of in-game spends
+
+    // ── Buy-in / run entry ───────────────────────────────────────────────────
+    // Every player (human or bot) pays this once to enter a run.
+    // A run = 8 rounds, each lasting one real 24-hour day.
+    // Their buy-in seeds the prize pool and the bonding curve pool directly.
+    buyIn: 5000, // tunable — cost per player per run (in tokens)
+
+    // ── Player registry ───────────────────────────────────────────────────────
+    // Single source of truth for all players in the current round.
+    // BACKEND_STUB: On a real multiplayer backend this list is populated server-
+    //   side (e.g. via WebSocket 'round:players' event) before the round starts.
+    //   For now we build it locally in initPlayerRegistry().
+    players: []
+    // Each entry shape (see initPlayerRegistry for full object):
+    // {
+    //   id        : string  — unique ID ('local' for the human, UUID for remote)
+    //   name      : string  — display name
+    //   isLocal   : bool    — true only for the player on this client
+    //   isBot     : bool    — true for AI-controlled players
+    //   wallet    : number  — token balance
+    //   paidBuyIn : bool    — has this player confirmed their entry fee?
+    //   score     : number  — updated each tick for leaderboard
+    // }
 };
 
 // Client-side password protection (hash only). Embeds SHA-256(hex) of the password
@@ -90,11 +113,108 @@ const displayNames = {
     plant: 'Reactor'
 };
 
-// Enemy list
+// Enemy list (legacy — kept for spawnEnemyBuildings; names are drawn from game.players bots)
 const enemies = [
     { name: 'PHANTOM_IX' },
     { name: 'NEUTRON_' }
 ];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Player Registry
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Build the player list for the current run.
+ *
+ * BACKEND_STUB: In production this function is replaced by a server-sent
+ *   payload (e.g. WebSocket 'run:join' -> 'run:players' handshake).
+ *   The shape of each player object here intentionally matches what the backend
+ *   would send, so swapping is straightforward:
+ *
+ *   socket.on('run:players', (players) => {
+ *     game.players = players;
+ *     renderLobbyPlayers();
+ *   });
+ */
+function initPlayerRegistry() {
+    game.players = [
+        // ── Human player (this client) ───────────────────────────────────────
+        {
+            id: 'local',
+            name: 'YOU',
+            isLocal: true,
+            isBot: false,
+            wallet: game.playerWallet, // synced from game.playerWallet
+            paidBuyIn: false,
+            score: 0
+        },
+        // ── AI bots ──────────────────────────────────────────────────────────
+        // BACKEND_STUB: replace with real remote players when backend is live.
+        {
+            id: 'bot-phantom',
+            name: 'PHANTOM_IX',
+            isLocal: false,
+            isBot: true,
+            wallet: 50000,
+            paidBuyIn: false,
+            score: 0
+        },
+        {
+            id: 'bot-neutron',
+            name: 'NEUTRON_',
+            isLocal: false,
+            isBot: true,
+            wallet: 50000,
+            paidBuyIn: false,
+            score: 0
+        }
+    ];
+}
+
+/**
+ * Collect buy-ins from all players and seed the prize pool + bonding curve pool.
+ * Called once per run (a run = 8 rounds, each round lasting one real 24-hour day).
+ *
+ * Each player pays game.buyIn tokens:
+ *  - 80% goes directly to the prize pool (what players compete for)
+ *  - 20% drains the bonding curve pool (immediate price impact at run start)
+ *
+ * BACKEND_STUB: In production, buy-in deduction and prize pool seeding are
+ *   authorised server-side. This client call would be:
+ *   socket.emit('run:buyin', { playerId: 'local', amount: game.buyIn });
+ *   …and server broadcasts the updated prizePool back to all clients.
+ */
+function initRun() {
+    initPlayerRegistry();
+
+    let totalBuyIn = 0;
+    game.players.forEach(p => {
+        if (p.isLocal) {
+            // deduct from the human player's wallet
+            game.playerWallet -= game.buyIn;
+            p.wallet = game.playerWallet;
+        } else {
+            // bots auto-pay (wallet is local simulation only)
+            p.wallet -= game.buyIn;
+        }
+        p.paidBuyIn = true;
+        totalBuyIn += game.buyIn;
+    });
+
+    // 80% of all buy-ins seeds the prize pool
+    const prizeContrib = Math.floor(totalBuyIn * 0.80);
+    game.prizePool += prizeContrib;
+
+    // 20% drains the bonding curve → price starts slightly above floor
+    const poolDrain = Math.floor(totalBuyIn * 0.20) / game.market.poolBurnRate;
+    game.market.tokenPool = Math.max(1, game.market.tokenPool - poolDrain);
+
+    console.info(
+        `Run started (Round ${game.round}/8) | Players: ${game.players.length} | ` +
+        `Buy-in: ${game.buyIn.toLocaleString()} each | ` +
+        `Prize pool seeded: ${prizeContrib.toLocaleString()} tokens`
+    );
+}
 
 /**
  * Initialize the game grid
@@ -464,6 +584,7 @@ function formatSupply(n) {
  */
 function startGame() {
     initGrid();
+    initRun();   // collect buy-ins, seed prize pool & bonding curve pool (once per run)
     updateUI();
     console.log('Game started');
     // start simulation loops
@@ -479,6 +600,62 @@ function authenticate() {
     if (modal) modal.style.display = 'none';
     // persist session for the tab
     sessionStorage.setItem('nuke_auth', '1');
+    // Show lobby before launching
+    showLobby();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Lobby
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Show the pre-run lobby modal.
+ * Builds the player list and displays buy-in details so the player can
+ * confirm before tokens are deducted. A run consists of 8 rounds, each
+ * lasting one real 24-hour day.
+ *
+ * BACKEND_STUB: In production, open a WebSocket connection here, register
+ *   the player, and wait for 'run:ready' before enabling the confirm button.
+ */
+function showLobby() {
+    initPlayerRegistry(); // populate game.players (no buy-in yet)
+
+    const modal = document.getElementById('lobbyModal');
+    if (!modal) { startGame(); return; } // fallback if modal missing
+
+    // prize pool preview = 80% of all buy-ins
+    const preview = Math.floor(game.players.length * game.buyIn * 0.80);
+
+    document.getElementById('lobbyBuyIn').textContent = game.buyIn.toLocaleString();
+    document.getElementById('lobbyPrizePreview').textContent = preview.toLocaleString();
+    document.getElementById('lobbyWalletAfter').textContent =
+        (game.playerWallet - game.buyIn).toLocaleString();
+
+    // render player rows
+    const list = document.getElementById('lobbyPlayerList');
+    if (list) {
+        list.innerHTML = game.players.map(p =>
+            `<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #1e1e1e;">
+                <span style="color:${p.isLocal ? '#ffb84d' : '#888'};">${p.name}${p.isBot ? ' <span style="font-size:10px; color:#555;">[BOT]</span>' : ''}</span>
+                <span style="color:#4CAF50;">${p.wallet.toLocaleString()} tokens</span>
+            </div>`
+        ).join('');
+    }
+
+    modal.style.display = 'flex';
+}
+
+/**
+ * Player confirmed buy-in — deduct tokens, seed pools, launch run.
+ */
+function confirmBuyIn() {
+    if (game.playerWallet < game.buyIn) {
+        document.getElementById('lobbyError').textContent =
+            'Insufficient tokens for buy-in.';
+        return;
+    }
+    const modal = document.getElementById('lobbyModal');
+    if (modal) modal.style.display = 'none';
     startGame();
 }
 
@@ -529,13 +706,12 @@ async function checkPassword() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    // if session token present, bypass login
+    // if session token present, bypass login but still show lobby for buy-in
     if (sessionStorage.getItem('nuke_auth') === '1') {
         document.body.classList.add('authenticated');
-        // hide modal if present
         const modal = document.getElementById('loginModal');
         if (modal) modal.style.display = 'none';
-        startGame();
+        showLobby();
     }
 
     // show login modal and wire events
@@ -707,7 +883,7 @@ function onHourAdvance() {
 }
 
 function onDayAdvance() {
-    // end of day logic: increment round when day passes 8
+    // end of run: all 8 rounds (days) completed — distribute prizes and cycle
     if (game.time.day > 8) {
         game.time.day = 1;
         game.round = (game.round % 8) + 1;
@@ -719,42 +895,45 @@ function onDayAdvance() {
 }
 
 /**
- * Distribute the prize pool to the top 3 players at the end of a round.
+ * Distribute the prize pool to the top 3 players at round end.
  * Shares: 1st 50% / 2nd 30% / 3rd 20%.
- * Currently awards the player their share based on their leaderboard rank.
+ *
+ * BACKEND_STUB: In production the server calculates and sends final scores
+ *   via 'run:end' event, and transfers tokens on-chain / in the DB.
+ *   client only needs to display the result, not compute it.
  */
 function distributePrizePool() {
     if (game.prizePool <= 0) return;
     const pool = game.prizePool;
     const shares = [0.50, 0.30, 0.20];
 
-    // Determine player rank based on current leaderboard scores
-    const playerPortfolio = game.playerWallet + (game.uranium * game.market.price);
-    const playerScore = calculatePower() + (playerPortfolio / 1000);
-
-    const enemyScores = [];
-    const enemyMap = {};
-    game.enemyBuildings.forEach(b => {
-        if (!enemyMap[b.owner]) enemyMap[b.owner] = { plants: 0, mines: 0 };
-        if (b.type === 'plant') enemyMap[b.owner].plants++;
-        if (b.type === 'mine') enemyMap[b.owner].mines++;
+    // Score every player
+    const scored = game.players.map(p => {
+        if (p.isLocal) {
+            const portfolio = game.playerWallet + (game.uranium * game.market.price);
+            return { ...p, calcScore: calculatePower() + (portfolio / 1000) };
+        }
+        // Estimate bot score from their buildings on the grid
+        const botBuildings = game.enemyBuildings.filter(b => b.owner === p.name);
+        const plants = botBuildings.filter(b => b.type === 'plant').length;
+        const mines  = botBuildings.filter(b => b.type === 'mine').length;
+        const estPortfolio = (plants * 100) + (mines * 50 * game.market.price);
+        return { ...p, calcScore: (plants * 100) + (estPortfolio / 1000) };
     });
-    for (const owner in enemyMap) {
-        const e = enemyMap[owner];
-        const estPower = e.plants * 100;
-        const estPortfolio = estPower + (e.mines * 50 * game.market.price);
-        enemyScores.push(estPower + (estPortfolio / 1000));
-    }
 
-    // Count how many enemies outrank the player
-    const playerRank = 1 + enemyScores.filter(s => s > playerScore).length;
+    scored.sort((a, b) => b.calcScore - a.calcScore);
 
-    if (playerRank <= 3) {
-        const award = Math.floor(pool * shares[playerRank - 1]);
+    // Award local player if they placed top 3
+    const localRank = scored.findIndex(p => p.isLocal);
+    if (localRank < 3) {
+        const award = Math.floor(pool * shares[localRank]);
         game.playerWallet += award;
+        // also sync back to player registry
+        const localEntry = game.players.find(p => p.isLocal);
+        if (localEntry) localEntry.wallet = game.playerWallet;
         console.info(
-            `Round over! Prize pool: ${pool.toLocaleString()} tokens | ` +
-            `Your rank: #${playerRank} | Award: +${award.toLocaleString()} tokens`
+            `Round ${game.round} over! Pool: ${pool.toLocaleString()} | ` +
+            `Rank: #${localRank + 1} | Awarded: +${award.toLocaleString()} tokens`
         );
     }
     game.prizePool = 0;
@@ -922,34 +1101,29 @@ function showEndOfDaySummary() {
         <div style="font-size:11px; color:#888;">Split at round end — 1st: 50% / 2nd: 30% / 3rd: 20%</div>
     `;
 
-    // build simple leaderboard (You + enemies)
-    const entries = [];
-    // player score: weighted by power + portfolio
-    const playerPortfolio = game.playerWallet + (game.uranium * game.market.price);
-    const playerScore = power + (playerPortfolio / 1000);
-    entries.push({ name: 'You', score: playerScore, wallet: game.playerWallet, portfolio: playerPortfolio });
-
-    // approximate enemy stats
-    const enemyMap = {};
-    game.enemyBuildings.forEach(b => {
-        if (!enemyMap[b.owner]) enemyMap[b.owner] = { mines: 0, plants: 0, storage:0, processors:0 };
-        if (b.type === 'mine') enemyMap[b.owner].mines++;
-        if (b.type === 'plant') enemyMap[b.owner].plants++;
-        if (b.type === 'storage') enemyMap[b.owner].storage++;
-        if (b.type === 'processor') enemyMap[b.owner].processors++;
+    // build leaderboard from game.players
+    // BACKEND_STUB: replace with server-sent scores from 'round:scores' event
+    const entries = game.players.map(p => {
+        if (p.isLocal) {
+            const portfolio = game.playerWallet + (game.uranium * game.market.price);
+            return { name: p.name, isLocal: true, score: power + (portfolio / 1000), portfolio };
+        }
+        const botBuildings = game.enemyBuildings.filter(b => b.owner === p.name);
+        const plants = botBuildings.filter(b => b.type === 'plant').length;
+        const mines  = botBuildings.filter(b => b.type === 'mine').length;
+        const estPortfolio = (plants * 100) + (mines * 50 * game.market.price);
+        return { name: p.name, isLocal: false, score: (plants * 100) + (estPortfolio / 1000), portfolio: estPortfolio };
     });
-    for (const owner in enemyMap) {
-        const e = enemyMap[owner];
-        const estPower = e.plants * 100; // rough
-        const estUranium = e.mines * 50;
-        const estPortfolio = estPower + (estUranium * game.market.price);
-        const score = estPower + (estPortfolio / 1000);
-        entries.push({ name: owner, score, wallet: 0, portfolio: estPortfolio });
-    }
-
-    // sort and render leaderboard
-    entries.sort((a,b) => b.score - a.score);
-    lb.innerHTML = entries.map((r, i) => `<div style="margin-bottom:6px;"><strong>#${i+1}</strong> ${r.name} — Score: ${r.score.toFixed(2)} — Portfolio: $${r.portfolio.toFixed(2)}</div>`).join('');
+    entries.sort((a, b) => b.score - a.score);
+    lb.innerHTML = entries.map((r, i) => {
+        const medal = ['🥇','🥈','🥉'][i] || `#${i+1}`;
+        const color = r.isLocal ? '#ffb84d' : '#ccc';
+        return `<div style="margin-bottom:6px; color:${color};">` +
+            `<strong>${medal} ${r.name}</strong> — ` +
+            `Score: ${r.score.toFixed(1)} — ` +
+            `Portfolio: $${r.portfolio.toFixed(2)}` +
+            `</div>`;
+    }).join('');
 
     modal.style.display = 'flex';
 
