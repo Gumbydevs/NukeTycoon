@@ -400,6 +400,35 @@ function authenticate() {
     startGame();
 }
 
+/* Profile modal handlers */
+function showProfile() {
+    const modal = document.getElementById('profileModal');
+    if (!modal) return;
+    // populate some fields
+    const walletEl = document.getElementById('profileWallet');
+    if (walletEl) walletEl.textContent = '$' + (game.playerWallet || 0).toLocaleString();
+    const nameEl = document.getElementById('profileName');
+    if (nameEl) nameEl.textContent = displayNames.player || 'You';
+    const statsEl = document.getElementById('profileStats');
+    if (statsEl) {
+        const portfolio = (game.playerWallet + (game.uranium * game.market.price)) || 0;
+        statsEl.textContent = `Tokens: ${game.playerWallet.toLocaleString()} — Uranium: ${game.uranium} — Portfolio: $${portfolio.toFixed(2)}`;
+    }
+    modal.style.display = 'flex';
+}
+
+function closeProfile() {
+    const modal = document.getElementById('profileModal');
+    if (!modal) return;
+    modal.style.display = 'none';
+}
+
+function toggleProfile() {
+    const modal = document.getElementById('profileModal');
+    if (!modal) return showProfile();
+    if (modal.style.display === 'none' || modal.style.display === '') showProfile(); else closeProfile();
+}
+
 async function checkPassword() {
     const input = document.getElementById('passwordInput');
     if (!input) return;
@@ -425,14 +454,15 @@ document.addEventListener('DOMContentLoaded', function() {
         const modal = document.getElementById('loginModal');
         if (modal) modal.style.display = 'none';
         startGame();
-        return;
     }
 
     // show login modal and wire events
     const loginBtn = document.getElementById('loginBtn');
     const pwd = document.getElementById('passwordInput');
+    const profileBtn = document.getElementById('profileBtn');
     if (loginBtn) loginBtn.addEventListener('click', checkPassword);
     if (pwd) pwd.addEventListener('keyup', (e) => { if (e.key === 'Enter') checkPassword(); });
+    if (profileBtn) profileBtn.addEventListener('click', toggleProfile);
 });
 
 /**
