@@ -53,13 +53,27 @@
                 </div>
 
                 <div class="buttons">
-                    <button class="btn" data-type="mine" onclick="selectBuilding('mine')"><span class="icon-emoji">⛏️</span>Mine</button>
-                    <button class="btn" data-type="processor" onclick="selectBuilding('processor')"><span class="icon-emoji">🏭</span>Plant</button>
-                    <button class="btn" data-type="storage" onclick="selectBuilding('storage')"><svg viewBox="0 0 24 24" width="14" height="14" xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle; margin-right:6px;"><ellipse cx="12" cy="4.5" rx="6" ry="2" fill="#b08b4f"/><rect x="6" y="4.5" width="12" height="13" rx="2" ry="2" fill="#b08b4f"/></svg>Storage</button>
-                    <button class="btn" data-type="plant" onclick="selectBuilding('plant')"><span class="icon-emoji">☢️</span>Reactor</button>
-                    <button class="btn" data-type="silo" onclick="selectBuilding('silo')"><span class="icon-emoji">⚛️</span>Silo</button>
-                    <button class="btn sabotage" data-type="sabotage" onclick="selectBuilding('sabotage')">Sabotage</button>
-                    <button class="btn" id="profileBtn" title="Profile"><span class="avatar-small">YOU</span></button>
+                    <div class="actions-menu">
+                        <button class="btn menu-toggle" id="actionsMenuBtn" aria-haspopup="true" aria-expanded="false" title="Actions" onclick="toggleActionsMenu(event)">☰</button>
+                        <div class="dropdown" id="actionsMenu" aria-hidden="true" style="display:none;">
+                            <div class="menu-section">
+                                <div class="menu-section-title">Build</div>
+                                <button class="menu-item" data-type="mine">⛏️ Mine</button>
+                                <button class="menu-item" data-type="processor">🏭 Plant</button>
+                                <button class="menu-item" data-type="storage"><svg viewBox="0 0 24 24" width="14" height="14" xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle; margin-right:6px;"><ellipse cx="12" cy="4.5" rx="6" ry="2" fill="#b08b4f"/><rect x="6" y="4.5" width="12" height="13" rx="2" ry="2" fill="#b08b4f"/></svg>Storage</button>
+                                <button class="menu-item" data-type="plant">☢️ Reactor</button>
+                                <button class="menu-item" data-type="silo">⚛️ Silo</button>
+                            </div>
+                            <div class="menu-section">
+                                <div class="menu-section-title">Actions</div>
+                                <button class="menu-item" data-type="sabotage">Sabotage</button>
+                                    <button class="menu-item" id="profileMenuItem">Profile</button>
+                                    <!-- Dev removed from hamburger menu -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- profile button removed from toolbar (moved to menu) -->
                     <button class="btn" id="mobileMenuBtn" title="Menu" style="display:none;">☰</button>
                     <button class="btn" id="devToggle" onclick="toggleDevPanel()">Dev</button>
                 </div>

@@ -43,12 +43,16 @@
 
 /* Mobile menu button visibility and menu styling */
 @media (max-width: 700px) {
-    #mobileMenuBtn { display: inline-block !important; }
+    /* Use a single actions hamburger (the new actionsMenuBtn) on small screens.
+       Hide the legacy mobile menu button which caused duplicate hamburgers. */
+    #mobileMenuBtn { display: none !important; }
     /* hide the verbose stat items to avoid overflow */
     .top-bar .stat-item { display: none; }
     .top-bar .buttons { margin-left: auto; }
-    /* ensure profile and dev remain visible */
-    .buttons #profileBtn, .buttons #devToggle { display: inline-flex; }
+    /* ensure dev remains visible */
+    .buttons #devToggle { display: inline-flex; }
+    /* show the actions menu toggle */
+    .actions-menu .menu-toggle { display: inline-flex; }
 }
 
 /* Mobile menu panel styles (improve readability) */
@@ -173,6 +177,59 @@ body.authenticated .container {
     padding-left: 14px;
     border-left: 1px solid #2a2a2a;
     flex-shrink: 0;
+}
+
+/* Actions popup menu (desktop) */
+.actions-menu { position: relative; display: inline-block; }
+.actions-menu .menu-toggle { width:40px; height:34px; padding:6px; display:inline-flex; align-items:center; justify-content:center; }
+.dropdown {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+    background: linear-gradient(180deg, #0e0e0e, #0b0b0b);
+    border: 1px solid #222;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+    min-width: 220px;
+    z-index: 200;
+    padding: 8px;
+    border-radius: 6px;
+}
+.menu-section { padding: 6px 4px; border-radius:4px; }
+.menu-section + .menu-section { border-top: 1px solid rgba(255,255,255,0.03); margin-top:6px; padding-top:8px; }
+.menu-section-title { color:#888; font-size:11px; font-weight:700; margin-bottom:6px; }
+.menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 10px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: #ddd;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 13px;
+}
+.menu-item svg { width: 14px; height: 14px; }
+.menu-item:hover { background: rgba(255,255,255,0.02); color:#fff; border-color: rgba(255,255,255,0.03); }
+.menu-item.active, .btn.active { background: rgba(255,184,77,0.08); border-color: rgba(255,184,77,0.12); color: #ffb84d; }
+
+/* When the top bar hides for mobile-menu-open, ensure the dropdown is hidden too */
+body.mobile-menu-open .dropdown { display: none !important; }
+
+@media (max-width: 700px) {
+    /* Convert dropdown to full-screen stacked menu on small screens */
+    .dropdown {
+        position: fixed;
+        left: 8px;
+        right: 8px;
+        top: 60px;
+        min-width: unset;
+        border-radius: 8px;
+        padding: 12px;
+    }
+    .actions-menu .menu-toggle { width:40px; }
 }
 
 .btn {

@@ -456,15 +456,138 @@ function selectBuilding(type) {
  * Update button visual states
  */
 function updateButtonStates() {
-    document.querySelectorAll('.btn').forEach(b => b.style.opacity = '0.6');
+    // Reset active states for toolbar buttons and menu items
+    document.querySelectorAll('.btn, .menu-item').forEach(el => {
+        el.classList.remove('active');
+        if (el.classList.contains('btn')) el.style.opacity = '';
+    });
+
+    // Highlight any element with a matching data-type
     if (game.selectedMode) {
-        const buttons = document.querySelectorAll('.btn');
-        buttons.forEach(b => {
-            if (b.textContent.toLowerCase().includes(game.selectedMode)) {
-                b.style.opacity = '1';
+        document.querySelectorAll('[data-type]').forEach(el => {
+            if (el.dataset.type === game.selectedMode) {
+                el.classList.add('active');
+                if (el.classList.contains('btn')) el.style.opacity = '1';
             }
         });
     }
+}
+
+/**
+ * Initialize actions popup menu behaviour (toggle, item clicks, accessibility)
+ */
+function initMenu() {
+    console.log('initMenu(): initializing actions menu');
+    const actionsBtn = document.getElementById('actionsMenuBtn');
+    const actionsMenu = document.getElementById('actionsMenu');
+
+    function setMenuOpen(open) {
+        if (!actionsBtn || !actionsMenu) return;
+        actionsBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (!open) {
+            // If a child inside the menu currently has focus, move it back to the toggle
+            const active = document.activeElement;
+            if (actionsMenu.contains(active)) {
+                try { actionsBtn.focus(); } catch (e) { /* ignore */ }
+            }
+            // Mark hidden for AT and hide visually
+            actionsMenu.setAttribute('aria-hidden', 'true');
+            actionsMenu.style.display = 'none';
+            actionsMenu.style.position = '';
+            return;
+        }
+        // Opening: mark visible for AT then show and position
+        actionsMenu.setAttribute('aria-hidden', 'false');
+        // Show first so we can measure, then position fixed to avoid parent clipping
+        actionsMenu.style.display = 'block';
+        actionsMenu.style.position = 'fixed';
+        actionsMenu.style.right = 'auto';
+        actionsMenu.style.left = 'auto';
+        // Compute placement to align right edge of menu with button
+        const btnRect = actionsBtn.getBoundingClientRect();
+        const menuWidth = actionsMenu.getBoundingClientRect().width || actionsMenu.offsetWidth || 220;
+        // try to right-align with button, but keep on-screen
+        let left = Math.max(8, Math.min(window.innerWidth - menuWidth - 8, btnRect.right - menuWidth));
+        let top = btnRect.bottom + 8;
+        // If there's not enough space below, try above
+        if (top + actionsMenu.getBoundingClientRect().height > window.innerHeight - 8) {
+            top = Math.max(8, btnRect.top - actionsMenu.getBoundingClientRect().height - 8);
+        }
+        actionsMenu.style.left = left + 'px';
+        actionsMenu.style.top = top + 'px';
+    }
+
+    if (actionsBtn) {
+        actionsBtn.addEventListener('click', (e) => {
+            const expanded = actionsBtn.getAttribute('aria-expanded') === 'true';
+            setMenuOpen(!expanded);
+            console.log('initMenu: actionsBtn click -> setMenuOpen', !expanded);
+        });
+    }
+
+    // Close when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!actionsMenu || !actionsBtn) return;
+        if (!actionsMenu.contains(e.target) && !actionsBtn.contains(e.target)) {
+            setMenuOpen(false);
+        }
+    }, true);
+
+    // Menu item actions
+    document.querySelectorAll('.menu-item').forEach(mi => {
+        mi.addEventListener('click', (e) => {
+            const type = mi.dataset.type;
+            if (type) {
+                selectBuilding(type);
+            } else {
+                if (mi.id === 'profileMenuItem') showProfile();
+                if (mi.id === 'devMenuItem') toggleDevPanel();
+            }
+            setMenuOpen(false);
+        });
+    });
+
+    // Keyboard: Escape closes menu
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') setMenuOpen(false);
+    });
+}
+
+// Ensure initMenu is called when DOM is ready so the hamburger is wired early
+window.addEventListener('DOMContentLoaded', () => {
+    try {
+        if (typeof initMenu === 'function') {
+            initMenu();
+            console.log('DOMContentLoaded: initMenu executed');
+        }
+    } catch (err) {
+        console.warn('DOMContentLoaded: initMenu error', err);
+    }
+});
+
+/**
+ * Fallback toggle that can be called from inline onclick. Safe if initMenu already manages state.
+ */
+function toggleActionsMenu(e) {
+    console.log('toggleActionsMenu called');
+    const actionsBtn = document.getElementById('actionsMenuBtn');
+    const actionsMenu = document.getElementById('actionsMenu');
+    if (!actionsBtn || !actionsMenu) { console.warn('toggleActionsMenu: elements missing'); return; }
+    const expanded = actionsBtn.getAttribute('aria-expanded') === 'true';
+    const open = !expanded;
+    // Delegate to the same placement logic used by initMenu
+    if (typeof setMenuOpen === 'function') {
+        try { setMenuOpen(open); } catch (err) {
+            actionsBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            actionsMenu.setAttribute('aria-hidden', open ? 'false' : 'true');
+            actionsMenu.style.display = open ? 'block' : 'none';
+        }
+    } else {
+        actionsBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        actionsMenu.setAttribute('aria-hidden', open ? 'false' : 'true');
+        actionsMenu.style.display = open ? 'block' : 'none';
+    }
+    if (e && e.stopPropagation) e.stopPropagation();
 }
 
 /**
@@ -1102,6 +1225,8 @@ function startGame() {
     initGrid();
     initRun();   // collect buy-ins, seed prize pool & bonding curve pool (once per run)
     updateUI();
+    // initialize toolbar/menu interactions
+    initMenu();
     console.log('Game started');
     // start simulation loops
     startSimLoops();
