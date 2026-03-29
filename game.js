@@ -102,13 +102,13 @@ const PLAYER_COLOR = '#ffb84d';
 const ENEMY_COLOR = '#888888';
 
 const buildingTypes = {
-    mine: { cost: 800, emoji: '⛏️', color: '#4CAF50', power: 0, constructionTime: 8 },  // 8 seconds = ~13 mins real-time
+    mine: { cost: 800, emoji: '⛏️', color: '#4CAF50', power: 0, constructionTime: 1 },  // 8 seconds = ~13 mins real-time
     // Use factory emoji for processor (renders as 'Plant' in UI)
-    processor: { cost: 1200, emoji: '🏭', color: '#d98a3a', power: 0, constructionTime: 12 },
+    processor: { cost: 1200, emoji: '🏭', color: '#d98a3a', power: 0, constructionTime: 1.5 },
     // Use a filing-cabinet / vault emoji for storage and a warmer metal tone
-    storage: { cost: 1000, emoji: '🗄️', color: '#b08b4f', power: 0, constructionTime: 10 },
+    storage: { cost: 1000, emoji: '🗄️', color: '#b08b4f', power: 0, constructionTime: 2 },
     // reactor (consumes fuel)
-    plant: { cost: 1000, emoji: '☢️', color: '#ffb84d', power: 100, constructionTime: 15 }
+    plant: { cost: 1000, emoji: '☢️', color: '#ffb84d', power: 100, constructionTime: 2.2 }
 };
 
 // Display names used in UI (keep keys stable in logic)
