@@ -11,8 +11,11 @@ const game = {
     proximityRange: 2,
     round: 1,
     // Token economy
-    totalTokenSupply: 1000000000, // 1 billion tokens at launch
-    tokensBurned: 0,              // accumulates every time tokens are spent
+    totalTokenSupply: 1000000000, // 1 billion — the hard cap; tokens are MINTED from this reserve
+    tokensIssued: 0,              // total ever drawn from the 1B reserve (wallets + income rewards)
+    tokensBurned: 0,              // permanently destroyed by in-game spending
+    // circulating = tokensIssued - tokensBurned
+    // available   = totalTokenSupply - tokensIssued
     prizePool: 0,                 // funded by buy-ins + 10% of in-game spends
 
     // ── Buy-in / run entry ───────────────────────────────────────────────────
@@ -188,7 +191,14 @@ function initPlayerRegistry() {
 function initRun() {
     initPlayerRegistry();
 
-    let totalBuyIn = 0;
+    // ── Issue starting wallets from the 1B reserve ──────────────────────────────
+    // Every player’s starting wallet balance is minted from the 1B supply pool.
+    // This is the “purchase” event — tokens flow from reserve into circulation.
+    // BACKEND_STUB: in production this issuance is authorised server-side and
+    //   signed on-chain before wallets are credited.
+    const startingWalletPerPlayer = 50000; // must match initPlayerRegistry wallet init
+    game.tokensIssued += game.players.length * startingWalletPerPlayer;
+
     game.players.forEach(p => {
         if (p.isLocal) {
             // deduct from the human player's wallet
@@ -563,7 +573,8 @@ function updateUI() {
     // Token economy stats
     const circulatingEl = document.getElementById('circulating');
     if (circulatingEl) {
-        const circ = game.totalTokenSupply - game.tokensBurned;
+        // circulating = tokens that have left the 1B reserve minus what's been burned
+        const circ = Math.max(0, game.tokensIssued - game.tokensBurned);
         circulatingEl.textContent = formatSupply(circ);
     }
     const prizePoolEl = document.getElementById('prizePool');
@@ -841,6 +852,12 @@ function productionTick() {
     }
 
     game.playerWallet += income;
+    if (income > 0) {
+        // Income rewards are new tokens minted from the 1B reserve — real issuance event.
+        game.tokensIssued += income;
+        // Minting also drains the bonding curve pool (new supply = scarcity pressure).
+        game.market.tokenPool = Math.max(1, game.market.tokenPool - income / game.market.poolBurnRate);
+    }
     game.lastIncome = income;
     game.dailyIncome += income;
 
@@ -855,16 +872,21 @@ function productionTick() {
  * Small per-second market tick to simulate stock-like movement.
  *
  * Price model (two components):
- *  1. Bonding curve anchor — the "fair value" based on pool depletion.
- *     bondingPrice = baseTokenPrice × (poolInitial / pool)
- *     As tokens burn, pool shrinks → bondingPrice rises.
+ *  1. Bonding curve anchor — the "fair value" based on pool depletion + real issuance.
+ *     poolFactor  = tokenPoolInitial / pool         — run-level scarcity (fast-moving)
+ *     issueFactor = 1 + (tokensIssued / 1B) × 1000 — macro supply pressure (slow-moving)
+ *     bondingPrice = baseTokenPrice × poolFactor × issueFactor
  *  2. Random walk noise — price oscillates around bondingPrice via mean-reversion.
  *     Prevents the chart from being a boring straight line.
  */
 function tickMarket() {
     // 1. Bonding curve fair value
-    const bondingPrice = game.market.baseTokenPrice *
-        (game.market.tokenPoolInitial / Math.max(1, game.market.tokenPool));
+    //    Two factors drive scarcity:
+    //    a) tokenPool depletion (run-level, fast-moving)
+    //    b) real issuance ratio vs 1B reserve (macro, slow-moving)
+    const poolFactor = game.market.tokenPoolInitial / Math.max(1, game.market.tokenPool);
+    const issueFactor = 1 + (game.tokensIssued / game.totalTokenSupply) * 1000;
+    const bondingPrice = game.market.baseTokenPrice * poolFactor * issueFactor;
 
     // 2. Gaussian noise (Box-Muller)
     const vol = game.market.perSecondVol;
@@ -1123,7 +1145,8 @@ function showEndOfDaySummary() {
     const dayIncome = game.dailyIncome;
     const power = calculatePower();
 
-    const circulatingNow = (game.totalTokenSupply - game.tokensBurned).toLocaleString();
+    const circ = Math.max(0, game.tokensIssued - game.tokensBurned);
+    const available = game.totalTokenSupply - game.tokensIssued;
     content.innerHTML = `
         <div>Day: ${game.time.day}</div>
         <div>Power (current): ${power.toFixed(1)} MW</div>
@@ -1133,8 +1156,10 @@ function showEndOfDaySummary() {
         <div style="margin-top:8px; border-top:1px solid #333; padding-top:8px;">
             <strong>Token Economy</strong>
         </div>
-        <div>Tokens circulating: ${circulatingNow}</div>
-        <div>Tokens burned (total): ${game.tokensBurned.toLocaleString()}</div>
+        <div>Circulating supply: ${formatSupply(circ)} <span style="color:#555; font-size:10px;">(issued − burned)</span></div>
+        <div>Available in reserve: ${formatSupply(available)} <span style="color:#555; font-size:10px;">of 1B</span></div>
+        <div>Tokens issued (total): ${formatSupply(game.tokensIssued)}</div>
+        <div>Tokens burned (total): ${formatSupply(game.tokensBurned)}</div>
         <div style="margin-top:6px;">
             <strong style="color:#ffb84d;">Prize Pool: ${game.prizePool.toLocaleString()} tokens</strong>
         </div>
