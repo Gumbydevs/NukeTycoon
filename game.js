@@ -1239,9 +1239,9 @@ function updateUI() {
     // Update compact mobile stats bar (mobile portrait only)
     const mobileStats = document.getElementById('mobileStatsCompact');
     if (mobileStats) {
-        if (window.innerWidth <= 700) {
+        if (window.innerWidth <= 620) {
             const portfolio = (game.playerWallet + ((game.uraniumRaw + game.uraniumRefined) * game.market.price)) || 0;
-            const timeStr = `${String(game.time.hour).padStart(2,'0')}:${String(game.time.minute).padStart(2,'0')}`;
+            const timeStr = `${String(Math.floor(game.time.hour)).padStart(2,'0')}:${String(Math.floor(game.time.minute)).padStart(2,'0')}:${String(Math.floor((game.time.minute % 1) * 60)).padStart(2,'0')}`;  // HH:MM:SS
             const totalPower = game.buildings.filter(b => b.type === 'plant' && !b.isUnderConstruction)
                 .reduce((s) => s + (buildingTypes.plant.power || 0), 0);
             const prizeStr = typeof formatPrizePool === 'function' ? formatPrizePool(game.prizePool) : game.prizePool.toLocaleString();
