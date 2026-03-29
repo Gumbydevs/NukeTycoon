@@ -211,6 +211,15 @@ body.authenticated .container {
     border-radius: 4px;
     font-size: 13px;
 }
+.menu-item .menu-icon {
+    width: 22px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 22px;
+}
+.menu-item .menu-label { flex: 1 1 auto; }
 .menu-item svg { width: 14px; height: 14px; }
 .menu-item:hover { background: rgba(255,255,255,0.02); color:#fff; border-color: rgba(255,255,255,0.03); }
 .menu-item.active, .btn.active { background: rgba(255,184,77,0.08); border-color: rgba(255,184,77,0.12); color: #ffb84d; }
