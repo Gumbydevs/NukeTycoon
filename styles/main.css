@@ -316,6 +316,17 @@ body.authenticated .container {
     background-size: cover;
 }
 
+.cell.terrain-road-h {
+    background: linear-gradient(180deg, #2b2b2b 0%, #1f1f1f 100%);
+    background-size: cover;
+}
+
+/* Crossroads junction tile */
+.cell.terrain-road-x {
+    background: linear-gradient(180deg, #2b2b2b 0%, #1f1f1f 100%);
+    background-size: cover;
+}
+
 /* subtle edge overlay for map tiles */
 .cell::after {
     content: '';
@@ -326,7 +337,7 @@ body.authenticated .container {
     border-radius: 4px;
 }
 
-/* Road stripe decoration */
+/* Road stripe decoration — vertical spine */
 .cell.terrain-road::before {
     content: '';
     position: absolute;
@@ -337,6 +348,47 @@ body.authenticated .container {
     opacity: 0.9;
     border-radius: 2px;
     mix-blend-mode: overlay;
+}
+
+/* Road stripe decoration — horizontal branches */
+.cell.terrain-road-h::before {
+    content: '';
+    position: absolute;
+    top: 50%; left: 6px;
+    transform: translateY(-50%);
+    height: 4px; width: calc(100% - 12px);
+    background: repeating-linear-gradient(90deg, #ddd 0 6px, rgba(255,255,255,0.0) 6px 12px);
+    opacity: 0.9;
+    border-radius: 2px;
+    mix-blend-mode: overlay;
+}
+
+/* Crossroads junction — vertical stripe */
+.cell.terrain-road-x::before {
+    content: '';
+    position: absolute;
+    left: 50%; top: 6px;
+    transform: translateX(-50%);
+    width: 4px; height: calc(100% - 12px);
+    background: repeating-linear-gradient(180deg, #ddd 0 6px, rgba(255,255,255,0.0) 6px 12px);
+    opacity: 0.9;
+    border-radius: 2px;
+    mix-blend-mode: overlay;
+}
+
+/* Crossroads junction — horizontal stripe (layered via ::after override) */
+.cell.terrain-road-x::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 6px;
+    transform: translateY(-50%);
+    height: 4px; width: calc(100% - 12px);
+    background: repeating-linear-gradient(90deg, #ddd 0 6px, rgba(255,255,255,0.0) 6px 12px);
+    opacity: 0.9;
+    border-radius: 2px;
+    mix-blend-mode: overlay;
+    pointer-events: none;
+    box-shadow: none;
 }
 
 .legend {

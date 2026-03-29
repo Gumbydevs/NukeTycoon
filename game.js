@@ -290,9 +290,11 @@ function generateTerrain(width, height) {
     }
     branchRows.forEach(row => {
         const len = 3 + Math.floor(Math.random() * 5); // 3–7 tiles each side
+        // mark the junction cell as a crossroads
+        out[row * width + centerX] = 'road-x';
         for (let dx = 1; dx <= len; dx++) {
-            if (centerX - dx >= 0)     out[row * width + (centerX - dx)] = 'road'; // left
-            if (centerX + dx < width)  out[row * width + (centerX + dx)] = 'road'; // right
+            if (centerX - dx >= 0)     out[row * width + (centerX - dx)] = 'road-h'; // left
+            if (centerX + dx < width)  out[row * width + (centerX + dx)] = 'road-h'; // right
         }
     });
 
@@ -306,7 +308,7 @@ function generateTerrain(width, height) {
                 const x = cx + dx; const y = cy + dy;
                 if (x >= 0 && x < width && y >= 0 && y < height) {
                     const idx = y * width + x;
-                    if (out[idx] !== 'road' && Math.random() > 0.25) out[idx] = 'dirt';
+                    if (out[idx] !== 'road' && out[idx] !== 'road-h' && out[idx] !== 'road-x' && Math.random() > 0.25) out[idx] = 'dirt';
                 }
             }
         }
@@ -329,7 +331,8 @@ function cellHasRoadNeighbor(cellId) {
             if (dx === 0 && dy === 0) continue;
             const nx = x + dx; const ny = y + dy;
             if (nx < 0 || nx >= COLS || ny < 0 || ny >= COLS) continue;
-            if (game.terrain[ny * COLS + nx] === 'road') return true;
+            const t = game.terrain[ny * COLS + nx];
+            if (t === 'road' || t === 'road-h' || t === 'road-x') return true;
         }
     }
     return false;
@@ -1121,7 +1124,7 @@ function onCellHover(id, e) {
     }
 
     // Road cell — show bonus hint even on empty road tiles
-    if (game.terrain && game.terrain[id] === 'road') {
+    if (game.terrain && (game.terrain[id] === 'road' || game.terrain[id] === 'road-h' || game.terrain[id] === 'road-x')) {
         content = `<div style="font-weight:700; color:#aaa;">🛣️ Road Tile</div>` +
             `<div>Build a <strong>Reactor</strong> adjacent to this tile</div>` +
             `<div style="color:#4CAF50;">for a +40% income bonus</div>`;
