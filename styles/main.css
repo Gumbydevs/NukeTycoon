@@ -23,7 +23,7 @@
         flex-wrap: nowrap;
     }
     .top-bar .stat-item { flex: 0 0 auto; margin-right: 12px; }
-    .buttons { margin-left: 8px; }
+    .buttons { margin-left: 0; }
     .grid { width: calc((var(--cell-size) * 20) + (var(--cell-gap) * 19)); }
 }
 
@@ -48,13 +48,6 @@
     #mobileMenuBtn { display: none !important; }
     /* hide the verbose stat items to avoid overflow */
     .top-bar .stat-item { display: none; }
-    .top-bar .buttons { margin-left: auto; }
-    /* ensure dev remains visible */
-    .buttons #devToggle { display: inline-flex; }
-    /* show the actions menu toggle */
-    .actions-menu .menu-toggle { display: inline-flex; }
-    /* prevent iOS scroll-interception from eating taps on the hamburger button */
-    #actionsMenuBtn { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 }
 
 /* Compact mobile stats: shown only on small screens, matches game stat theme */
@@ -149,6 +142,7 @@ body.authenticated .container {
     gap: 0;
     overflow-x: auto;
     flex-wrap: nowrap;
+    padding-right: 100px; /* leave room for fixed buttons */
 }
 
 .stats-row::-webkit-scrollbar { display: none; }
@@ -221,17 +215,18 @@ body.authenticated .container {
 }
 
 .buttons {
+    position: fixed;
+    top: 58px;
+    right: 10px;
+    z-index: 200;
     display: flex;
-    gap: 8px;
-    margin-left: auto;
-    padding-left: 14px;
-    border-left: 1px solid #2a2a2a;
-    flex-shrink: 0;
+    gap: 6px;
+    align-items: center;
 }
 
 /* Actions popup menu (desktop) */
 .actions-menu { position: relative; display: inline-block; }
-.actions-menu .menu-toggle { width:40px; height:34px; padding:6px; display:inline-flex; align-items:center; justify-content:center; }
+.actions-menu .menu-toggle { width:40px; height:34px; padding:6px; display:inline-flex; align-items:center; justify-content:center; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 .dropdown {
     position: absolute;
     right: 0;

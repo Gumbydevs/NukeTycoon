@@ -2349,6 +2349,8 @@ function closeEndOfDay() {
 function addButtonTooltips() {
     const buttons = document.querySelectorAll('.btn');
     buttons.forEach(btn => {
+        // Skip the hamburger toggle — it has its own title="Actions" tooltip
+        if (btn.id === 'actionsMenuBtn') return;
         btn.addEventListener('mouseenter', (e) => {
             const typeKey = btn.dataset.type || btn.textContent.trim();
             const label = displayNames[typeKey] || btn.textContent.trim();
