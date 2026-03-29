@@ -227,6 +227,8 @@ body.authenticated .container {
 /* Actions popup menu (desktop) */
 .actions-menu { position: relative; display: inline-block; }
 .actions-menu .menu-toggle { width:40px; height:34px; padding:6px; display:inline-flex; align-items:center; justify-content:center; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+/* Dev button — same size as hamburger, hidden until Shift+D+V */
+#devToggle { width: 40px; height: 34px; padding: 0; font-size: 11px; display: none; align-items: center; justify-content: center; }
 .dropdown {
     position: absolute;
     right: 0;

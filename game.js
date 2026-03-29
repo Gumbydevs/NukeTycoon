@@ -590,6 +590,22 @@ window.addEventListener('DOMContentLoaded', () => {
     } catch (err) {
         console.warn('DOMContentLoaded: initMenu error', err);
     }
+
+    // Shift+D+V secret shortcut to reveal/hide the Dev button
+    const _devHeldKeys = new Set();
+    document.addEventListener('keydown', (ev) => {
+        _devHeldKeys.add(ev.key.toLowerCase());
+        if (ev.shiftKey && _devHeldKeys.has('d') && _devHeldKeys.has('v')) {
+            const devBtn = document.getElementById('devToggle');
+            if (devBtn) {
+                const hidden = devBtn.style.display === 'none' || devBtn.style.display === '';
+                devBtn.style.display = hidden ? 'inline-flex' : 'none';
+            }
+        }
+    });
+    document.addEventListener('keyup', (ev) => {
+        _devHeldKeys.delete(ev.key.toLowerCase());
+    });
 });
 
 /**
