@@ -1059,11 +1059,11 @@ function onRoundEnd(roundNumber) {
 }
 
 /**
- * Called when the entire 8-round run ends
- * Shows final leaderboard, final payout, and return-to-menu option
+ * Called when the entire run ends
+ * Shows comprehensive final leaderboard with player stats, game economy, and run statistics
  */
 function onRunEnd() {
-    console.info('🔥 RUN COMPLETE! All 8 rounds finished.');
+    console.info('🔥 RUN COMPLETE! All rounds finished.');
     
     // Freeze the grid
     const grid = document.getElementById('gameGrid');
@@ -1074,28 +1074,48 @@ function onRunEnd() {
         });
     }
     
-    // Build final leaderboard with all scores
+    // Build final leaderboard with all scores and stats
     const finalScores = game.players.map(p => {
+        let buildingStats = { mines: 0, processors: 0, storage: 0, plants: 0 };
+        let totalBuildings = 0;
+        
         if (p.isLocal) {
+            game.buildings.forEach(b => {
+                buildingStats[b.type]++;
+                totalBuildings++;
+            });
             const portfolio = game.playerWallet + ((game.uraniumRaw + game.uraniumRefined) * game.market.price);
             return { 
                 name: p.name, 
                 isLocal: true, 
                 score: calculatePower() + (portfolio / 1000), 
                 portfolio,
-                wallet: game.playerWallet
+                wallet: game.playerWallet,
+                buildingStats,
+                totalBuildings,
+                power: calculatePower(),
+                uranium: game.uraniumRaw + game.uraniumRefined
             };
         }
+        
         const botBuildings = game.enemyBuildings.filter(b => b.owner === p.name);
-        const plants = botBuildings.filter(b => b.type === 'plant').length;
-        const mines  = botBuildings.filter(b => b.type === 'mine').length;
+        botBuildings.forEach(b => {
+            buildingStats[b.type]++;
+            totalBuildings++;
+        });
+        const plants = buildingStats.plants;
+        const mines = buildingStats.mines;
         const estPortfolio = (plants * 100) + (mines * 50 * game.market.price);
         return { 
             name: p.name, 
             isLocal: false, 
             score: (plants * 100) + (estPortfolio / 1000), 
             portfolio: estPortfolio,
-            wallet: p.wallet
+            wallet: p.wallet,
+            buildingStats,
+            totalBuildings,
+            power: plants * 100,
+            uranium: 0
         };
     });
     finalScores.sort((a, b) => b.score - a.score);
@@ -1103,6 +1123,10 @@ function onRunEnd() {
     // Determine winner
     const winner = finalScores[0];
     const isPlayerWinner = winner.isLocal;
+    
+    // Calculate global stats
+    const circ = Math.max(0, game.tokensIssued - game.tokensBurned);
+    const available = game.totalTokenSupply - game.tokensIssued;
     
     // Create run-end modal
     const modal = document.createElement('div');
@@ -1119,6 +1143,7 @@ function onRunEnd() {
         align-items: center;
         justify-content: center;
         animation: fadeIn 0.5s ease-in;
+        overflow: auto;
     `;
     
     const content = document.createElement('div');
@@ -1126,44 +1151,100 @@ function onRunEnd() {
         background: linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%);
         border: 2px solid ${isPlayerWinner ? '#ffb84d' : '#ff6b6b'};
         border-radius: 8px;
-        padding: 32px;
-        max-width: 600px;
-        max-height: 80vh;
+        padding: 24px;
+        width: 90%;
+        max-width: 1200px;
+        max-height: 85vh;
         overflow-y: auto;
         color: #fff;
         font-family: monospace;
         box-shadow: 0 0 20px ${isPlayerWinner ? 'rgba(255,184,77,0.3)' : 'rgba(255,107,107,0.3)'};
     `;
     
+    // Build leaderboard with detailed player stats
     let leaderboardHTML = finalScores.map((p, i) => {
         const medal = ['🥇 1ST', '🥈 2ND', '🥉 3RD'][i] || `#${i+1}`;
         const color = p.isLocal ? '#ffb84d' : '#ccc';
         const you = p.isLocal ? ' (YOU)' : '';
         return `
-            <div style="margin-bottom: 12px; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 4px; color: ${color};">
-                <strong>${medal}</strong> ${p.name}${you}
-                <div style="margin-top: 4px; font-size: 11px; color: #888;">
-                    Score: ${p.score.toFixed(1)} | Portfolio: $${p.portfolio.toFixed(2)}
+            <div style="margin-bottom: 12px; padding: 12px; background: rgba(255,255,255,0.05); border-left: 3px solid ${color}; border-radius: 4px;">
+                <div style="color: ${color}; font-weight: bold; margin-bottom: 6px;">
+                    ${medal} ${p.name}${you}
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 11px; color: #aaa;">
+                    <div><strong>Score:</strong> ${p.score.toFixed(1)}</div>
+                    <div><strong>Portfolio:</strong> $${p.portfolio.toFixed(2)}</div>
+                    <div><strong>Wallet:</strong> ${p.wallet.toLocaleString()} tokens</div>
+                    <div><strong>Power:</strong> ${p.power.toFixed(1)} MW</div>
+                    <div><strong>Buildings:</strong> ${p.totalBuildings} (${p.buildingStats.mines}⛏️ ${p.buildingStats.processors}🏭 ${p.buildingStats.storage}🗄️ ${p.buildingStats.plants}☢️)</div>
+                    <div><strong>Uranium:</strong> ${formatUranium(p.uranium)}</div>
                 </div>
             </div>
         `;
     }).join('');
     
     content.innerHTML = `
-        <div style="text-align: center; margin-bottom: 24px; font-size: 20px; font-weight: bold;">
-            ${isPlayerWinner ? '🎉 YOU WIN THE RUN! 🎉' : '💥 RUN OVER — Final Standings 💥'}
+        <div style="text-align: center; margin-bottom: 20px;">
+            <div style="font-size: 22px; font-weight: bold; color: #ffb84d; margin-bottom: 6px;">
+                ${isPlayerWinner ? '🎉 YOU WIN THE RUN! 🎉' : '💥 RUN OVER 💥'}
+            </div>
+            <div style="font-size: 12px; color: #888;">
+                Completed ${game.runLength} rounds | Market Price: $${game.market.price.toFixed(2)} | Prize Pool: ${game.prizePool.toLocaleString()} tokens
+            </div>
         </div>
-        <div style="margin-bottom: 20px; padding: 12px; background: rgba(0,0,0,0.3); border-left: 3px solid #ffb84d;">
-            <div style="font-weight: bold; margin-bottom: 6px;">Champion: ${winner.name}</div>
-            <div style="font-size: 12px; color: #aaa;">Final Score: ${winner.score.toFixed(1)}</div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
+            <!-- Winner Highlight -->
+            <div style="padding: 12px; background: rgba(255,184,77,0.1); border: 1px solid #ffb84d; border-radius: 4px;">
+                <div style="font-weight: bold; color: #ffb84d; margin-bottom: 6px;">🏆 Champion</div>
+                <div style="font-size: 12px; color: #ccc; margin-bottom: 4px;"><strong>${winner.name}</strong></div>
+                <div style="font-size: 11px; color: #888;">Score: ${winner.score.toFixed(1)}</div>
+                <div style="font-size: 11px; color: #888;">Portfolio: $${winner.portfolio.toFixed(2)}</div>
+            </div>
+            
+            <!-- Global Economy Stats -->
+            <div style="padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid #333; border-radius: 4px;">
+                <div style="font-weight: bold; color: #ffb84d; margin-bottom: 6px;">📊 Global Economy</div>
+                <div style="font-size: 11px; color: #aaa; line-height: 1.6;">
+                    Circulating: ${formatSupply(circ)}<br/>
+                    Burned: ${formatSupply(game.tokensBurned)}<br/>
+                    Available: ${formatSupply(available)}<br/>
+                    Market Price: $${game.market.price.toFixed(2)}
+                </div>
+            </div>
         </div>
-        <div style="margin-bottom: 20px;">
-            <div style="font-weight: bold; margin-bottom: 8px; color: #ffb84d;">Final Leaderboard</div>
+        
+        <div style="margin-bottom: 20px; padding: 12px; background: rgba(255,255,255,0.03); border-top: 1px solid #333; border-bottom: 1px solid #333;">
+            <div style="font-weight: bold; color: #ffb84d; margin-bottom: 12px;">🏅 Final Leaderboard</div>
             ${leaderboardHTML}
         </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 20px; font-size: 11px;">
+            <div style="padding: 10px; background: rgba(76,175,80,0.1); border-left: 2px solid #4CAF50; border-radius: 4px;">
+                <div style="color: #4CAF50; font-weight: bold; margin-bottom: 4px;">⛏️ Production</div>
+                <div style="color: #888;">Mines: ${game.buildings.filter(b => b.type === 'mine').length}</div>
+                <div style="color: #888;">Processors: ${game.buildings.filter(b => b.type === 'processor').length}</div>
+                <div style="color: #888;">Uranium: ${formatUranium(game.uraniumRaw + game.uraniumRefined)}</div>
+            </div>
+            
+            <div style="padding: 10px; background: rgba(255,184,77,0.1); border-left: 2px solid #ffb84d; border-radius: 4px;">
+                <div style="color: #ffb84d; font-weight: bold; margin-bottom: 4px;">☢️ Power</div>
+                <div style="color: #888;">Reactors: ${game.buildings.filter(b => b.type === 'plant').length}</div>
+                <div style="color: #888;">Total Power: ${calculatePower().toFixed(1)} MW</div>
+                <div style="color: #888;">Storage: ${game.buildings.filter(b => b.type === 'storage').length}</div>
+            </div>
+            
+            <div style="padding: 10px; background: rgba(255,107,107,0.1); border-left: 2px solid #ff6b6b; border-radius: 4px;">
+                <div style="color: #ff6b6b; font-weight: bold; margin-bottom: 4px;">💣 Sabotage</div>
+                <div style="color: #888;">Enemy Buildings: ${game.enemyBuildings.length}</div>
+                <div style="color: #888;">Tokens Burned: ${formatSupply(game.tokensBurned)}</div>
+                <div style="color: #888;">Prize Pool: ${game.prizePool.toLocaleString()}</div>
+            </div>
+        </div>
+        
         <div style="margin-top: 24px; padding-top: 12px; border-top: 1px solid #333; text-align: center;">
             <button onclick="returnToMenu()" style="
-                padding: 10px 24px;
+                padding: 12px 32px;
                 background: #ffb84d;
                 color: #000;
                 border: none;
@@ -1171,7 +1252,8 @@ function onRunEnd() {
                 font-weight: bold;
                 cursor: pointer;
                 font-family: monospace;
-            ">Return to Menu</button>
+                font-size: 14px;
+            ">↻ Return to Menu</button>
         </div>
     `;
     
