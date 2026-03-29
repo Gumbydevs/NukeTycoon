@@ -534,11 +534,22 @@ function initMenu() {
             console.log('initMenu: actionsBtn toggle -> setMenuOpen', !expanded);
             if (e && e.stopPropagation) e.stopPropagation();
         };
-        // Single click/tap handler only — avoids triple-fire on mobile
-        // (touchstart + synthesized click + pointerdown all fire on one tap)
-        actionsBtn.addEventListener('click', toggleHandler);
-        // ensure button is on top on small screens
-        try { actionsBtn.style.zIndex = 1000; } catch (e) { }
+        // click handles desktop; touchend handles mobile (iOS eats click when
+        // parent has overflow-x:auto + -webkit-overflow-scrolling:touch)
+        let _lastToggleTs = 0;
+        const debouncedToggle = (e) => {
+            const now = Date.now();
+            if (now - _lastToggleTs < 600) return; // dedupe touchend → synthesized click
+            _lastToggleTs = now;
+            toggleHandler(e);
+        };
+        actionsBtn.addEventListener('touchend', debouncedToggle, { passive: false });
+        actionsBtn.addEventListener('click', debouncedToggle);
+        // ensure button is on top and tappable on small screens
+        try {
+            actionsBtn.style.zIndex = '1000';
+            actionsBtn.style.touchAction = 'manipulation';
+        } catch (e) { }
     }
 
     // Close when clicking outside (use bubble phase, not capture, so button click fires first)

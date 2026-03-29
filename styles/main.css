@@ -53,6 +53,8 @@
     .buttons #devToggle { display: inline-flex; }
     /* show the actions menu toggle */
     .actions-menu .menu-toggle { display: inline-flex; }
+    /* prevent iOS scroll-interception from eating taps on the hamburger button */
+    #actionsMenuBtn { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 }
 
 /* Compact mobile stats: shown only on small screens, matches game stat theme */
