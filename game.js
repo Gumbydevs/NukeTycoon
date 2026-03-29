@@ -1183,7 +1183,7 @@ function updateUI() {
         circulatingEl.textContent = formatSupply(circ);
     }
     const prizePoolEl = document.getElementById('prizePool');
-    if (prizePoolEl) prizePoolEl.textContent = formatSupply(game.prizePool);
+    if (prizePoolEl) prizePoolEl.textContent = '$' + (Number(game.prizePool) || 0).toLocaleString();
 }
 
 /**
@@ -1265,7 +1265,7 @@ function showLobby() {
     const preview = Math.floor(game.players.length * game.buyIn * 0.80);
 
     document.getElementById('lobbyBuyIn').textContent = game.buyIn.toLocaleString();
-    document.getElementById('lobbyPrizePreview').textContent = preview.toLocaleString();
+    document.getElementById('lobbyPrizePreview').textContent = '$' + preview.toLocaleString();
     document.getElementById('lobbyWalletAfter').textContent =
         (game.playerWallet - game.buyIn).toLocaleString();
 
@@ -1808,8 +1808,8 @@ function onRunEnd() {
             <div style="font-size: 22px; font-weight: bold; color: #ffb84d; margin-bottom: 6px;">
                 ${isPlayerWinner ? '🎉 YOU WIN THE RUN! 🎉' : '💥 RUN OVER 💥'}
             </div>
-            <div style="font-size: 12px; color: #888;">
-                Completed ${game.runLength} rounds | Market Price: $${game.market.price.toFixed(2)} | Prize Pool: ${game.prizePool.toLocaleString()} tokens
+                <div style="font-size: 12px; color: #888;">
+                Completed ${game.runLength} rounds | Market Price: $${game.market.price.toFixed(2)} | Prize Pool: $${game.prizePool.toLocaleString()}
             </div>
         </div>
         
@@ -1858,7 +1858,7 @@ function onRunEnd() {
                 <div style="color: #ff6b6b; font-weight: bold; margin-bottom: 4px;">💣 Sabotage</div>
                 <div style="color: #888;">Enemy Buildings: ${game.enemyBuildings.length}</div>
                 <div style="color: #888;">Tokens Burned: ${formatSupply(game.tokensBurned)}</div>
-                <div style="color: #888;">Prize Pool: ${game.prizePool.toLocaleString()}</div>
+                <div style="color: #888;">Prize Pool: $${game.prizePool.toLocaleString()}</div>
             </div>
         </div>
         
@@ -2213,7 +2213,7 @@ function showEndOfDaySummary() {
         <div>Tokens issued (total): ${formatSupply(game.tokensIssued)}</div>
         <div>Tokens burned (total): ${formatSupply(game.tokensBurned)}</div>
         <div style="margin-top:6px;">
-            <strong style="color:#ffb84d;">Prize Pool: ${game.prizePool.toLocaleString()} tokens</strong>
+            <strong style="color:#ffb84d;">Prize Pool: $${game.prizePool.toLocaleString()}</strong>
         </div>
         <div style="font-size:11px; color:#888;">Split at round end — 1st: 50% / 2nd: 30% / 3rd: 20%</div>
     `;
