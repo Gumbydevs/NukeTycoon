@@ -248,12 +248,21 @@ function initGrid() {
     // generate a simple terrain map (grass / dirt / road)
     const terrain = generateTerrain(20, 20);
     game.terrain = terrain; // store so road-bonus checks work at runtime
+    game.deposits = generateDeposits(20, 20); // Generate uranium deposits
+    
     for (let i = 0; i < 400; i++) {
         const cell = document.createElement('div');
         cell.className = 'cell';
         // add terrain class for visuals (terrain-grass/terrain-dirt/terrain-road)
         const t = terrain[i] || 'grass';
         cell.classList.add('terrain-' + t);
+        
+        // Check if this cell has a deposit and add visual indicator
+        const hasDeposit = game.deposits.find(d => d.cellId === i);
+        if (hasDeposit) {
+            cell.classList.add('has-deposit');
+        }
+        
         cell.tabIndex = -1;
         cell.dataset.id = i;
         cell.onclick = () => placeOrSelect(i);
@@ -345,6 +354,73 @@ function generateTerrain(width, height) {
     }
 
     return out;
+}
+
+/**
+ * Generate uranium ore deposits scattered across the map
+ */
+function generateDeposits(width, height) {
+    const deposits = [];
+    const numDeposits = 5 + Math.floor(Math.random() * 4); // 5-8 deposit clusters
+    
+    for (let d = 0; d < numDeposits; d++) {
+        // Random deposit center
+        const cx = 2 + Math.floor(Math.random() * (width - 4));
+        const cy = 2 + Math.floor(Math.random() * (height - 4));
+        const depositRadius = 1 + Math.floor(Math.random() * 2); // 1-2 cell radius
+        
+        // Generate deposit ore at this location
+        for (let dy = -depositRadius; dy <= depositRadius; dy++) {
+            for (let dx = -depositRadius; dx <= depositRadius; dx++) {
+                if (Math.random() > 0.25) { // sparse within radius
+                    const x = cx + dx;
+                    const y = cy + dy;
+                    if (x >= 0 && x < width && y >= 0 && y < height) {
+                        const cellId = y * width + x;
+                        // Skip roads
+                        if (!['road', 'road-h', 'road-x'].includes(game.terrain[cellId])) {
+                            deposits.push({ cellId, quality: 0.5 + Math.random() * 0.5 }); // 0.5-1.0 quality
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    return deposits;
+}
+
+/**
+ * Render uranium deposits visually on the grid
+ */
+function renderDeposits() {
+    const grid = document.getElementById('gameGrid');
+    game.deposits.forEach(deposit => {
+        const cell = grid.querySelector(`[data-id="${deposit.cellId}"]`);
+        if (cell) cell.classList.add('has-deposit');
+    });
+}
+
+/**
+ * Get mine deposit bonus based on proximity to nearest deposit
+ * On deposit: 1.5x, 1 away: 1.25x, 2 away: 0.7x, 3+ away: 0.1x (extremely low)
+ */
+function getDepositBonus(mineId) {
+    if (!game.deposits || game.deposits.length === 0) return 0.1; // no deposits = extremely low yield
+    
+    const mineCoords = getCoords(mineId);
+    let minDist = Infinity;
+    
+    game.deposits.forEach(deposit => {
+        const depCoords = getCoords(deposit.cellId);
+        const dist = Math.max(Math.abs(mineCoords.x - depCoords.x), Math.abs(mineCoords.y - depCoords.y));
+        if (dist < minDist) minDist = dist;
+    });
+    
+    if (minDist === 0) return 1.5; // On deposit: excellent yield
+    if (minDist === 1) return 1.25; // Adjacent: good yield
+    if (minDist === 2) return 0.7; // 2 tiles away: reduced yield
+    return 0.1; // 3+ tiles away: extremely poor yield
 }
 
 /**
@@ -1270,10 +1346,16 @@ function productionTick() {
     // Each mine independently yields a small random amount per tick (organic feel).
     // Range 0.10–0.35 U/sec per mine, average ~0.22.
     // Fallout zones reduce production by 50% if affected.
+    // Deposit bonus: on deposit 1.5x, adjacent 1.25x, far 0.3x
     let produced = 0;
     const activeMines = game.buildings.filter(b => b.type === 'mine' && !b.isUnderConstruction);
     activeMines.forEach(mine => {
         let amount = 0.10 + Math.random() * 0.25;
+        
+        // Apply deposit proximity bonus
+        const depositBonus = getDepositBonus(mine.id);
+        amount *= depositBonus;
+        
         // Apply fallout penalty if affected
         if (mine.fallout && mine.fallout.endTime > Date.now()) {
             amount *= mine.fallout.multiplier; // Apply 50% reduction
@@ -1786,6 +1868,16 @@ function onCellHover(id, e) {
     let content = '';
     const player = game.buildings.find(b => b.id === id);
     const enemy = game.enemyBuildings.find(b => b.id === id);
+    const deposit = game.deposits.find(d => d.cellId === id);
+
+    // If hovering over a deposit cell (no buildings), show deposit info
+    if (!player && !enemy && deposit && !game.selectedMode) {
+        content = `<div style="font-weight:700; color:#FFD700;">🚩 Uranium Deposit</div>` +
+            `<div style="color:#FFA500; margin-top:4px;">Build mines here for 1.5x yield!</div>` +
+            `<div style="color:#AAA; font-size:12px; margin-top:4px;">1 tile: 1.25x | 2 tiles: 0.7x | 3+: 0.1x</div>`;
+        showTooltipAt(rect.right + 8, rect.top, content);
+        return;
+    }
 
     // If hovering while planning to build, preview proximity bonuses
     if (!player && !enemy && game.selectedMode && game.selectedMode !== 'sabotage') {
@@ -1804,6 +1896,17 @@ function onCellHover(id, e) {
         content = `<div style="font-weight:700;">${icon}Place: ${label}</div>` +
             `<div>📐 Same-type neighbors: ${same} (${same>0? '+'+ (same*25) +'% efficiency': 'no bonus'})</div>` +
             `<div>⚠️ Nearby enemies: ${pen}</div>`;
+        
+        // Add deposit bonus info for mines
+        if (type === 'mine') {
+            const depositBonus = getDepositBonus(id);
+            const depositInfo = depositBonus === 1.5 ? '💰 On deposit: 1.5x yield!' : 
+                               depositBonus === 1.25 ? '💰 1 tile away: 1.25x yield' : 
+                               depositBonus === 0.7 ? '💰 2 tiles away: 0.7x yield' :
+                               '⛰️ 3+ tiles away: 0.1x yield (terrible!)';
+            content += `<div style="color:${depositBonus > 0.5 ? '#FFD700' : '#FF6B6B'}; font-weight:600;">${depositInfo}</div>`;
+        }
+        
         if (type === 'plant') {
             const hasRoad = cellHasRoadNeighbor(id);
             content += `<div style="color:${hasRoad ? '#4CAF50' : '#888'};">` +
@@ -1826,6 +1929,19 @@ function onCellHover(id, e) {
         content = `<div style="font-weight:700;">${icon}${label} <span style="color:#4CAF50;">(You)</span></div>` +
             `<div>📐 Same-type neighbors: ${same} (${same>0? '+'+ (same*25) +'%': 'none'})</div>` +
             `<div>⚠️ Nearby enemies: ${pen}</div>`;
+        
+        // Show mining rate for mines
+        if (type === 'mine') {
+            const depositBonus = getDepositBonus(id);
+            const miningRatePercent = (depositBonus * 100).toFixed(0);
+            const depositDistInfo = depositBonus === 1.5 ? 'On deposit' : 
+                                   depositBonus === 1.25 ? '1 tile from deposit' : 
+                                   depositBonus === 0.7 ? '2 tiles from deposit' : 
+                                   '3+ tiles from deposit';
+            content += `<div style="color:${depositBonus > 0.5 ? '#FFD700' : '#FF6B6B'}; font-weight:600; margin-top:4px;">⛏️ Mining: ${miningRatePercent}% efficiency</div>` +
+                      `<div style="color:#AAA; font-size:12px;">${depositDistInfo}</div>`;
+        }
+        
         if (type === 'plant') {
             const hasRoad = cellHasRoadNeighbor(id);
             content += `<div style="color:${hasRoad ? '#4CAF50' : '#888'};">` +

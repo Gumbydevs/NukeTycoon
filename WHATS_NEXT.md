@@ -28,6 +28,7 @@
 - [x] **Processor flow implemented** — `uraniumRaw` and `uraniumRefined` exist; `productionTick()` converts raw → refined per processor.
 - [x] **Processing rate present** — processors convert a small amount per tick (configurable in code).
 - [x] **Building construction times** — Each building type has a configurable `constructionTime` (mine: 8s, processor: 12s, storage: 10s, plant: 15s). Displays circular progress indicator while building; only completed buildings produce resources/power.
+- [x] **Deposit-based mining** — Uranium deposits are randomly generated and visible on map with ⛰️ indicator. Mines on deposits: 1.5x yield, adjacent: 1.25x yield, distant: 0.3x yield. Hover shows deposit bonus info.
 - [ ] **Storage overflow UX** — production caps correctly (`rawHeadroom` prevents overproduce) but no visual warning, animation, or "waste" counter UI. Hard cap silently discards overflow.
 
 ### Proximity Bonus
@@ -35,19 +36,21 @@
 - [~] **Tooltip live numbers** — Tooltips calculate neighbor counts and display +25% per neighbor blurb, but the math is cosmetic—not used in `calculatePower()` or income calculation (partial).
 
 ### Sabotage Expansion
-- [ ] **Distinct sabotage costs** — Current code uses generic formula `buildingTypes[type].cost - 200` for all buildings; no per-type differentiation.
-- [ ] **Raid Storage** — Not implemented. No code path exists.
-- [ ] **Confirmation prompt** — Not implemented; `sabotage()` executes immediately with no user confirm dialog.
+- [x] **Distinct sabotage options** — Sabotage menu with 3 attack types: ⏸️ Disable (−50% production 45s, $300), 💰 Steal (~50 uranium, $500), 💥 NUKE (AoE + fallout, requires silo, 50% wallet).
+- [ ] **Distinct sabotage costs** — Current code uses specific costs per attack; differentiation complete.
+- [ ] **Confirmation prompt** — Menu acts as confirmation UI; selection required before attack executes.
+- [x] **Temporary disable** — Reduces enemy production by 50% for 45 seconds; tracked in `enemy.disabled` and cleaned up on day advance.
 
 ### Nuclear Arsenal (Endgame Sabotage)
 > *Missile Silos are the ultimate power play, tied to the World War 3 theme. Building and launching them represents an existential threat.*
 
-- [ ] **Missile Silo building type** — New building (e.g., 🚀 or custom SVG icon). Very high cost (~5000–8000 tokens). Unlock visually / via UI only when player has multiple reactors (shows as "Advanced Defense").
-- [ ] **Silo build mechanics** — Place on grid like other buildings. Can have max 1–2 silos per round (prevents spam). Requires adjacent reactor or power source to function.
-- [ ] **Nuclear strike (ultimate sabotage)** — When silo is activated, choose a target building on the grid. Triggers massive AoE destruction: destroys all enemy buildings within 4–5 cell radius + radiation fallout zone (temporary −50% production penalty to any remaining buildings in zone for 2–3 minutes real-time).
-- [ ] **Strike cost & cooldown** — Launching a strike costs large portion of player's current wallet (expensive, show-of-force). Global cooldown of 1 silo strike per round minimum to prevent overkill.
-- [ ] **Visual / Audio spectacle** — IDEAS But likely scope creep and sensory distractions: On strike: full-screen red flash, screen shake, loud BOOM/alarm audio. Affected buildings animate (explode, fade out). Other players see real-time notification "NUCLEAR STRIKE BY [PLAYER_NAME]" in chat/log. 
-- [ ] **Leaderboard prestige** — Silo strikes could potentially be counted on leaderboard as "Strategic Strikes" or "Deterrence Plays." Winning via nuke strike gives special badge/title (e.g., "🔴 Nuclear Threat").
+- [x] **Missile Silo building type** — 💥 icon, cost 6000 tokens, 3.5s construction. Red color, marked as weapon.
+- [x] **Silo build mechanics** — Requires ≥1 completed reactor. Max 1 per round limit. Placement mechanics complete.
+- [x] **Nuclear strike (ultimate sabotage)** — Accessed via Sabotage menu when silo completed. 4-cell AoE radius destroys enemy buildings. Applies −50% production fallout for 120s to nearby player buildings.
+- [x] **Strike cost & cooldown** — Costs 50% of current wallet. 1 strike per round (dayStrikes <= maxSilosPerRound).
+- [x] **Visual spectacle** — Red flash (600ms fadeOut animation), screen shake (10 frames). Fallout zones render with ⛰️ visual indicator and golden glow.
+- [ ] **Audio spectacle** — No sound effects yet. (TODO: explosion/alarm sounds)
+- [ ] **Leaderboard prestige** — Strikes tracked in `nuclearThreats` array but NOT displayed on final leaderboard. Badge or prestige display pending. (TODO: add "🔴 Nuclear Threat" badge to winning player if in threats list)
 
 ### AI Enemies
 - [ ] **AI build loop** — Bots exist in `game.players` with `isBot: true`, but no autonomous build/sabotage loop runs. Only initial spawn via `spawnEnemyBuildings()` (5 random buildings per round).
