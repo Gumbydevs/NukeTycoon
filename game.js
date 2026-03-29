@@ -540,11 +540,18 @@ function initMenu() {
     try { window.setMenuOpen = setMenuOpen; } catch (e) { /* ignore */ }
 
     if (actionsBtn) {
-        actionsBtn.addEventListener('click', (e) => {
+        const toggleHandler = (e) => {
+            if (e && e.preventDefault) e.preventDefault();
             const expanded = actionsBtn.getAttribute('aria-expanded') === 'true';
             setMenuOpen(!expanded);
-            console.log('initMenu: actionsBtn click -> setMenuOpen', !expanded);
-        });
+            console.log('initMenu: actionsBtn toggle -> setMenuOpen', !expanded);
+            if (e && e.stopPropagation) e.stopPropagation();
+        };
+        actionsBtn.addEventListener('click', toggleHandler);
+        // also support touchstart on mobile for snappier response
+        actionsBtn.addEventListener('touchstart', toggleHandler, { passive: false });
+        // ensure button is on top on small screens
+        try { actionsBtn.style.zIndex = 1000; } catch (e) { }
     }
 
     // Close when clicking outside
@@ -605,9 +612,30 @@ function toggleActionsMenu(e) {
             actionsMenu.style.display = open ? 'block' : 'none';
         }
     } else {
+        // Robust fallback for early inline calls: show a simple fixed dropdown and inject stats
         actionsBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
         actionsMenu.setAttribute('aria-hidden', open ? 'false' : 'true');
-        actionsMenu.style.display = open ? 'block' : 'none';
+        if (open) {
+            actionsMenu.style.display = 'block';
+            actionsMenu.style.position = 'fixed';
+            actionsMenu.style.left = '8px';
+            actionsMenu.style.right = '8px';
+            actionsMenu.style.top = '60px';
+            // insert compact stats for mobile users
+            try {
+                let stats = actionsMenu.querySelector('.menu-stats');
+                if (!stats) {
+                    stats = document.createElement('div');
+                    stats.className = 'menu-stats';
+                    stats.style.cssText = 'color:#ccc; font-size:13px; padding:6px 8px; border-bottom:1px solid rgba(255,255,255,0.03); margin-bottom:8px;';
+                    actionsMenu.insertBefore(stats, actionsMenu.firstChild);
+                }
+                const portfolio = (game.playerWallet + ((game.uraniumRaw + game.uraniumRefined) * game.market.price)) || 0;
+                stats.innerHTML = `Round: ${game.round} — Tokens: ${game.playerWallet.toLocaleString()} — Raw: ${formatUranium(game.uraniumRaw)} / Ref: ${formatUranium(game.uraniumRefined)} — Portfolio: $${portfolio.toFixed(2)}`;
+            } catch (e) { /* ignore */ }
+        } else {
+            actionsMenu.style.display = 'none';
+        }
     }
     if (e && e.stopPropagation) e.stopPropagation();
 }
