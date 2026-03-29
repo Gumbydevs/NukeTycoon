@@ -401,6 +401,7 @@ body.authenticated .container {
     font-size: 13px;
     border-radius: 4px;
     z-index: 10;
+    -webkit-backdrop-filter: blur(4px);
     backdrop-filter: blur(4px);
 }
 
@@ -497,6 +498,7 @@ body.authenticated .container {
 #tooltip {
     white-space: normal;
     word-break: break-word;
+    -webkit-hyphens: auto;
     hyphens: auto;
 }
 

@@ -381,6 +381,19 @@ function placeOrSelect(id) {
  * Build a building at the specified cell
  */
 function buildBuilding(id, type) {
+    // disallow building directly on road tiles
+    if (game.terrain && (game.terrain[id] === 'road' || game.terrain[id] === 'road-h' || game.terrain[id] === 'road-x')) {
+        const cell = document.querySelector('[data-id="' + id + '"]');
+        if (cell) {
+            const rect = cell.getBoundingClientRect();
+            const msg = `<div style="font-weight:700; color:#ff6b6b;">Cannot build on road</div>` +
+                `<div>Building close to road access increases productivity.</div>`;
+            showTooltipAt(rect.right + 8, rect.top, msg);
+        }
+        console.warn('Cannot build on road tile');
+        return;
+    }
+
     const cost = buildingTypes[type].cost;
     if (game.playerWallet < cost) {
         console.warn('Insufficient funds');
@@ -1126,8 +1139,8 @@ function onCellHover(id, e) {
     // Road cell — show bonus hint even on empty road tiles
     if (game.terrain && (game.terrain[id] === 'road' || game.terrain[id] === 'road-h' || game.terrain[id] === 'road-x')) {
         content = `<div style="font-weight:700; color:#aaa;">🛣️ Road Tile</div>` +
-            `<div>Build a <strong>Reactor</strong> adjacent to this tile</div>` +
-            `<div style="color:#4CAF50;">for a +40% income bonus</div>`;
+            `<div>Building close to road access increases productivity.</div>` +
+            `<div style="color:#4CAF50;">Adjacent Reactors gain +40% income</div>`;
         showTooltipAt(rect.right + 8, rect.top, content);
         return;
     }
