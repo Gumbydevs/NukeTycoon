@@ -154,7 +154,7 @@ body.authenticated .container {
 #round       { min-width: 24px; }
 #day         { min-width: 14px; }
 #time        { min-width: 56px; }
-#prizePool   { min-width: 48px; }
+#prizePool   { min-width: 120px; }
 #circulating { min-width: 72px; }
 #wallet      { min-width: 56px; }
 #uranium     { min-width: 110px; }
