@@ -236,6 +236,7 @@ function initGrid() {
     grid.innerHTML = '';
     // generate a simple terrain map (grass / dirt / road)
     const terrain = generateTerrain(20, 20);
+    game.terrain = terrain; // store so road-bonus checks work at runtime
     for (let i = 0; i < 400; i++) {
         const cell = document.createElement('div');
         cell.className = 'cell';
@@ -275,15 +276,25 @@ function spawnEnemyBuildings() {
  */
 function generateTerrain(width, height) {
     const out = new Array(width * height).fill('grass');
-    // center vertical road
+    // 1-tile-wide vertical road down the center column
     const centerX = Math.floor(width / 2);
     for (let y = 0; y < height; y++) {
         out[y * width + centerX] = 'road';
-        // occasional adjacent shoulder
-        if (Math.random() < 0.25) {
-            if (centerX - 1 >= 0) out[y * width + (centerX - 1)] = 'road';
-        }
     }
+
+    // 2 horizontal branches off the spine at random rows, random length (3–7 tiles each direction)
+    const branchRows = [];
+    while (branchRows.length < 2) {
+        const row = 2 + Math.floor(Math.random() * (height - 4)); // avoid very top/bottom
+        if (!branchRows.includes(row)) branchRows.push(row);
+    }
+    branchRows.forEach(row => {
+        const len = 3 + Math.floor(Math.random() * 5); // 3–7 tiles each side
+        for (let dx = 1; dx <= len; dx++) {
+            if (centerX - dx >= 0)     out[row * width + (centerX - dx)] = 'road'; // left
+            if (centerX + dx < width)  out[row * width + (centerX + dx)] = 'road'; // right
+        }
+    });
 
     // scatter dirt patches (clusters)
     for (let i = 0; i < width * height * 0.08; i++) {
@@ -302,6 +313,26 @@ function generateTerrain(width, height) {
     }
 
     return out;
+}
+
+/**
+ * Returns true if any orthogonal or diagonal neighbour of cellId is a road tile.
+ * Used to grant reactors the road-proximity income bonus.
+ */
+function cellHasRoadNeighbor(cellId) {
+    if (!game.terrain) return false;
+    const COLS = 20;
+    const x = cellId % COLS;
+    const y = Math.floor(cellId / COLS);
+    for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = x + dx; const ny = y + dy;
+            if (nx < 0 || nx >= COLS || ny < 0 || ny >= COLS) continue;
+            if (game.terrain[ny * COLS + nx] === 'road') return true;
+        }
+    }
+    return false;
 }
 
 /**
@@ -510,7 +541,9 @@ function calculatePower() {
             const base = 100 - (penalty * 20);
             // slight jitter so power fluctuates a bit (not game-breaking)
             const jitter = Math.sin((Date.now() / 1000) + building.id) * 2; // -2..2
-            const power = Math.max(0, base + jitter);
+            // road-proximity bonus: reactor next to a road tile sells power to more customers (+40%)
+            const roadMult = cellHasRoadNeighbor(building.id) ? 1.4 : 1.0;
+            const power = Math.max(0, base + jitter) * roadMult;
             totalPower += power;
         } else if (building.type === 'mine') {
             totalMines++;
@@ -1042,6 +1075,11 @@ function onCellHover(id, e) {
         content = `<div style="font-weight:700;">Place: ${label}</div>` +
             `<div>Same-type neighbors: ${same} (${same>0? '+'+ (same*25) +'% efficiency': 'no bonus'})</div>` +
             `<div>Nearby enemies: ${pen}</div>`;
+        if (type === 'plant') {
+            const hasRoad = cellHasRoadNeighbor(id);
+            content += `<div style="color:${hasRoad ? '#4CAF50' : '#888'};">` +
+                `Road access: ${hasRoad ? '+40% income if built here ✓' : 'no road bonus here'}</div>`;
+        }
         showTooltipAt(rect.right + 8, rect.top, content);
         return;
     }
@@ -1058,6 +1096,11 @@ function onCellHover(id, e) {
         content = `<div style="font-weight:700;">${label} (You)</div>` +
             `<div>Same-type neighbors: ${same} (${same>0? '+'+ (same*25) +'%': 'none'})</div>` +
             `<div>Nearby enemies: ${pen}</div>`;
+        if (type === 'plant') {
+            const hasRoad = cellHasRoadNeighbor(id);
+            content += `<div style="color:${hasRoad ? '#4CAF50' : '#888'};">` +
+                `Road access: ${hasRoad ? '+40% income ✓' : 'none'}</div>`;
+        }
         showTooltipAt(rect.right + 8, rect.top, content);
         return;
     }
@@ -1070,6 +1113,15 @@ function onCellHover(id, e) {
         content = `<div style="font-weight:700;">${label} (Enemy)</div>` +
             `<div>Sabotage cost: ${sabotageCost.toLocaleString()} tokens</div>` +
             `<div>Effect: destroys building, removes its production</div>`;
+        showTooltipAt(rect.right + 8, rect.top, content);
+        return;
+    }
+
+    // Road cell — show bonus hint even on empty road tiles
+    if (game.terrain && game.terrain[id] === 'road') {
+        content = `<div style="font-weight:700; color:#aaa;">🛣️ Road Tile</div>` +
+            `<div>Build a <strong>Reactor</strong> adjacent to this tile</div>` +
+            `<div style="color:#4CAF50;">for a +40% income bonus</div>`;
         showTooltipAt(rect.right + 8, rect.top, content);
         return;
     }
