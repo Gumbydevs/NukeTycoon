@@ -10,6 +10,7 @@ const game = {
     selectedCell: null,
     proximityRange: 2,
     round: 1,
+    runLength: 8,                 // configurable: 8 days for standard run, adjust for events or shorter runs
     // Token economy
     totalTokenSupply: 1000000000, // 1 billion — the hard cap; tokens are MINTED from this reserve
     tokensIssued: 0,              // total ever drawn from the 1B reserve (wallets + income rewards)
@@ -17,10 +18,11 @@ const game = {
     // circulating = tokensIssued - tokensBurned
     // available   = totalTokenSupply - tokensIssued
     prizePool: 0,                 // funded by buy-ins + 10% of in-game spends
+    runEnded: false,              // flag to prevent multiple onRunEnd() calls
 
     // ── Buy-in / run entry ───────────────────────────────────────────────────
     // Every player (human or bot) pays this once to enter a run.
-    // A run = 8 rounds, each lasting one real 24-hour day.
+    // A run = runLength rounds (default 8), each lasting one real 24-hour day.
     // Their buy-in seeds the prize pool and the bonding curve pool directly.
     buyIn: 5000, // tunable — cost per player per run (in tokens)
 
@@ -222,7 +224,7 @@ function initRun() {
     game.market.tokenPool = Math.max(1, game.market.tokenPool - poolDrain);
 
     console.info(
-        `Run started (Round ${game.round}/8) | Players: ${game.players.length} | ` +
+        `Run started (Round ${game.round}/${game.runLength}) | Players: ${game.players.length} | ` +
         `Buy-in: ${game.buyIn.toLocaleString()} each | ` +
         `Prize pool seeded: ${prizeContrib.toLocaleString()} tokens`
     );
@@ -1013,15 +1015,208 @@ function onHourAdvance() {
 }
 
 function onDayAdvance() {
-    // end of run: all 8 rounds (days) completed — distribute prizes and cycle
-    if (game.time.day > 8) {
-        game.time.day = 1;
-        game.round = (game.round % 8) + 1;
-        distributePrizePool();
-    }
+    // Hook round advancement to day: each day = one round (1-8)
+    game.round = Math.min(game.time.day, game.runLength);
+    
     document.getElementById('day').textContent = game.time.day;
-    // show end-of-day summary modal
+    document.getElementById('round').textContent = `${game.round}/${game.runLength}`;
+    
+    // Close any open day modal first
+    const dayModal = document.getElementById('endOfDayModal');
+    if (dayModal) dayModal.style.display = 'none';
+    
+    // Check if run just ended (day exceeds runLength)
+    if (!game.runEnded && game.time.day > game.runLength) {
+        game.runEnded = true;
+        game.dailyProduced = 0;
+        game.dailyIncome = 0;
+        onRunEnd();
+        return;
+    }
+    
+    // If this is the final day (day === runLength), don't show summary yet - wait for day+1 to show combined modal
+    if (game.time.day === game.runLength) {
+        game.dailyProduced = 0;
+        game.dailyIncome = 0;
+        return;
+    }
+    
+    // Show end-of-day summary for days 1-7
     showEndOfDaySummary();
+    
+    // Reset daily accumulators for next day
+    game.dailyProduced = 0;
+    game.dailyIncome = 0;
+}
+
+/**
+ * Called when a round ends (day transitions; stub for future use)
+ */
+function onRoundEnd(roundNumber) {
+    // Currently just a placeholder for future round-end logic
+    // Prize distribution happens at the very end of the full 8-round run (onRunEnd)
+    console.info(`Round ${roundNumber} complete. Next round begins.`);
+}
+
+/**
+ * Called when the entire 8-round run ends
+ * Shows final leaderboard, final payout, and return-to-menu option
+ */
+function onRunEnd() {
+    console.info('🔥 RUN COMPLETE! All 8 rounds finished.');
+    
+    // Freeze the grid
+    const grid = document.getElementById('gameGrid');
+    if (grid) {
+        document.querySelectorAll('.cell').forEach(cell => {
+            cell.style.pointerEvents = 'none';
+            cell.style.opacity = '0.7';
+        });
+    }
+    
+    // Build final leaderboard with all scores
+    const finalScores = game.players.map(p => {
+        if (p.isLocal) {
+            const portfolio = game.playerWallet + ((game.uraniumRaw + game.uraniumRefined) * game.market.price);
+            return { 
+                name: p.name, 
+                isLocal: true, 
+                score: calculatePower() + (portfolio / 1000), 
+                portfolio,
+                wallet: game.playerWallet
+            };
+        }
+        const botBuildings = game.enemyBuildings.filter(b => b.owner === p.name);
+        const plants = botBuildings.filter(b => b.type === 'plant').length;
+        const mines  = botBuildings.filter(b => b.type === 'mine').length;
+        const estPortfolio = (plants * 100) + (mines * 50 * game.market.price);
+        return { 
+            name: p.name, 
+            isLocal: false, 
+            score: (plants * 100) + (estPortfolio / 1000), 
+            portfolio: estPortfolio,
+            wallet: p.wallet
+        };
+    });
+    finalScores.sort((a, b) => b.score - a.score);
+    
+    // Determine winner
+    const winner = finalScores[0];
+    const isPlayerWinner = winner.isLocal;
+    
+    // Create run-end modal
+    const modal = document.createElement('div');
+    modal.id = 'runEndModal';
+    modal.style.cssText = `
+        position: fixed;
+        left: 0;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.95);
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        animation: fadeIn 0.5s ease-in;
+    `;
+    
+    const content = document.createElement('div');
+    content.style.cssText = `
+        background: linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%);
+        border: 2px solid ${isPlayerWinner ? '#ffb84d' : '#ff6b6b'};
+        border-radius: 8px;
+        padding: 32px;
+        max-width: 600px;
+        max-height: 80vh;
+        overflow-y: auto;
+        color: #fff;
+        font-family: monospace;
+        box-shadow: 0 0 20px ${isPlayerWinner ? 'rgba(255,184,77,0.3)' : 'rgba(255,107,107,0.3)'};
+    `;
+    
+    let leaderboardHTML = finalScores.map((p, i) => {
+        const medal = ['🥇 1ST', '🥈 2ND', '🥉 3RD'][i] || `#${i+1}`;
+        const color = p.isLocal ? '#ffb84d' : '#ccc';
+        const you = p.isLocal ? ' (YOU)' : '';
+        return `
+            <div style="margin-bottom: 12px; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 4px; color: ${color};">
+                <strong>${medal}</strong> ${p.name}${you}
+                <div style="margin-top: 4px; font-size: 11px; color: #888;">
+                    Score: ${p.score.toFixed(1)} | Portfolio: $${p.portfolio.toFixed(2)}
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    content.innerHTML = `
+        <div style="text-align: center; margin-bottom: 24px; font-size: 20px; font-weight: bold;">
+            ${isPlayerWinner ? '🎉 YOU WIN THE RUN! 🎉' : '💥 RUN OVER — Final Standings 💥'}
+        </div>
+        <div style="margin-bottom: 20px; padding: 12px; background: rgba(0,0,0,0.3); border-left: 3px solid #ffb84d;">
+            <div style="font-weight: bold; margin-bottom: 6px;">Champion: ${winner.name}</div>
+            <div style="font-size: 12px; color: #aaa;">Final Score: ${winner.score.toFixed(1)}</div>
+        </div>
+        <div style="margin-bottom: 20px;">
+            <div style="font-weight: bold; margin-bottom: 8px; color: #ffb84d;">Final Leaderboard</div>
+            ${leaderboardHTML}
+        </div>
+        <div style="margin-top: 24px; padding-top: 12px; border-top: 1px solid #333; text-align: center;">
+            <button onclick="returnToMenu()" style="
+                padding: 10px 24px;
+                background: #ffb84d;
+                color: #000;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+                cursor: pointer;
+                font-family: monospace;
+            ">Return to Menu</button>
+        </div>
+    `;
+    
+    modal.appendChild(content);
+    document.body.appendChild(modal);
+}
+
+/**
+ * Return to menu / reset for new run
+ */
+function returnToMenu() {
+    const modal = document.getElementById('runEndModal');
+    if (modal) modal.remove();
+    
+    // Stop the simulation loops
+    if (game._productionInterval) clearInterval(game._productionInterval);
+    if (game._timeInterval) clearInterval(game._timeInterval);
+    
+    // Reset game state
+    game.runEnded = false;
+    game.round = 1;
+    game.time.day = 1;
+    game.time.hour = 0;
+    game.time.minute = 0;
+    game.playerWallet = 50000;
+    game.uraniumRaw = 0;
+    game.uraniumRefined = 0;
+    game.buildings = [];
+    game.enemyBuildings = [];
+    game.prizePool = 0;
+    game.dailyProduced = 0;
+    game.dailyIncome = 0;
+    
+    // Re-enable grid
+    document.querySelectorAll('.cell').forEach(cell => {
+        cell.style.pointerEvents = 'auto';
+        cell.style.opacity = '1';
+    });
+    
+    // Clear grid
+    const grid = document.getElementById('gameGrid');
+    if (grid) grid.innerHTML = '';
+    
+    // Show lobby for next run
+    showLobby();
 }
 
 /**
@@ -1282,10 +1477,6 @@ function showEndOfDaySummary() {
     }).join('');
 
     modal.style.display = 'flex';
-
-    // reset daily accumulators
-    game.dailyProduced = 0;
-    game.dailyIncome = 0;
 }
 
 function closeEndOfDay() {

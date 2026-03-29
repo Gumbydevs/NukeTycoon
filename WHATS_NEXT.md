@@ -1,46 +1,61 @@
 # Nuclear Tycoon — What's Next Checklist
 
-## What's Already Built
+## What's Already Built (repo scan highlights)
 - 20×20 grid with terrain (grass / dirt / road)
 - 4 building types: Mine, Processor, Storage, Reactor
 - Token wallet + building costs
-- Basic resource loop: mines produce uranium → reactors consume it → generate income
-- Proximity bonus / enemy penalty **visual indicators** on cells
-- Sabotage (destroy an enemy building for a token cost)
-- Simulated clock (8-day round, day/hour/minute)
-- Fluctuating market price with supply/demand + diurnal model
-- End-of-day summary modal with basic leaderboard
-- Dev panel (advance time, sim speed)
-- Password-gated dev login
-- Tooltips on buildings and buttons
-- Profile modal, mobile menu
+- Resource loop implemented: `uraniumRaw` (mines) → `uraniumRefined` (processors) → plants consume refined fuel
+- Proximity visual indicators (`bonus` / `penalty` CSS classes)
+- Sabotage (destroy enemy building) — cost currently calculated as `buildingTypes[type].cost - 200`
+- Simulated clock (round/day/hour/minute) and `productionTick()` running
+- Market model and prize pool / bonding-curve logic
+- End-of-day summary + leaderboard modal
+- Dev panel (advance time) and password-gated dev login
+- Tooltips show neighbor counts and bonus text
+- Profile modal, mobile menu and responsive CSS
 
 ---
 
 ## Phase 1 — Core Gameplay (Make It Actually Work)
 
-### Resource Chain Fixes
-- [ ] **Processor bottleneck** — Processors don't do anything right now. Raw uranium from mines should pile up unrefined and be unusable until a processor converts it. Reactors should only consume *refined* fuel. Add a `refinedFuel` counter separate from raw `uranium`.
-- [ ] **Processing rate** — Each processor should convert X raw uranium → refined fuel per tick. Balance so having no processor totally blocks reactor output.
-- [ ] **Storage overflow consequence** — Uranium currently just caps silently. Show a visual warning and log a "waste" counter so players feel the cost of no storage.
+### Round & Day Management
+- [x] **Rounds hooked to days** — Each day (1-N) now directly maps to a round (1-N). `game.runLength` (default 8) controls total run duration. When `game.time.day > game.runLength`, run ends.
+- [x] **End-of-round (day) transition** — `onRoundEnd()` triggers between days. Distributes prizes and resets accumulators. Shows end-of-day summary modal for days 1 through runLength-1.
+- [x] **Run end-of-run logic** — `onRunEnd()` triggers when `game.time.day > game.runLength`. Freezes grid, displays final leaderboard modal with champion and final scores. "Return to Menu" resets for next run.
+- [ ] **Event-driven run lengths** — `game.runLength` is adjustable (e.g., 3-day tournament, 16-day endurance mode). Should expose UI or config option for setup.
 
-### Proximity Bonus — Make It Real Numbers
-- [ ] **Actually apply the % bonus to output** — Right now `bonus` and `penalty` CSS classes are set but the % modifier is never used in `calculatePower()` or `productionTick()`. Apply +25% power per same-type neighbor (capped at, say, +75%) and −20% per nearby enemy building.
-- [ ] **Show live numbers in tooltip** — Already partially there; wire up the actual computed multiplier so "same-type neighbors: 2 (+50% efficiency)" reflects what's really happening in the math.
+### Resource Chain
+- [x] **Processor flow implemented** — `uraniumRaw` and `uraniumRefined` exist; `productionTick()` converts raw → refined per processor.
+- [x] **Processing rate present** — processors convert a small amount per tick (configurable in code).
+- [ ] **Storage overflow UX** — production caps correctly (`rawHeadroom` prevents overproduce) but no visual warning, animation, or "waste" counter UI. Hard cap silently discards overflow.
+
+### Proximity Bonus
+- [ ] **Apply numeric bonuses to production** — `calculateProximity()` adds CSS visual classes (`bonus`/`penalty`) but the actual multipliers are NOT wired into `calculatePower()`. Only enemy penalty (−20 per enemy) and road bonus (+40%) are active. Same-type buildings show +25% estimated in tooltips but do NOT boost production income. (TODO)
+- [~] **Tooltip live numbers** — Tooltips calculate neighbor counts and display +25% per neighbor blurb, but the math is cosmetic—not used in `calculatePower()` or income calculation (partial).
 
 ### Sabotage Expansion
-- [ ] **Distinct sabotage costs by type** — Per GDD: Mine 600, Processor ~600, Reactor 800, Raid Storage 700. Currently all cost `buildingType.cost - 200` which doesn't match.
-- [ ] **Raid Storage** — New sabotage action that steals a chunk of an enemy's refined fuel and adds it to your reserves instead of destroying a building.
-- [ ] **Sabotage confirmation prompt** — Prevent fat-finger destroys (small modal: "Spend 800 tokens to destroy this Reactor?").
+- [ ] **Distinct sabotage costs** — Current code uses generic formula `buildingTypes[type].cost - 200` for all buildings; no per-type differentiation.
+- [ ] **Raid Storage** — Not implemented. No code path exists.
+- [ ] **Confirmation prompt** — Not implemented; `sabotage()` executes immediately with no user confirm dialog.
+
+### Nuclear Arsenal (Endgame Sabotage)
+> *Missile Silos are the ultimate power play, tied to the World War 3 theme. Building and launching them represents an existential threat.*
+
+- [ ] **Missile Silo building type** — New building (e.g., 🚀 or custom SVG icon). Very high cost (~5000–8000 tokens). Unlock visually / via UI only when player has multiple reactors (shows as "Advanced Defense").
+- [ ] **Silo build mechanics** — Place on grid like other buildings. Can have max 1–2 silos per round (prevents spam). Requires adjacent reactor or power source to function.
+- [ ] **Nuclear strike (ultimate sabotage)** — When silo is activated, choose a target building on the grid. Triggers massive AoE destruction: destroys all enemy buildings within 4–5 cell radius + radiation fallout zone (temporary −50% production penalty to any remaining buildings in zone for 2–3 minutes real-time).
+- [ ] **Strike cost & cooldown** — Launching a strike costs large portion of player's current wallet (expensive, show-of-force). Global cooldown of 1 silo strike per round minimum to prevent overkill.
+- [ ] **Visual / Audio spectacle** — IDEAS But likely scope creep and sensory distractions: On strike: full-screen red flash, screen shake, loud BOOM/alarm audio. Affected buildings animate (explode, fade out). Other players see real-time notification "NUCLEAR STRIKE BY [PLAYER_NAME]" in chat/log. 
+- [ ] **Leaderboard prestige** — Silo strikes could potentially be counted on leaderboard as "Strategic Strikes" or "Deterrence Plays." Winning via nuke strike gives special badge/title (e.g., "🔴 Nuclear Threat").
 
 ### AI Enemies
-- [ ] **Enemy AI builds over time** — Right now enemies are 5 random buildings placed at spawn and never change. Add a simple loop that gives AI players a budget and has them place buildings on a schedule each simulated day.
-- [ ] **Enemy AI sabotages the player** — Occasionally targets your highest-value building. Creates drama.
-- [ ] **Enemy resource simulation** — Track enemy uranium and power output legitimately so the leaderboard isn't a fake estimate.
+- [ ] **AI build loop** — Bots exist in `game.players` with `isBot: true`, but no autonomous build/sabotage loop runs. Only initial spawn via `spawnEnemyBuildings()` (5 random buildings per round).
+- [ ] **AI sabotage / targeting** — Not implemented. Bots do not attack or build dynamically.
+- [ ] **Enemy resource simulation** — Leaderboard computes estimated bot scores, but bots do not track or spend wallet tokens.
 
 ### Leaderboard & Rank
-- [ ] **Live rank** — `#rank` in the top bar is hardcoded to `#1`. Calculate and update it every production tick based on real scores.
-- [ ] **End-of-round winner screen** — After Day 8 ends, show a final results modal (not just end-of-day). Declare a winner. Show prize pool split (even if fake tokens for now).
+- [ ] **Live rank** — `#rank` element exists in HTML but is **never updated during play** (hardcoded to `#1`); only computed at round end in `distributePrizePool()`. Should update per production tick. (TODO)
+- [~] **End-of-round distribution** — `distributePrizePool()` computes final scores and awards prizes, but round advancement logic is incomplete. (See Phase 1 Core Gameplay below.)
 
 ---
 
@@ -71,13 +86,9 @@
 
 > *These tasks belong to Keegan + Matt. Do not start until Phase 1 is fully play-tested.*
 
-- [ ] **Phantom wallet connect** — Add a "Connect Wallet" button. Use the Solana `window.solana` API (Phantom) to get the player's public key.
-- [ ] **Token contract on Solana** — Deploy an SPL token that represents in-game tokens. Keegan owns this.
-- [ ] **Entry fee flow** — Player pays X SOL/USDC → smart contract holds it → mints game tokens → credits their in-game wallet.
-- [ ] **Prize pool payout** — At round end, smart contract distributes prize pool to top 3 wallet addresses.
-- [ ] **Game state integrity** — Move critical game state (buildings, scores, balances) server-side. Client becomes a display layer only. Otherwise anyone can cheat via console.
-- [ ] **Anti-cheat / audit** — All building placements and sabotage actions logged server-side with timestamps. No client-trusted win conditions.
-- [ ] **Testnet dry run** — Run a full 8-day round with real wallets but on Solana devnet (fake SOL) before going live.
+-- [ ] **Phantom wallet connect** — UI placeholder exists (`walletConnections`) but no `window.solana` integration found.
+-- [ ] **Token contract on Solana** — Not started.
+-- [ ] **Entry fee flow / payout / anti-cheat** — Backend & on-chain flows are design-only; client contains `buyIn` and prize logic but server-side/stateful enforcement is not implemented.
 
 ---
 
@@ -87,17 +98,26 @@
 - [ ] **Player trading** — Let players sell refined fuel or processor capacity to each other mid-round.
 - [ ] **Cosmetics** — Grid skins, building skins, profile badges. Zero pay-to-win.
 - [ ] **Seasons / season pass** — Rotating round themes, map hazards (e.g., radiation zones that damage nearby buildings).
-- [ ] **Nuke / Silo building** (per Gumbydev's idea) — High-cost weapon with a large AoE destruction radius. Add radiation fallout that temporarily debuffs cells in range. Gate behind a daily use limit or steep token cost.
-- [ ] **Guilds / alliances** — Players team up to share resources or coordinate attacks.
+- [ ] **Advanced destruction fallout system** — Expand Phase 1 nuke strikes with persistent radiation damage zones, multi-stage explosions, and fallout clouds that spread over time. Adds strategic depth to strike placement and cleanup tactics.
+- [ ] **Guilds / alliances** — Players team up to share resources or coordinate attacks (e.g., coordinated strike damage multiplier).
 - [ ] **Spectator mode** — Watch a live round in progress (great for social/streaming).
 
 ---
 
-## Immediate Next Action (This Week)
+## Immediate Next Action (Priority Order)
 
-1. **Fix the processor** so it's actually required in the resource chain.
-2. **Apply proximity % to real output numbers** in `calculatePower()` and `productionTick()`.
-3. **Give enemy AI a build loop** so they're growing during the round.
-4. **Fix live rank** in the top bar.
+### Critical Path (Blocks playable round progression) — ✅ DONE
+1. ✅ **Rounds hooked to days (round 1-8 = day 1-8):** Implemented. `game.round` now syncs to `game.time.day`.
+2. ✅ **Round 8 end-of-run logic:** Implemented. `onRunEnd()` shows final leaderboard and allows return to menu.
+3. ✅ **End-of-round (day) transition UI:** Implemented. `onRoundEnd()` handles prize distribution; end-of-day modal shows each transition.
 
-Once those four are done, the game is a real playable loop worth play-testing for balance.
+### Phase 1 Core (Make the game feel alive) — NEXT UP
+4. **Nuclear Arsenal (Missile Silos):** Build Phase 1 nuke strike mechanics to tie WW3 theme into gameplay and give players a "show of power" moment. This is the ultimate sabotage tool.
+5. **Apply proximity % to production:** Wire same-type +25% per neighbor into `calculatePower()` so production multiplier actually works.
+6. **Enemy AI build loop:** Add periodic function to spawn/sabotage bot buildings (e.g., every 10 ticks pick a random bot, roll for action).
+
+### Polish (Enhances feel)
+7. **Live rank per tick:** Update `#rank` element each `productionTick()` from sorted `game.players`.
+8. **Storage overflow UX:** Flash or animate when uranium hits capacity; show lost uranium counter.
+
+Once the critical path is confirmed working via play-test, move to Phase 1 Core items.
