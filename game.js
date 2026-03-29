@@ -1326,7 +1326,10 @@ function formatUranium(n) {
  */
 function startGame() {
     // Reveal game-only menu items now that the run has started
-    document.querySelectorAll('.game-only').forEach(el => el.style.display = '');
+    // Use explicit display values to override the .game-only { display:none } CSS rule
+    document.querySelectorAll('.game-only').forEach(el => {
+        el.style.display = el.tagName === 'BUTTON' ? 'flex' : 'block';
+    });
 
     initGrid();
     initRun();   // collect buy-ins, seed prize pool & bonding curve pool (once per run)
