@@ -22,7 +22,7 @@
 - [x] **Rounds hooked to days** — Each day (1-N) now directly maps to a round (1-N). `game.runLength` (default 8) controls total run duration. When `game.time.day > game.runLength`, run ends.
 - [x] **End-of-round (day) transition** — `onRoundEnd()` triggers between days. Distributes prizes and resets accumulators. Shows end-of-day summary modal for days 1 through runLength-1.
 - [x] **Run end-of-run logic** — `onRunEnd()` triggers when `game.time.day > game.runLength`. Freezes grid, displays final leaderboard modal with champion and final scores. "Return to Menu" resets for next run.
-- [ ] **Event-driven run lengths** — `game.runLength` is adjustable (e.g., 3-day tournament, 16-day endurance mode). Should expose UI or config option for setup.
+- [x] **Event-driven run lengths** — `game.runLength` is adjustable (e.g., 3-day tournament, 16-day endurance mode). Should expose UI or config option for setup.
 
 ### Resource Chain
 - [x] **Processor flow implemented** — `uraniumRaw` and `uraniumRefined` exist; `productionTick()` converts raw → refined per processor.
