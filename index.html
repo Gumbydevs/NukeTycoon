@@ -22,6 +22,9 @@
         <div class="top-bar">
             <div class="top-bar-title">Nuclear Tycoon</div>
 
+                <!-- Compact stats for small-screen mobile view (populated by JS) -->
+                <div id="mobileStatsCompact" class="mobile-stats-compact"></div>
+
             <div class="stats-row">
                 <!-- Session -->
                 <div class="stat-group">
@@ -58,7 +61,7 @@
 
                 <div class="buttons">
                     <div class="actions-menu">
-                        <button class="btn menu-toggle" id="actionsMenuBtn" aria-haspopup="true" aria-expanded="false" title="Actions" onclick="toggleActionsMenu(event)">☰</button>
+                        <button class="btn menu-toggle" id="actionsMenuBtn" aria-haspopup="true" aria-expanded="false" title="Actions">☰</button>
                         <div class="dropdown" id="actionsMenu" aria-hidden="true" style="display:none;">
                             <div class="menu-section">
                                 <div class="menu-section-title">Build</div>

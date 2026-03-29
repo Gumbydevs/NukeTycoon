@@ -1,4 +1,4 @@
-// Game state
+﻿// Game state
 const game = {
     playerWallet: 50000,
     uraniumRaw: 0,      // mined by Mine buildings
@@ -479,6 +479,8 @@ function updateButtonStates() {
  * Initialize actions popup menu behaviour (toggle, item clicks, accessibility)
  */
 function initMenu() {
+    if (initMenu._done) return; // prevent double-init (called by DOMContentLoaded + startGame)
+    initMenu._done = true;
     console.log('initMenu(): initializing actions menu');
     const actionsBtn = document.getElementById('actionsMenuBtn');
     const actionsMenu = document.getElementById('actionsMenu');
@@ -519,21 +521,6 @@ function initMenu() {
         }
         actionsMenu.style.left = left + 'px';
         actionsMenu.style.top = top + 'px';
-
-        // On small screens, ensure a compact stats header is visible inside the dropdown
-        try {
-            if (window.innerWidth <= 700) {
-                let stats = actionsMenu.querySelector('.menu-stats');
-                if (!stats) {
-                    stats = document.createElement('div');
-                    stats.className = 'menu-stats';
-                    stats.style.cssText = 'color:#ccc; font-size:13px; padding:6px 8px; border-bottom:1px solid rgba(255,255,255,0.03); margin-bottom:8px;';
-                    actionsMenu.insertBefore(stats, actionsMenu.firstChild);
-                }
-                const portfolio = (game.playerWallet + ((game.uraniumRaw + game.uraniumRefined) * game.market.price)) || 0;
-                stats.innerHTML = `Round: ${game.round} — Tokens: ${game.playerWallet.toLocaleString()} — Raw: ${formatUranium(game.uraniumRaw)} / Ref: ${formatUranium(game.uraniumRefined)} — Portfolio: $${portfolio.toFixed(2)}`;
-            }
-        } catch (e) { /* ignore */ }
     }
 
     // expose setMenuOpen globally so inline fallbacks can delegate to the same logic
@@ -547,20 +534,20 @@ function initMenu() {
             console.log('initMenu: actionsBtn toggle -> setMenuOpen', !expanded);
             if (e && e.stopPropagation) e.stopPropagation();
         };
+        // Single click/tap handler only — avoids triple-fire on mobile
+        // (touchstart + synthesized click + pointerdown all fire on one tap)
         actionsBtn.addEventListener('click', toggleHandler);
-        // also support touchstart on mobile for snappier response
-        actionsBtn.addEventListener('touchstart', toggleHandler, { passive: false });
         // ensure button is on top on small screens
         try { actionsBtn.style.zIndex = 1000; } catch (e) { }
     }
 
-    // Close when clicking outside
+    // Close when clicking outside (use bubble phase, not capture, so button click fires first)
     document.addEventListener('click', (e) => {
         if (!actionsMenu || !actionsBtn) return;
         if (!actionsMenu.contains(e.target) && !actionsBtn.contains(e.target)) {
             setMenuOpen(false);
         }
-    }, true);
+    }, false);
 
     // Menu item actions
     document.querySelectorAll('.menu-item').forEach(mi => {
@@ -612,29 +599,14 @@ function toggleActionsMenu(e) {
             actionsMenu.style.display = open ? 'block' : 'none';
         }
     } else {
-        // Robust fallback for early inline calls: show a simple fixed dropdown and inject stats
         actionsBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
         actionsMenu.setAttribute('aria-hidden', open ? 'false' : 'true');
+        actionsMenu.style.display = open ? 'block' : 'none';
         if (open) {
-            actionsMenu.style.display = 'block';
             actionsMenu.style.position = 'fixed';
             actionsMenu.style.left = '8px';
             actionsMenu.style.right = '8px';
             actionsMenu.style.top = '60px';
-            // insert compact stats for mobile users
-            try {
-                let stats = actionsMenu.querySelector('.menu-stats');
-                if (!stats) {
-                    stats = document.createElement('div');
-                    stats.className = 'menu-stats';
-                    stats.style.cssText = 'color:#ccc; font-size:13px; padding:6px 8px; border-bottom:1px solid rgba(255,255,255,0.03); margin-bottom:8px;';
-                    actionsMenu.insertBefore(stats, actionsMenu.firstChild);
-                }
-                const portfolio = (game.playerWallet + ((game.uraniumRaw + game.uraniumRefined) * game.market.price)) || 0;
-                stats.innerHTML = `Round: ${game.round} — Tokens: ${game.playerWallet.toLocaleString()} — Raw: ${formatUranium(game.uraniumRaw)} / Ref: ${formatUranium(game.uraniumRefined)} — Portfolio: $${portfolio.toFixed(2)}`;
-            } catch (e) { /* ignore */ }
-        } else {
-            actionsMenu.style.display = 'none';
         }
     }
     if (e && e.stopPropagation) e.stopPropagation();
@@ -1236,6 +1208,30 @@ function updateUI() {
     if (prizePoolEl) {
         prizePoolEl.textContent = formatPrizePool(game.prizePool);
         prizePoolEl.title = `Approximate fiat equivalent at ${game.tokensPerUSD.toLocaleString()} tokens = $1 USDC`;
+    }
+    // Update compact mobile stats bar (mobile portrait only)
+    const mobileStats = document.getElementById('mobileStatsCompact');
+    if (mobileStats) {
+        if (window.innerWidth <= 700) {
+            const portfolio = (game.playerWallet + ((game.uraniumRaw + game.uraniumRefined) * game.market.price)) || 0;
+            const timeStr = `${String(game.time.hour).padStart(2,'0')}:${String(game.time.minute).padStart(2,'0')}`;
+            const totalPower = game.buildings.filter(b => b.type === 'plant' && !b.isUnderConstruction)
+                .reduce((s) => s + (buildingTypes.plant.power || 0), 0);
+            const prizeStr = typeof formatPrizePool === 'function' ? formatPrizePool(game.prizePool) : game.prizePool.toLocaleString();
+            mobileStats.innerHTML = [
+                `<span class="ms-stat"><span class="ms-label">Round</span><span class="ms-val">${game.round}/${game.runLength}</span></span>`,
+                `<span class="ms-stat"><span class="ms-label">Day</span><span class="ms-val">${game.time.day}</span></span>`,
+                `<span class="ms-stat"><span class="ms-label">Time</span><span class="ms-val">${timeStr}</span></span>`,
+                `<span class="ms-stat"><span class="ms-label">Tokens</span><span class="ms-val">${game.playerWallet.toLocaleString()}</span></span>`,
+                `<span class="ms-stat"><span class="ms-label">Power</span><span class="ms-val">${totalPower}MW</span></span>`,
+                `<span class="ms-stat"><span class="ms-label">Market</span><span class="ms-val">$${game.market.price.toFixed(2)}</span></span>`,
+                `<span class="ms-stat"><span class="ms-label">Prize</span><span class="ms-val ms-val--amber">${prizeStr}</span></span>`,
+                `<span class="ms-stat"><span class="ms-label">Portfolio</span><span class="ms-val">$${portfolio.toFixed(2)}</span></span>`,
+            ].join('');
+            mobileStats.style.display = 'flex';
+        } else {
+            mobileStats.style.display = 'none';
+        }
     }
 }
 
