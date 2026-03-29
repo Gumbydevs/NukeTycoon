@@ -19,12 +19,22 @@ const game = {
     // available   = totalTokenSupply - tokensIssued
     prizePool: 0,                 // funded by buy-ins + 10% of in-game spends
     runEnded: false,              // flag to prevent multiple onRunEnd() calls
+    siloStrikes: 0,               // number of strikes used this round
+    maxSilosPerRound: 1,          // max number of strikes allowed per round
+    lastStrikeTime: -999,         // track cooldown (ticks between strikes)
+    strikesCooldown: 20,          // minimum ticks between strikes
+    falloutZones: [],             // { id, endTime } array for radiation zones
+    nuclearThreats: [],           // track players who used nukes for prestige
 
     // ── Buy-in / run entry ───────────────────────────────────────────────────
     // Every player (human or bot) pays this once to enter a run.
     // A run = runLength rounds (default 8), each lasting one real 24-hour day.
     // Their buy-in seeds the prize pool and the bonding curve pool directly.
     buyIn: 5000, // tunable — cost per player per run (in tokens)
+    
+    // ── Strike tracking ───────────────────────────────────────────────────────
+    // Track nuke strikes per day for reset logic
+    dayStrikes: 0,                // strikes used today (resets each day)
 
     // ── Player registry ───────────────────────────────────────────────────────
     // Single source of truth for all players in the current round.
@@ -102,13 +112,11 @@ const PLAYER_COLOR = '#ffb84d';
 const ENEMY_COLOR = '#888888';
 
 const buildingTypes = {
-    mine: { cost: 800, emoji: '⛏️', color: '#4CAF50', power: 0, constructionTime: 1 },  // 8 seconds = ~13 mins real-time
-    // Use factory emoji for processor (renders as 'Plant' in UI)
+    mine: { cost: 800, emoji: '⛏️', color: '#4CAF50', power: 0, constructionTime: 1 },
     processor: { cost: 1200, emoji: '🏭', color: '#d98a3a', power: 0, constructionTime: 1.5 },
-    // Use a filing-cabinet / vault emoji for storage and a warmer metal tone
     storage: { cost: 1000, emoji: '🗄️', color: '#b08b4f', power: 0, constructionTime: 2 },
-    // reactor (consumes fuel)
-    plant: { cost: 1000, emoji: '☢️', color: '#ffb84d', power: 100, constructionTime: 2.2 }
+    plant: { cost: 1000, emoji: '☢️', color: '#ffb84d', power: 100, constructionTime: 2.2 },
+    silo: { cost: 6000, emoji: '💥', color: '#ff0000', power: 0, constructionTime: 3.5, isWeapon: true }
 };
 
 // Display names used in UI (keep keys stable in logic)
@@ -116,7 +124,8 @@ const displayNames = {
     mine: 'Mine',
     processor: 'Plant',
     storage: 'Storage',
-    plant: 'Reactor'
+    plant: 'Reactor',
+    silo: 'Silo'
 };
 
 // Enemy list (legacy — kept for spawnEnemyBuildings; names are drawn from game.players bots)
@@ -389,11 +398,19 @@ function placeOrSelect(id) {
     if (!game.selectedMode) return;
 
     const cell = document.querySelector('[data-id="' + id + '"]');
-    if (cell.innerHTML && cell.innerHTML !== '') return; // Already occupied
 
     if (game.selectedMode === 'sabotage') {
-        sabotage(id);
+        // Check if there's an enemy building at this location
+        const enemy = game.enemyBuildings.find(b => b.id === id);
+        if (enemy) {
+            showSabotageMenu(id);
+        }
+    } else if (game.selectedMode === 'strike') {
+        // Strike mode: target enemy buildings in AoE
+        executeNuclearStrike(id);
     } else {
+        // For building placement, check that cell is empty
+        if (cell.innerHTML && cell.innerHTML !== '') return; // Already occupied
         buildBuilding(id, game.selectedMode);
     }
 }
@@ -402,6 +419,37 @@ function placeOrSelect(id) {
  * Build a building at the specified cell
  */
 function buildBuilding(id, type) {
+    // Special handling for silos (nuclear weapons)
+    if (type === 'silo') {
+        // Check if player has at least 1 completed reactor
+        const completedReactors = game.buildings.filter(b => b.type === 'plant' && !b.isUnderConstruction).length;
+        if (completedReactors === 0) {
+            const cell = document.querySelector('[data-id="' + id + '"]');
+            if (cell) {
+                const rect = cell.getBoundingClientRect();
+                const msg = `<div style="font-weight:700; color:#ff6b6b;">🔴 Weapons Grade Requirement</div>` +
+                    `<div>You must have at least 1 completed Reactor to build a Silo.</div>`;
+                showTooltipAt(rect.right + 8, rect.top, msg);
+            }
+            console.warn('Cannot build silo without completed reactor');
+            return;
+        }
+        
+        // Check if player hasn't exceeded max silos this round
+        const existingSilos = game.buildings.filter(b => b.type === 'silo').length;
+        if (existingSilos >= game.maxSilosPerRound) {
+            const cell = document.querySelector('[data-id="' + id + '"]');
+            if (cell) {
+                const rect = cell.getBoundingClientRect();
+                const msg = `<div style="font-weight:700; color:#ff6b6b;">🔴 Arsenal Limit Reached</div>` +
+                    `<div>Maximum ${game.maxSilosPerRound} silo(s) per round.</div>`;
+                showTooltipAt(rect.right + 8, rect.top, msg);
+            }
+            console.warn('Exceeded max silos per round');
+            return;
+        }
+    }
+    
     // disallow building directly on road tiles
     if (game.terrain && (game.terrain[id] === 'road' || game.terrain[id] === 'road-h' || game.terrain[id] === 'road-x')) {
         const cell = document.querySelector('[data-id="' + id + '"]');
@@ -446,36 +494,292 @@ function buildBuilding(id, type) {
 }
 
 /**
- * Sabotage an enemy building
+ * Show sabotage attack menu for enemy building
  */
-function sabotage(id) {
-    const enemy = game.enemyBuildings.find(b => b.id === id);
-    if (!enemy) {
-        console.warn('No enemy building at this location');
-        return;
+function showSabotageMenu(cellId) {
+    const enemy = game.enemyBuildings.find(b => b.id === cellId);
+    if (!enemy) return;
+
+    const cell = document.querySelector('[data-id="' + cellId + '"]');
+    if (!cell) return;
+
+    const rect = cell.getBoundingClientRect();
+    
+    // Create menu
+    const menu = document.createElement('div');
+    menu.className = 'sabotage-menu';
+    menu.style.cssText = `
+        position: fixed;
+        left: ${rect.right + 8}px;
+        top: ${rect.top}px;
+        background: rgba(0, 0, 0, 0.95);
+        border: 1px solid #f57c00;
+        border-radius: 4px;
+        padding: 8px 0;
+        z-index: 100;
+        min-width: 240px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.8);
+    `;
+
+    const completedSilo = game.buildings.find(b => b.type === 'silo' && !b.isUnderConstruction);
+    const tempDisableCost = 300;
+    const stealCost = 500;
+    const nukeCost = Math.floor(game.playerWallet * 0.5);
+
+    // Option 1: Temporary Disable
+    const tempOption = document.createElement('div');
+    tempOption.style.cssText = `
+        padding: 10px 14px;
+        cursor: pointer;
+        color: #fff;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        transition: background 0.1s;
+    `;
+    tempOption.innerHTML = `<div style="font-weight:600; color:#ffa500;">⏸️ Disable</div><div style="font-size:12px; color:#aaa; margin-top:2px;">Production -50% for 45s (costs $${tempDisableCost})</div>`;
+    tempOption.onmouseover = () => tempOption.style.background = 'rgba(255, 124, 0, 0.1)';
+    tempOption.onmouseout = () => tempOption.style.background = '';
+    tempOption.onclick = () => {
+        executeTemporaryDisable(cellId, tempDisableCost);
+        menu.remove();
+    };
+    menu.appendChild(tempOption);
+
+    // Option 2: Steal Resources
+    const stealOption = document.createElement('div');
+    stealOption.style.cssText = `
+        padding: 10px 14px;
+        cursor: pointer;
+        color: #fff;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        transition: background 0.1s;
+    `;
+    stealOption.innerHTML = `<div style="font-weight:600; color:#4db8ff;">💰 Steal</div><div style="font-size:12px; color:#aaa; margin-top:2px;">Steal ~50 U from enemy (costs $${stealCost})</div>`;
+    stealOption.onmouseover = () => stealOption.style.background = 'rgba(77, 184, 255, 0.1)';
+    stealOption.onmouseout = () => stealOption.style.background = '';
+    stealOption.onclick = () => {
+        executeStealResources(cellId, stealCost);
+        menu.remove();
+    };
+    menu.appendChild(stealOption);
+
+    // Option 3: Nuclear Strike (only if silo exists)
+    if (completedSilo) {
+        const nukeOption = document.createElement('div');
+        nukeOption.style.cssText = `
+            padding: 10px 14px;
+            cursor: pointer;
+            color: #fff;
+            transition: background 0.1s;
+        `;
+        nukeOption.innerHTML = `<div style="font-weight:600; color:#ff4444;">💥 NUKE</div><div style="font-size:12px; color:#aaa; margin-top:2px;">Destroy in AoE + fallout (costs $${nukeCost})</div>`;
+        nukeOption.onmouseover = () => nukeOption.style.background = 'rgba(255, 0, 0, 0.2)';
+        nukeOption.onmouseout = () => nukeOption.style.background = '';
+        nukeOption.onclick = () => {
+            executeNuclearStrike(cellId);
+            menu.remove();
+        };
+        menu.appendChild(nukeOption);
+    } else {
+        const nukeOption = document.createElement('div');
+        nukeOption.style.cssText = `
+            padding: 10px 14px;
+            color: #666;
+            border-bottom: none;
+        `;
+        nukeOption.innerHTML = `<div style="font-weight:600; color:#666;">💥 NUKE (Locked)</div><div style="font-size:12px; color:#555; margin-top:2px;">Requires completed Silo</div>`;
+        menu.appendChild(nukeOption);
     }
 
-    const cost = buildingTypes[enemy.type].cost - 200;
+    document.body.appendChild(menu);
+
+    // Close menu when clicking elsewhere
+    const closeMenu = (e) => {
+        if (!menu.contains(e.target)) {
+            menu.remove();
+            document.removeEventListener('click', closeMenu);
+            game.selectedMode = null;
+        }
+    };
+    setTimeout(() => document.addEventListener('click', closeMenu), 0);
+}
+
+/**
+ * Temporary disable: reduce enemy production by 50% for 45 seconds
+ */
+function executeTemporaryDisable(cellId, cost) {
+    const enemy = game.enemyBuildings.find(b => b.id === cellId);
+    if (!enemy) return;
+
     if (game.playerWallet < cost) {
-        console.warn('Insufficient funds for sabotage');
+        console.warn('Insufficient funds');
         return;
     }
 
     game.playerWallet -= cost;
     game.tokensBurned += cost;
     game.prizePool += Math.floor(cost * 0.10);
-    // drain liquidity pool → pushes price up via bonding curve
     game.market.tokenPool = Math.max(1, game.market.tokenPool - cost / game.market.poolBurnRate);
-    const idx = game.enemyBuildings.findIndex(b => b.id === id);
-    game.enemyBuildings.splice(idx, 1);
 
-    const cell = document.querySelector('[data-id="' + id + '"]');
-    cell.innerHTML = '';
-    cell.className = 'cell';
+    // Mark enemy as disabled
+    if (!enemy.disabled) {
+        enemy.disabled = { endTime: Date.now() + 45000, multiplier: 0.5 };
+    }
 
-    calculateProximity();
+    console.info(`⏸️ Temporary disable on ${enemy.type} for 45s`);
     updateUI();
     game.selectedMode = null;
+}
+
+/**
+ * Steal resources: take uranium from enemy
+ */
+function executeStealResources(cellId, cost) {
+    const enemy = game.enemyBuildings.find(b => b.id === cellId);
+    if (!enemy) return;
+
+    if (game.playerWallet < cost) {
+        console.warn('Insufficient funds');
+        return;
+    }
+
+    game.playerWallet -= cost;
+    game.tokensBurned += cost;
+    game.prizePool += Math.floor(cost * 0.10);
+    game.market.tokenPool = Math.max(1, game.market.tokenPool - cost / game.market.poolBurnRate);
+
+    // Steal uranium
+    const stolen = 25 + Math.random() * 50; // 25-75 uranium
+    game.uraniumRaw += stolen;
+
+    console.info(`💰 Stole ${stolen.toFixed(1)} uranium from enemy`);
+    updateUI();
+    game.selectedMode = null;
+}
+
+/**
+ * Execute a nuclear strike on target cell
+ * Destroys all enemy buildings within AoE radius + applies radiation fallout
+ */
+function executeNuclearStrike(targetId) {
+    // Check cooldown
+    if (game.dayStrikes >= game.maxSilosPerRound) {
+        console.warn('Strike cooldown active');
+        return;
+    }
+    
+    // Check for completed silo available
+    const completedSilo = game.buildings.find(b => b.type === 'silo' && !b.isUnderConstruction);
+    if (!completedSilo) {
+        console.warn('No completed silo available');
+        return;
+    }
+    
+    // Strike cost: 40-60% of current wallet
+    const costPercent = 0.5; // 50% for balanced gameplay
+    const strikeCost = Math.floor(game.playerWallet * costPercent);
+    
+    if (game.playerWallet < strikeCost) {
+        console.warn('Insufficient funds for nuclear strike');
+        return;
+    }
+    
+    // Deduct cost
+    game.playerWallet -= strikeCost;
+    game.tokensBurned += strikeCost;
+    game.prizePool += Math.floor(strikeCost * 0.10);
+    game.market.tokenPool = Math.max(1, game.market.tokenPool - strikeCost / game.market.poolBurnRate);
+    
+    // Execute strike
+    triggerNuclearExplosion(targetId);
+    
+    // Update tracking
+    game.dayStrikes++;
+    const playerName = game.players.find(p => p.isLocal)?.name || 'YOU';
+    if (!game.nuclearThreats.includes(playerName)) {
+        game.nuclearThreats.push(playerName);
+    }
+    
+    game.selectedMode = null;
+    updateUI();
+}
+
+/**
+ * Trigger explosion and AoE destruction
+ */
+function triggerNuclearExplosion(centerId) {
+    const strikeRadius = 4; // cells
+    const coords = getCoords(centerId);
+    
+    // Calculate target buildings in radius
+    const destroyed = [];
+    game.enemyBuildings = game.enemyBuildings.filter(b => {
+        const bCoords = getCoords(b.id);
+        const dist = Math.max(Math.abs(bCoords.x - coords.x), Math.abs(bCoords.y - coords.y));
+        if (dist <= strikeRadius) {
+            destroyed.push(b);
+            return false; // Remove from array
+        }
+        return true;
+    });
+    
+    // Visual effects: red flash and screen shake
+    playNuclearEffects();
+    
+    // Clear destroyed buildings from display
+    destroyed.forEach(b => {
+        const cell = document.querySelector('[data-id="' + b.id + '"]');
+        if (cell) {
+            cell.innerHTML = '';
+            cell.className = 'cell';
+        }
+    });
+    
+    // Apply radiation fallout: −50% production for 120 seconds
+    const falloutTime = 120; // seconds
+    const falloutRadius = strikeRadius + 1; // slightly larger radius
+    game.buildings.forEach(b => {
+        if (!b.isUnderConstruction && (b.type === 'mine' || b.type === 'processor')) {
+            const bCoords = getCoords(b.id);
+            const dist = Math.max(Math.abs(bCoords.x - coords.x), Math.abs(bCoords.y - coords.y));
+            if (dist <= falloutRadius) {
+                if (!b.fallout) {
+                    b.fallout = { endTime: Date.now() + (falloutTime * 1000), multiplier: 0.5 };
+                }
+            }
+        }
+    });
+    
+    console.info(`💥 Nuclear strike at cell ${centerId}! ${destroyed.length} enemy buildings destroyed.`);
+}
+
+/**
+ * Play nuclear effect visuals/audio
+ */
+function playNuclearEffects() {
+    // Full-screen red flash
+    const flash = document.createElement('div');
+    flash.style.cssText = `
+        position: fixed; left: 0; top: 0; right: 0; bottom: 0;
+        background: rgba(255, 0, 0, 0.8);
+        z-index: 8000;
+        animation: fadeOut 0.6s ease-out;
+        pointer-events: none;
+    `;
+    document.body.appendChild(flash);
+    setTimeout(() => flash.remove(), 600);
+    
+    // Screen shake
+    const originalTransform = document.body.style.transform;
+    for (let i = 0; i < 10; i++) {
+        setTimeout(() => {
+            const x = (Math.random() - 0.5) * 20;
+            const y = (Math.random() - 0.5) * 20;
+            document.body.style.transform = `translate(${x}px, ${y}px)`;
+        }, i * 30);
+    }
+    setTimeout(() => {
+        document.body.style.transform = originalTransform;
+    }, 300);
 }
 
 /**
@@ -905,6 +1209,32 @@ function startSimLoops() {
 }
 
 /**
+ * Update grid visuals for active fallout zones
+ */
+function updateFalloutVisualization() {
+    const grid = document.getElementById('gameGrid');
+    const now = Date.now();
+    
+    // Remove all existing fallout indicators
+    grid.querySelectorAll('.cell').forEach(cell => cell.classList.remove('in-fallout'));
+    
+    // Add fallout class to cells in active fallout zones
+    game.falloutZones.forEach(zone => {
+        if (zone.endTime > now) {
+            const zoneCoords = getCoords(zone.id);
+            // Mark all cells within fallout radius
+            for (let x = Math.max(0, zoneCoords.x - zone.radius); x <= Math.min(19, zoneCoords.x + zone.radius); x++) {
+                for (let y = Math.max(0, zoneCoords.y - zone.radius); y <= Math.min(19, zoneCoords.y + zone.radius); y++) {
+                    const cellId = y * 20 + x;
+                    const cell = grid.querySelector(`[data-id="${cellId}"]`);
+                    if (cell) cell.classList.add('in-fallout');
+                }
+            }
+        }
+    });
+}
+
+/**
  * Production tick: called every real-second to produce continuous feel.
  */
 function productionTick() {
@@ -939,10 +1269,17 @@ function productionTick() {
     // ── Mines → uraniumRaw ────────────────────────────────────────────────────
     // Each mine independently yields a small random amount per tick (organic feel).
     // Range 0.10–0.35 U/sec per mine, average ~0.22.
+    // Fallout zones reduce production by 50% if affected.
     let produced = 0;
-    for (let i = 0; i < totalMines; i++) {
-        produced += 0.10 + Math.random() * 0.25;
-    }
+    const activeMines = game.buildings.filter(b => b.type === 'mine' && !b.isUnderConstruction);
+    activeMines.forEach(mine => {
+        let amount = 0.10 + Math.random() * 0.25;
+        // Apply fallout penalty if affected
+        if (mine.fallout && mine.fallout.endTime > Date.now()) {
+            amount *= mine.fallout.multiplier; // Apply 50% reduction
+        }
+        produced += amount;
+    });
     const totalStored = game.uraniumRaw + game.uraniumRefined;
     const rawHeadroom = Math.max(0, game.maxStorage - totalStored);
     const actualProduced = Math.min(rawHeadroom, produced);
@@ -952,12 +1289,17 @@ function productionTick() {
     // ── Processors → convert raw into refined ─────────────────────────────────
     // Each processor converts a small random trickle per tick (avg ~0.15 U/sec).
     // No processor = no refined uranium = no plant income.
-    let totalProcessors = 0;
-    game.buildings.forEach(b => { if (!b.isUnderConstruction && b.type === 'processor') totalProcessors++; });
+    // Fallout zones reduce production by 50% if affected.
+    const activeProcessors = game.buildings.filter(b => b.type === 'processor' && !b.isUnderConstruction);
     let converted = 0;
-    for (let i = 0; i < totalProcessors; i++) {
-        converted += 0.08 + Math.random() * 0.14; // avg ~0.15 U/sec per processor
-    }
+    activeProcessors.forEach(processor => {
+        let amount = 0.08 + Math.random() * 0.14; // avg ~0.15 U/sec per processor
+        // Apply fallout penalty if affected
+        if (processor.fallout && processor.fallout.endTime > Date.now()) {
+            amount *= processor.fallout.multiplier; // Apply 50% reduction
+        }
+        converted += amount;
+    });
     const actualConverted = Math.min(game.uraniumRaw, converted);
     game.uraniumRaw     -= actualConverted;
     game.uraniumRefined += actualConverted;
@@ -991,6 +1333,7 @@ function productionTick() {
     tickMarket();
 
     updateUI();
+    updateFalloutVisualization();
 }
 
 /**
@@ -1069,6 +1412,25 @@ function onHourAdvance() {
 }
 
 function onDayAdvance() {
+    // Reset daily strike counter
+    game.dayStrikes = 0;
+    
+    // Clean up expired fallout zones and remove fallout status from affected buildings
+    const now = Date.now();
+    game.falloutZones = game.falloutZones.filter(z => z.endTime > now);
+    game.buildings.forEach(b => {
+        if (b.fallout && b.fallout.endTime <= now) {
+            delete b.fallout;
+        }
+    });
+    
+    // Clean up expired disabled status on enemy buildings
+    game.enemyBuildings.forEach(b => {
+        if (b.disabled && b.disabled.endTime <= now) {
+            delete b.disabled;
+        }
+    });
+    
     // Hook round advancement to day: each day = one round (1-8)
     game.round = Math.min(game.time.day, game.runLength);
     
