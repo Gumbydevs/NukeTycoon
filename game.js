@@ -1072,13 +1072,14 @@ function onCellHover(id, e) {
             if (distance(id, en.id) <= game.proximityRange) pen++;
         }
         const label = displayNames[type] || type;
-        content = `<div style="font-weight:700;">Place: ${label}</div>` +
-            `<div>Same-type neighbors: ${same} (${same>0? '+'+ (same*25) +'% efficiency': 'no bonus'})</div>` +
-            `<div>Nearby enemies: ${pen}</div>`;
+        const icon = (buildingTypes[type] && buildingTypes[type].emoji) ? buildingTypes[type].emoji + ' ' : '';
+        content = `<div style="font-weight:700;">${icon}Place: ${label}</div>` +
+            `<div>📐 Same-type neighbors: ${same} (${same>0? '+'+ (same*25) +'% efficiency': 'no bonus'})</div>` +
+            `<div>⚠️ Nearby enemies: ${pen}</div>`;
         if (type === 'plant') {
             const hasRoad = cellHasRoadNeighbor(id);
             content += `<div style="color:${hasRoad ? '#4CAF50' : '#888'};">` +
-                `Road access: ${hasRoad ? '+40% income if built here ✓' : 'no road bonus here'}</div>`;
+                `🛣️ Road access: ${hasRoad ? '+40% income if built here ✓' : 'no road bonus here'}</div>`;
         }
         showTooltipAt(rect.right + 8, rect.top, content);
         return;
@@ -1093,13 +1094,14 @@ function onCellHover(id, e) {
         }
         for (const en of game.enemyBuildings) if (distance(id, en.id) <= game.proximityRange) pen++;
         const label = displayNames[type] || type;
-        content = `<div style="font-weight:700;">${label} (You)</div>` +
-            `<div>Same-type neighbors: ${same} (${same>0? '+'+ (same*25) +'%': 'none'})</div>` +
-            `<div>Nearby enemies: ${pen}</div>`;
+        const icon = (buildingTypes[type] && buildingTypes[type].emoji) ? buildingTypes[type].emoji + ' ' : '';
+        content = `<div style="font-weight:700;">${icon}${label} <span style="color:#4CAF50;">(You)</span></div>` +
+            `<div>📐 Same-type neighbors: ${same} (${same>0? '+'+ (same*25) +'%': 'none'})</div>` +
+            `<div>⚠️ Nearby enemies: ${pen}</div>`;
         if (type === 'plant') {
             const hasRoad = cellHasRoadNeighbor(id);
             content += `<div style="color:${hasRoad ? '#4CAF50' : '#888'};">` +
-                `Road access: ${hasRoad ? '+40% income ✓' : 'none'}</div>`;
+                `🛣️ Road access: ${hasRoad ? '+40% income ✓' : 'none'}</div>`;
         }
         showTooltipAt(rect.right + 8, rect.top, content);
         return;
@@ -1110,9 +1112,10 @@ function onCellHover(id, e) {
         const type = enemy.type;
         const sabotageCost = Math.max(0, buildingTypes[type].cost - 200);
         const label = displayNames[type] || type;
-        content = `<div style="font-weight:700;">${label} (Enemy)</div>` +
-            `<div>Sabotage cost: ${sabotageCost.toLocaleString()} tokens</div>` +
-            `<div>Effect: destroys building, removes its production</div>`;
+        const icon = (buildingTypes[type] && buildingTypes[type].emoji) ? buildingTypes[type].emoji + ' ' : '';
+        content = `<div style="font-weight:700;">${icon}${label} <span style="color:#ff6b6b;">(Enemy)</span></div>` +
+            `<div>💥 Sabotage cost: ${sabotageCost.toLocaleString()} tokens</div>` +
+            `<div>🗑️ Effect: destroys building, removes its production</div>`;
         showTooltipAt(rect.right + 8, rect.top, content);
         return;
     }
@@ -1267,17 +1270,29 @@ function addButtonTooltips() {
             const label = displayNames[typeKey] || btn.textContent.trim();
             let content = '<div style="font-weight:700;">' + label + '</div>';
             if (typeKey === 'mine' || /mine/i.test(typeKey)) {
-                content += '<div>Place a Mine to extract raw uranium from the ground. Cost: ' + buildingTypes.mine.cost + ' tokens.</div>';
+                content = '<div style="font-weight:700;">⛏️ ' + label + '</div>';
+                content += '<div>Place a Mine to extract raw uranium from the ground.</div>';
+                content += '<div>💰 Cost: ' + buildingTypes.mine.cost + ' tokens</div>';
             } else if (typeKey === 'processor' || /process/i.test(typeKey)) {
-                content += '<div>Place a Plant to refine/transform raw material. Cost: ' + buildingTypes.processor.cost + ' tokens.</div>';
+                content = '<div style="font-weight:700;">🏭 ' + label + '</div>';
+                content += '<div>Refines raw uranium into fuel for Reactors.</div>';
+                content += '<div>💰 Cost: ' + buildingTypes.processor.cost + ' tokens</div>';
             } else if (typeKey === 'storage' || /store/i.test(typeKey)) {
-                content += '<div>Place Storage (vault) to increase fuel capacity. Cost: ' + buildingTypes.storage.cost + ' tokens.</div>';
+                content = '<div style="font-weight:700;">🗄️ ' + label + '</div>';
+                content += '<div>Increases your uranium storage capacity.</div>';
+                content += '<div>💰 Cost: ' + buildingTypes.storage.cost + ' tokens</div>';
             } else if (typeKey === 'plant' || /plant/i.test(typeKey)) {
-                content += '<div>Place a Reactor to consume fuel and generate power/income. Cost: ' + buildingTypes.plant.cost + ' tokens.</div>';
+                content = '<div style="font-weight:700;">☢️ ' + label + '</div>';
+                content += '<div>Consumes refined uranium to generate power &amp; income.</div>';
+                content += '<div>🛣️ Place near a road for +40% income bonus.</div>';
+                content += '<div>💰 Cost: ' + buildingTypes.plant.cost + ' tokens</div>';
             } else if (typeKey === 'sabotage' || /sabotage/i.test(typeKey)) {
-                content += '<div>Sabotage an enemy building. Click the Sabotage button then click an enemy cell. Cost varies by target.</div>';
+                content = '<div style="font-weight:700;">💥 Sabotage</div>';
+                content += '<div>Destroy an enemy building. Click Sabotage then click an enemy cell.</div>';
+                content += '<div>⚠️ Cost varies by target type.</div>';
             } else if (typeKey === 'dev' || /dev/i.test(typeKey)) {
-                content += '<div>Toggle developer tools: advance time, change simulation speed for testing.</div>';
+                content = '<div style="font-weight:700;">🔧 Dev Tools</div>';
+                content += '<div>Advance time, change simulation speed for testing.</div>';
             }
             const rect = btn.getBoundingClientRect();
             showTooltipAt(rect.right + 8, rect.top, content);
