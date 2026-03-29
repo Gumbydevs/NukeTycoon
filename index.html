@@ -32,7 +32,11 @@
 
                 <!-- Economy -->
                 <div class="stat-group">
-                    <div class="stat-item stat-item--prize"><span class="stat-label">Prize Pool</span><span class="stat-val" id="prizePool">0</span></div>
+                    <div class="stat-item stat-item--prize">
+                        <span class="stat-label">Prize Pool</span>
+                        <span class="stat-val" id="prizePool">0</span>
+                        <button class="icon-btn" id="prizeInfoBtn" title="About prize pool">ℹ️</button>
+                    </div>
                     <div class="stat-item"><span class="stat-label">Circulating</span><span class="stat-val" id="circulating">0</span></div>
                     <div class="stat-item"><span class="stat-label">Wallet</span><span class="stat-val" id="wallet">50,000</span></div>
                 </div>
@@ -139,6 +143,22 @@
             <div id="endOfDayContent" style="font-size:13px; color:#ccc;"></div>
             <div style="margin-top:12px; font-weight:700;">Leaderboard</div>
             <div id="leaderboard" style="margin-top:8px; font-size:13px; color:#ccc;"></div>
+        </div>
+    </div>
+
+    <!-- Conversion / About modal -->
+    <div id="conversionModal" style="display:none; position:fixed; left:0; top:0; right:0; bottom:0; background:rgba(0,0,0,0.7); z-index:95; align-items:center; justify-content:center;">
+        <div style="max-width:480px; width:92%; background:#0d0d0d; border:1px solid #333; padding:16px; color:#fff; border-radius:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <div style="font-weight:700;">About Prize Pool & Tokens</div>
+                <button class="btn" onclick="closeConversionModal()">Close</button>
+            </div>
+            <div style="color:#ccc; font-size:13px; line-height:1.4;">
+                <p><strong>What you see:</strong> the Prize Pool UI shows an estimated fiat equivalent (USDC) alongside the in-game token amount. This is an approximate conversion for display only.</p>
+                <p><strong>Conversion:</strong> <span id="conversionRateText"></span></p>
+                <p><strong>Phase 3 note:</strong> Real wallet withdrawals and on-chain mappings are planned for a later phase; currently tokens are in-game only.</p>
+                <p style="color:#ffb84d; font-size:13px;">If you plan to change the token economics, update `game.tokensPerUSD` in game.js to reflect how many tokens = $1 USDC.</p>
+            </div>
         </div>
     </div>
 

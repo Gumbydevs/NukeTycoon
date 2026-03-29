@@ -1212,11 +1212,28 @@ function formatSupply(n) {
  * Format a prize-pool / token amount as USD + tokens.
  * Returns string like: "$6.00 USDC (12,000 tokens)"
  */
-function formatPrizePool(tokens) {
+function formatCompactNumber(n) {
+    const num = Number(n) || 0;
+    if (num >= 1e9) return (num / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
+    if (num >= 1e6) return (num / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (num >= 1e3) return (num / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
+    return num.toFixed(0);
+}
+
+/**
+ * Format a prize-pool / token amount as compact USD + compact tokens.
+ * Default compact output: "$6.0K USDC (12K tokens)"
+ */
+function formatPrizePool(tokens, compact = true) {
     const t = Number(tokens) || 0;
     const rate = (game && game.tokensPerUSD) ? Number(game.tokensPerUSD) : 2000;
     const usd = t / Math.max(1, rate);
-    // if usd is large, show commas; otherwise show 2dp
+    if (compact) {
+        const usdCompact = formatCompactNumber(usd);
+        const tokenCompact = formatCompactNumber(t);
+        return `$${usdCompact} USDC (${tokenCompact} tokens)`;
+    }
+    // verbose fallback
     const usdStr = usd >= 1000 ? usd.toLocaleString(undefined, {maximumFractionDigits:0}) : usd.toFixed(2);
     return `$${usdStr} USDC (${t.toLocaleString()} tokens)`;
 }

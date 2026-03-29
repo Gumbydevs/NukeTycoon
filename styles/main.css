@@ -155,6 +155,21 @@ body.authenticated .container {
 #day         { min-width: 14px; }
 #time        { min-width: 56px; }
 #prizePool   { min-width: 120px; }
+
+/* small inline info button next to stat values */
+.icon-btn {
+    background: transparent;
+    border: none;
+    color: #ccc;
+    cursor: pointer;
+    margin-left: 8px;
+    font-size: 13px;
+    padding: 4px;
+}
+.icon-btn:hover { color: #fff; }
+
+/* Conversion modal tweaks (keeps consistent with other modals) */
+#conversionModal > div { box-shadow: 0 10px 30px rgba(0,0,0,0.6); }
 #circulating { min-width: 72px; }
 #wallet      { min-width: 56px; }
 #uranium     { min-width: 110px; }
