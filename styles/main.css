@@ -244,6 +244,8 @@ body.authenticated .container {
 .menu-section { padding: 6px 4px; border-radius:4px; }
 .menu-section + .menu-section { border-top: 1px solid rgba(255,255,255,0.03); margin-top:6px; padding-top:8px; }
 .menu-section-title { color:#888; font-size:11px; font-weight:700; margin-bottom:6px; }
+/* Hidden in lobby, revealed once a game run starts */
+.game-only { display: none; }
 .menu-item {
     display: flex;
     align-items: center;

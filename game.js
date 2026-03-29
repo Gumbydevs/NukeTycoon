@@ -1325,6 +1325,9 @@ function formatUranium(n) {
  * Initialize game on page load
  */
 function startGame() {
+    // Reveal game-only menu items now that the run has started
+    document.querySelectorAll('.game-only').forEach(el => el.style.display = '');
+
     initGrid();
     initRun();   // collect buy-ins, seed prize pool & bonding curve pool (once per run)
     updateUI();
@@ -1363,6 +1366,9 @@ function authenticate() {
  */
 function showLobby() {
     initPlayerRegistry(); // populate game.players (no buy-in yet)
+
+    // Hide game-only menu items while in lobby
+    document.querySelectorAll('.game-only').forEach(el => el.style.display = 'none');
 
     const modal = document.getElementById('lobbyModal');
     if (!modal) { startGame(); return; } // fallback if modal missing
