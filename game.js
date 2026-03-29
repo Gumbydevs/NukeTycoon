@@ -260,11 +260,30 @@ function initGrid() {
  * Spawn random enemy buildings on the grid
  */
 function spawnEnemyBuildings() {
+    const types = Object.keys(buildingTypes);
+    const maxAttempts = 200;
     for (let i = 0; i < 5; i++) {
-        const randomId = Math.floor(Math.random() * 400);
-        const type = Object.keys(buildingTypes)[Math.floor(Math.random() * 4)];
+        let attempts = 0;
+        let randomId = null;
+        let type = null;
         const enemy = enemies[Math.floor(Math.random() * enemies.length)];
-        
+
+        // Pick a random non-road, unoccupied tile (give up after many attempts)
+        while (attempts < maxAttempts) {
+            attempts++;
+            randomId = Math.floor(Math.random() * 400);
+            type = types[Math.floor(Math.random() * types.length)];
+            const terrainBlocked = game.terrain && (game.terrain[randomId] === 'road' || game.terrain[randomId] === 'road-h' || game.terrain[randomId] === 'road-x');
+            const occupiedByEnemy = game.enemyBuildings.find(b => b.id === randomId);
+            const occupiedByPlayer = game.buildings.find(b => b.id === randomId);
+            if (!terrainBlocked && !occupiedByEnemy && !occupiedByPlayer) break;
+        }
+
+        if (attempts >= maxAttempts) {
+            console.warn('spawnEnemyBuildings: could not find a valid non-road tile for spawn, skipping');
+            continue;
+        }
+
         game.enemyBuildings.push({ id: randomId, type, owner: enemy.name });
         renderBuilding(randomId, type, false);
     }
