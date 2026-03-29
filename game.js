@@ -199,6 +199,7 @@ function initRun() {
     const startingWalletPerPlayer = 50000; // must match initPlayerRegistry wallet init
     game.tokensIssued += game.players.length * startingWalletPerPlayer;
 
+    let totalBuyIn = 0;
     game.players.forEach(p => {
         if (p.isLocal) {
             // deduct from the human player's wallet
