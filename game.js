@@ -498,6 +498,8 @@ function initMenu() {
             actionsMenu.style.position = '';
             return;
         }
+        // If mobile menu overlay class is present, remove it so dropdown can show
+        try { document.body.classList.remove('mobile-menu-open'); } catch (e) { }
         // Opening: mark visible for AT then show and position
         actionsMenu.setAttribute('aria-hidden', 'false');
         // Show first so we can measure, then position fixed to avoid parent clipping
@@ -517,7 +519,25 @@ function initMenu() {
         }
         actionsMenu.style.left = left + 'px';
         actionsMenu.style.top = top + 'px';
+
+        // On small screens, ensure a compact stats header is visible inside the dropdown
+        try {
+            if (window.innerWidth <= 700) {
+                let stats = actionsMenu.querySelector('.menu-stats');
+                if (!stats) {
+                    stats = document.createElement('div');
+                    stats.className = 'menu-stats';
+                    stats.style.cssText = 'color:#ccc; font-size:13px; padding:6px 8px; border-bottom:1px solid rgba(255,255,255,0.03); margin-bottom:8px;';
+                    actionsMenu.insertBefore(stats, actionsMenu.firstChild);
+                }
+                const portfolio = (game.playerWallet + ((game.uraniumRaw + game.uraniumRefined) * game.market.price)) || 0;
+                stats.innerHTML = `Round: ${game.round} — Tokens: ${game.playerWallet.toLocaleString()} — Raw: ${formatUranium(game.uraniumRaw)} / Ref: ${formatUranium(game.uraniumRefined)} — Portfolio: $${portfolio.toFixed(2)}`;
+            }
+        } catch (e) { /* ignore */ }
     }
+
+    // expose setMenuOpen globally so inline fallbacks can delegate to the same logic
+    try { window.setMenuOpen = setMenuOpen; } catch (e) { /* ignore */ }
 
     if (actionsBtn) {
         actionsBtn.addEventListener('click', (e) => {
