@@ -215,6 +215,17 @@ body.authenticated .container {
 .menu-item:hover { background: rgba(255,255,255,0.02); color:#fff; border-color: rgba(255,255,255,0.03); }
 .menu-item.active, .btn.active { background: rgba(255,184,77,0.08); border-color: rgba(255,184,77,0.12); color: #ffb84d; }
 
+/* Tooltip when anchored to the actions menu */
+#tooltip.anchored-to-menu {
+    transition: none;
+    font-size: 13px;
+    line-height: 1.2;
+    padding: 10px;
+    background: rgba(0,0,0,0.9);
+    border: 1px solid #222;
+    border-radius: 6px;
+}
+
 /* When the top bar hides for mobile-menu-open, ensure the dropdown is hidden too */
 body.mobile-menu-open .dropdown { display: none !important; }
 

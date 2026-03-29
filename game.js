@@ -598,12 +598,9 @@ function placeOrSelect(id) {
 
     const cell = document.querySelector('[data-id="' + id + '"]');
 
-    if (game.selectedMode === 'sabotage') {
-        // Check if there's an enemy building at this location
-        const enemy = game.enemyBuildings.find(b => b.id === id);
-        if (enemy) {
-            showSabotageMenu(id);
-        }
+        if (game.selectedMode === 'sabotage') {
+            const enemy = game.enemyBuildings.find(b => b.id === id);
+            if (enemy) showSabotageMenu(id);
     } else if (game.selectedMode === 'strike') {
         // Strike mode: target enemy buildings in AoE
         executeNuclearStrike(id);
@@ -2122,6 +2119,33 @@ function showTooltipAt(x, y, html) {
 }
 
 /**
+ * Show a tooltip anchored to the left of the actions menu and vertically
+ * aligned to the menu item. This measures the tooltip size then places it
+ * so the right edge sits a few pixels left of the menu's left edge.
+ */
+function showTooltipAnchoredLeft(menuRect, itemRect, html) {
+    const t = document.getElementById('tooltip');
+    if (!t) return;
+    t.innerHTML = html;
+    t.style.display = 'block';
+    t.style.maxWidth = '320px';
+    t.classList.add('anchored-to-menu');
+
+    // measure after render
+    const rect = t.getBoundingClientRect();
+    const padding = 8;
+    // compute left so tooltip's right edge sits padding px left of menu left
+    let left = Math.max(padding, Math.min(window.innerWidth - rect.width - padding, (menuRect.left - rect.width - 12)));
+    // vertical center relative to menu item
+    let top = itemRect.top + (itemRect.height - rect.height) / 2;
+    // clamp to viewport
+    top = Math.max(padding, Math.min(window.innerHeight - rect.height - padding, top));
+
+    t.style.left = left + 'px';
+    t.style.top = top + 'px';
+}
+
+/**
  * Reposition an already-visible tooltip so it stays inside the viewport.
  * If called with `html` provided, it will set content first.
  */
@@ -2154,6 +2178,9 @@ function hideTooltip() {
     const t = document.getElementById('tooltip');
     if (!t) return;
     t.style.display = 'none';
+    // reset any anchored state
+    t.style.maxWidth = '';
+    t.classList.remove('anchored-to-menu');
 }
 
 /**
@@ -2253,8 +2280,14 @@ function addButtonTooltips() {
                 content += '<div>💰 Cost: ' + buildingTypes.plant.cost + ' tokens</div>';
             } else if (typeKey === 'sabotage' || /sabotage/i.test(typeKey)) {
                 content = '<div style="font-weight:700;">💥 Sabotage</div>';
-                content += '<div>Destroy an enemy building. Click Sabotage then click an enemy cell.</div>';
+                content += '<div>Sabotage an enemy building.</div>';
+                content += '<div>Click Sabotage then click an enemy cell.</div>';
                 content += '<div>⚠️ Cost varies by target type.</div>';
+            } else if (typeKey === 'silo' || /silo/i.test(typeKey)) {
+                content = '<div style="font-weight:700;">💥 Silo</div>';
+                content += '<div>Missile Silo — the ultimate weapon. Requires at least 1 completed Reactor to build.</div>';
+                content += `<div>💰 Build cost: ${buildingTypes.silo.cost} tokens — Construction: ${buildingTypes.silo.constructionTime}s</div>`;
+                content += `<div>⚠️ Limit: ${game.maxSilosPerRound} per round. Using a nuke costs a large portion of your wallet.</div>`;
             } else if (typeKey === 'dev' || /dev/i.test(typeKey)) {
                 content = '<div style="font-weight:700;">🔧 Dev Tools</div>';
                 content += '<div>Advance time, change simulation speed for testing.</div>';
@@ -2270,6 +2303,79 @@ function addButtonTooltips() {
         btn.addEventListener('mouseleave', hideTooltip);
     });
 }
+
+    // Also add tooltips for popup menu items, anchored to the actions menu
+    const menu = document.getElementById('actionsMenu');
+    const menuItems = document.querySelectorAll('.menu-item');
+    if (menuItems && menuItems.length) {
+        menuItems.forEach(mi => {
+            mi.addEventListener('mouseenter', (e) => {
+                const typeKey = mi.dataset.type || mi.textContent.trim();
+                const label = displayNames[typeKey] || mi.textContent.trim();
+                let content = '<div style="font-weight:700;">' + label + '</div>';
+                if (typeKey === 'mine' || /mine/i.test(typeKey)) {
+                    content = '<div style="font-weight:700;">⛏️ ' + label + '</div>';
+                    content += '<div>Place a Mine to extract raw uranium from the ground.</div>';
+                    content += '<div>💰 Cost: ' + buildingTypes.mine.cost + ' tokens</div>';
+                } else if (typeKey === 'processor' || /process/i.test(typeKey)) {
+                    content = '<div style="font-weight:700;">🏭 ' + label + '</div>';
+                    content += '<div>Refines raw uranium into fuel for Reactors.</div>';
+                    content += '<div>💰 Cost: ' + buildingTypes.processor.cost + ' tokens</div>';
+                } else if (typeKey === 'storage' || /store/i.test(typeKey)) {
+                    content = '<div style="font-weight:700;">🗄️ ' + label + '</div>';
+                    content += '<div>Increases your uranium storage capacity.</div>';
+                    content += '<div>💰 Cost: ' + buildingTypes.storage.cost + ' tokens</div>';
+                } else if (typeKey === 'plant' || /plant/i.test(typeKey)) {
+                    content = '<div style="font-weight:700;">☢️ ' + label + '</div>';
+                    content += '<div>Consumes refined uranium to generate power &amp; income.</div>';
+                    content += '<div>🛣️ Place near a road for +40% income bonus.</div>';
+                    content += '<div>💰 Cost: ' + buildingTypes.plant.cost + ' tokens</div>';
+                } else if (typeKey === 'sabotage' || /sabotage/i.test(typeKey)) {
+                    content = '<div style="font-weight:700;">💥 Sabotage</div>';
+                    content += '<div>Sabotage an enemy building.</div>';
+                    content += '<div>Click Sabotage then click an enemy cell.</div>';
+                    content += '<div>⚠️ Cost varies by target type.</div>';
+                } else if (typeKey === 'silo' || /silo/i.test(typeKey)) {
+                    content = '<div style="font-weight:700;">💥 Silo</div>';
+                    content += '<div>Nukes. The ultimate weapon.</div>';
+                    content += '<div>Requires 1 completed Reactor to build.</div>';
+                    content += '<div>💰 Cost: ' + buildingTypes.silo.cost + ' tokens</div>';
+                    content += '<div>⚠️ Limit: ' + game.maxSilosPerRound + ' per round</div>';
+                }
+                // Anchor tooltip to the LEFT of the actions menu, vertically centered to the item
+                const menuRect = menu ? menu.getBoundingClientRect() : null;
+                const itemRect = mi.getBoundingClientRect();
+                // store the generated HTML on the element so mousemove can reuse it
+                mi._tooltipContent = content;
+                if (menuRect) {
+                    showTooltipAnchoredLeft(menuRect, itemRect, content);
+                } else {
+                    // fallback: place to the left of item
+                    const x = itemRect.left - 260;
+                    const y = itemRect.top;
+                    showTooltipAt(x, y, content);
+                }
+            });
+            mi.addEventListener('mousemove', (e) => {
+                // Keep tooltip vertically aligned with the item in case of scrolling/resize
+                const menuRect = menu ? menu.getBoundingClientRect() : null;
+                const itemRect = mi.getBoundingClientRect();
+                const content = mi._tooltipContent || mi.textContent.trim();
+                if (menuRect) showTooltipAnchoredLeft(menuRect, itemRect, content);
+            });
+            mi.addEventListener('mouseleave', (e) => {
+                // clear anchored styles before hiding
+                const t = document.getElementById('tooltip');
+                if (t) {
+                    t.style.maxWidth = '';
+                    t.classList.remove('anchored-to-menu');
+                }
+                // clear stored tooltip content
+                delete mi._tooltipContent;
+                hideTooltip();
+            });
+        });
+    }
 
 /**
  * Dev controls
