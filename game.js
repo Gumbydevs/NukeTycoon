@@ -102,13 +102,13 @@ const PLAYER_COLOR = '#ffb84d';
 const ENEMY_COLOR = '#888888';
 
 const buildingTypes = {
-    mine: { cost: 800, emoji: '⛏️', color: '#4CAF50', power: 0 },
+    mine: { cost: 800, emoji: '⛏️', color: '#4CAF50', power: 0, constructionTime: 8 },  // 8 seconds = ~13 mins real-time
     // Use factory emoji for processor (renders as 'Plant' in UI)
-    processor: { cost: 1200, emoji: '🏭', color: '#d98a3a', power: 0 },
+    processor: { cost: 1200, emoji: '🏭', color: '#d98a3a', power: 0, constructionTime: 12 },
     // Use a filing-cabinet / vault emoji for storage and a warmer metal tone
-    storage: { cost: 1000, emoji: '🗄️', color: '#b08b4f', power: 0 },
+    storage: { cost: 1000, emoji: '🗄️', color: '#b08b4f', power: 0, constructionTime: 10 },
     // reactor (consumes fuel)
-    plant: { cost: 1000, emoji: '☢️', color: '#ffb84d', power: 100 }
+    plant: { cost: 1000, emoji: '☢️', color: '#ffb84d', power: 100, constructionTime: 15 }
 };
 
 // Display names used in UI (keep keys stable in logic)
@@ -426,13 +426,20 @@ function buildBuilding(id, type) {
     game.prizePool += Math.floor(cost * 0.10);
     // drain liquidity pool → pushes price up via bonding curve
     game.market.tokenPool = Math.max(1, game.market.tokenPool - cost / game.market.poolBurnRate);
-    game.buildings.push({ id, type, owner: 'YOU' });
+    game.buildings.push({ 
+        id, 
+        type, 
+        owner: 'YOU',
+        constructionTimeRemaining: buildingTypes[type].constructionTime,
+        isUnderConstruction: true
+    });
 
     if (type === 'storage') {
         game.maxStorage += 1000;
     }
 
-    renderBuilding(id, type, true);
+    const building = game.buildings.find(b => b.id === id && b.type === type);
+    renderBuilding(id, type, true, building);
     calculateProximity();
     updateUI();
     game.selectedMode = null;
@@ -474,19 +481,43 @@ function sabotage(id) {
 /**
  * Render a building on the grid
  */
-function renderBuilding(id, type, isPlayer) {
+function renderBuilding(id, type, isPlayer, building) {
     const cell = document.querySelector('[data-id="' + id + '"]');
     cell.className = 'cell owned ' + type + (isPlayer ? ' owned-player' : ' owned-enemy');
 
-    // Render either an SVG monochrome icon (tintable) or fallback to emoji text.
-    const tint = isPlayer ? PLAYER_COLOR : ENEMY_COLOR;
-    // Always render a proper SVG for `storage` so the vault/silo looks consistent.
-    if (USE_SVG_ICONS || type === 'storage') {
-        const svg = getIconSVG(type, tint);
-        cell.innerHTML = svg;
-    } else {
+    // Check if building is under construction
+    const isUnderConstruction = building && building.isUnderConstruction;
+    
+    if (isUnderConstruction && building) {
+        // Render progress circle
+        const progress = 1 - (building.constructionTimeRemaining / buildingTypes[type].constructionTime);
+        const circumference = 2 * Math.PI * 45; // 45 = radius
+        const strokeDashoffset = circumference * (1 - progress);
+        
+        const tint = isPlayer ? PLAYER_COLOR : ENEMY_COLOR;
         const emoji = buildingTypes[type].emoji || '';
-        cell.innerHTML = `<span class="icon-emoji" style="color:${tint};">${emoji}</span>`;
+        
+        cell.innerHTML = `
+            <div style="position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
+                <svg style="position: absolute; width: 100%; height: 100%; top: 0; left: 0;" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="50" cy="50" r="45" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="3"/>
+                    <circle cx="50" cy="50" r="45" fill="none" stroke="${tint}" stroke-width="3" 
+                            stroke-dasharray="${circumference}" stroke-dashoffset="${strokeDashoffset}"
+                            stroke-linecap="round" style="transition: stroke-dashoffset 0.1s linear; transform: rotate(-90deg); transform-origin: 50px 50px;"/>
+                </svg>
+                <span class="icon-emoji" style="font-size: 20px; z-index: 1; opacity: 0.6;">${emoji}</span>
+            </div>
+        `;
+    } else {
+        // Render normal building
+        const tint = isPlayer ? PLAYER_COLOR : ENEMY_COLOR;
+        if (USE_SVG_ICONS || type === 'storage') {
+            const svg = getIconSVG(type, tint);
+            cell.innerHTML = svg;
+        } else {
+            const emoji = buildingTypes[type].emoji || '';
+            cell.innerHTML = `<span class="icon-emoji" style="color:${tint};">${emoji}</span>`;
+        }
     }
 }
 
@@ -567,6 +598,9 @@ function calculatePower() {
     let totalProcessors = 0;
 
     game.buildings.forEach(building => {
+        // Only count completed buildings for power calculation
+        if (building.isUnderConstruction) return;
+        
         if (building.type === 'plant') {
             let penalty = 0;
             game.enemyBuildings.forEach(enemy => {
@@ -874,12 +908,32 @@ function startSimLoops() {
  * Production tick: called every real-second to produce continuous feel.
  */
 function productionTick() {
-    // Count buildings
+    // ── Handle construction timers ────────────────────────────────────────────
+    game.buildings.forEach(b => {
+        if (b.isUnderConstruction && b.constructionTimeRemaining > 0) {
+            b.constructionTimeRemaining -= 0.1; // 0.1 per tick (each tick is 1 second)
+            
+            // Construction complete
+            if (b.constructionTimeRemaining <= 0) {
+                b.constructionTimeRemaining = 0;
+                b.isUnderConstruction = false;
+                // Re-render to show completed building
+                renderBuilding(b.id, b.type, true, b);
+            } else {
+                // Update progress display
+                renderBuilding(b.id, b.type, true, b);
+            }
+        }
+    });
+    
+    // Count buildings (only completed ones produce resources)
     let totalMines = 0;
     let totalPlants = 0;
     game.buildings.forEach(b => {
-        if (b.type === 'mine') totalMines++;
-        if (b.type === 'plant') totalPlants++;
+        if (!b.isUnderConstruction) { // Only count completed buildings
+            if (b.type === 'mine') totalMines++;
+            if (b.type === 'plant') totalPlants++;
+        }
     });
 
     // ── Mines → uraniumRaw ────────────────────────────────────────────────────
@@ -899,7 +953,7 @@ function productionTick() {
     // Each processor converts a small random trickle per tick (avg ~0.15 U/sec).
     // No processor = no refined uranium = no plant income.
     let totalProcessors = 0;
-    game.buildings.forEach(b => { if (b.type === 'processor') totalProcessors++; });
+    game.buildings.forEach(b => { if (!b.isUnderConstruction && b.type === 'processor') totalProcessors++; });
     let converted = 0;
     for (let i = 0; i < totalProcessors; i++) {
         converted += 0.08 + Math.random() * 0.14; // avg ~0.15 U/sec per processor

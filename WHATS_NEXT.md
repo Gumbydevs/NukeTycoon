@@ -27,6 +27,7 @@
 ### Resource Chain
 - [x] **Processor flow implemented** — `uraniumRaw` and `uraniumRefined` exist; `productionTick()` converts raw → refined per processor.
 - [x] **Processing rate present** — processors convert a small amount per tick (configurable in code).
+- [x] **Building construction times** — Each building type has a configurable `constructionTime` (mine: 8s, processor: 12s, storage: 10s, plant: 15s). Displays circular progress indicator while building; only completed buildings produce resources/power.
 - [ ] **Storage overflow UX** — production caps correctly (`rawHeadroom` prevents overproduce) but no visual warning, animation, or "waste" counter UI. Hard cap silently discards overflow.
 
 ### Proximity Bonus
