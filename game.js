@@ -754,7 +754,9 @@ function buildBuilding(id, type) {
     game.playerWallet -= cost;
     game.tokensBurned += cost;
     game.prizePool += Math.floor(cost * 0.10);
-    // show floating cost indicator
+    // show floating cost indicator — sync display to true wallet at this moment
+    game._walletShown = game.playerWallet;
+    game._walletMarketBaseline = game.market.price;
     const _walletEl = document.getElementById('wallet');
     if (_walletEl) showFloatingText('-' + cost.toLocaleString(), '#ff6b6b', _walletEl);
     // drain liquidity pool → pushes price up via bonding curve
@@ -917,6 +919,10 @@ function executeTemporaryDisable(cellId, cost) {
     game.tokensBurned += cost;
     game.prizePool += Math.floor(cost * 0.10);
     game.market.tokenPool = Math.max(1, game.market.tokenPool - cost / game.market.poolBurnRate);
+    game._walletShown = game.playerWallet;
+    game._walletMarketBaseline = game.market.price;
+    const _wEl1 = document.getElementById('wallet');
+    if (_wEl1) showFloatingText('-' + cost.toLocaleString(), '#ff6b6b', _wEl1);
 
     // Mark enemy as disabled
     if (!enemy.disabled) {
@@ -945,6 +951,10 @@ function executeStealResources(cellId, cost) {
     game.tokensBurned += cost;
     game.prizePool += Math.floor(cost * 0.10);
     game.market.tokenPool = Math.max(1, game.market.tokenPool - cost / game.market.poolBurnRate);
+    game._walletShown = game.playerWallet;
+    game._walletMarketBaseline = game.market.price;
+    const _wEl2 = document.getElementById('wallet');
+    if (_wEl2) showFloatingText('-' + cost.toLocaleString(), '#ff6b6b', _wEl2);
 
     // Steal uranium
     const stolen = 25 + Math.random() * 50; // 25-75 uranium
@@ -989,6 +999,10 @@ function executeNuclearStrike(targetId) {
     game.tokensBurned += strikeCost;
     game.prizePool += Math.floor(strikeCost * 0.10);
     game.market.tokenPool = Math.max(1, game.market.tokenPool - strikeCost / game.market.poolBurnRate);
+    game._walletShown = game.playerWallet;
+    game._walletMarketBaseline = game.market.price;
+    const _wEl3 = document.getElementById('wallet');
+    if (_wEl3) showFloatingText('-' + strikeCost.toLocaleString(), '#ff6b6b', _wEl3);
     
     // Execute strike
     triggerNuclearExplosion(targetId);
@@ -1245,7 +1259,18 @@ function calculatePower() {
  * Update UI with current game state
  */
 function updateUI() {
-    setWalletDisplay(game.playerWallet);
+    // Only display the wallet value that corresponds to a visible float event.
+    // _walletShown is set when income/spend floats fire; stays frozen between events.
+    if (game._walletShown === undefined) game._walletShown = game.playerWallet;
+
+    // Gently breathe the displayed wallet with market price movement.
+    // _walletMarketBaseline is the market price at the last confirmed event.
+    // A ±5% market swing nudges the display ±1.5% — purely cosmetic feel.
+    if (game._walletMarketBaseline === undefined) game._walletMarketBaseline = game.market.price;
+    const marketDrift = (game.market.price / game._walletMarketBaseline) - 1; // e.g. +0.03 = market up 3%
+    const driftOffset  = Math.round(game._walletShown * marketDrift * 0.3);   // scale down to ~0.9% max feel
+    const softTarget   = game._walletShown + driftOffset;
+    setWalletDisplay(softTarget);
     document.getElementById('uranium').textContent = formatUranium(game.uraniumRaw) + ' / ' + formatUranium(game.uraniumRefined);
     const totalStored = game.uraniumRaw + game.uraniumRefined;
     document.getElementById('stored').textContent = formatUranium(totalStored) + '/' + formatUranium(game.maxStorage);
@@ -1796,6 +1821,9 @@ function productionTick() {
     if (game._incomeTickCount >= 5) {
         if (game._pendingIncomeDisplay >= 40) {
             const _incomeEl = document.getElementById('wallet');
+            // Sync displayed value and reset market baseline at the moment the float fires
+            game._walletShown = game.playerWallet;
+            game._walletMarketBaseline = game.market.price;
             if (_incomeEl) showFloatingText('+' + Math.round(game._pendingIncomeDisplay).toLocaleString(), '#4CAF50', _incomeEl);
         }
         game._pendingIncomeDisplay = 0;
