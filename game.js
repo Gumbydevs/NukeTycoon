@@ -1427,6 +1427,8 @@ function showLobby() {
     const lobbyPrizeEl = document.getElementById('lobbyPrizePreview');
     const lobbyWalletAfterEl = document.getElementById('lobbyWalletAfter');
     if (lobbyBuyInEl) lobbyBuyInEl.textContent = game.buyIn.toLocaleString();
+    const lobbyBuyInBtnEl = document.getElementById('lobbyBuyInBtn');
+    if (lobbyBuyInBtnEl) lobbyBuyInBtnEl.textContent = game.buyIn.toLocaleString();
     if (lobbyPrizeEl) lobbyPrizeEl.textContent = formatPrizePool(preview);
     if (lobbyWalletAfterEl) lobbyWalletAfterEl.textContent = (game.playerWallet - game.buyIn).toLocaleString();
 
@@ -2462,7 +2464,7 @@ function showEndOfDaySummary() {
         <div style="margin-top:6px;">
             <strong style="color:#ffb84d;">Prize Pool: ${formatPrizePool(game.prizePool)}</strong>
         </div>
-        <div style="font-size:11px; color:#888;">Split at round end — 1st: 50% / 2nd: 30% / 3rd: 20%</div>
+        <div style="font-size:11px; color:#888;">Prize pool split — 1st: 50% · 2nd: 30% · 3rd: 20% &nbsp;|&nbsp; 20% of buy-ins retained as platform fee</div>
     `;
 
     // build leaderboard from game.players
@@ -2537,7 +2539,7 @@ function addButtonTooltips() {
             } else if (typeKey === 'silo' || /silo/i.test(typeKey)) {
                 content = '<div style="font-weight:700;">💥 Silo</div>';
                 content += '<div>Missile Silo — the ultimate weapon. Requires at least 1 completed Reactor to build.</div>';
-                content += `<div>💰 Build cost: ${buildingTypes.silo.cost} tokens — Construction: ${buildingTypes.silo.constructionTime}s</div>`;
+                content += `<div>💰Build cost: ${buildingTypes.silo.cost} tokens — Construction: ${buildingTypes.silo.constructionTime}s</div>`;
                 content += `<div>⚠️ Limit: ${game.maxSilosPerRound} per round. Using a nuke costs a large portion of your wallet.</div>`;
             } else if (typeKey === 'dev' || /dev/i.test(typeKey)) {
                 content = '<div style="font-weight:700;">🔧 Dev Tools</div>';
