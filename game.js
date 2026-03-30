@@ -245,6 +245,10 @@ function initRun() {
  * Initialize the game grid
  */
 function initGrid() {
+    // Reset building state so this can safely be called multiple times
+    // (e.g. pre-render for lobby preview, then again on actual run start)
+    game.buildings = [];
+    game.enemyBuildings = [];
     const grid = document.getElementById('gameGrid');
     grid.innerHTML = '';
     // generate a simple terrain map (grass / dirt / road)
@@ -1394,6 +1398,8 @@ function authenticate() {
     if (modal) modal.style.display = 'none';
     // persist session for the tab
     sessionStorage.setItem('nuke_auth', '1');
+    // Pre-render the game map so it's visible behind the lobby overlay
+    initGrid();
     // Show lobby before launching
     showLobby();
 }
