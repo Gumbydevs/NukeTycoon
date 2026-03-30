@@ -2504,13 +2504,15 @@ function closeEndOfDay() {
 function addButtonTooltips() {
     const buttons = document.querySelectorAll('.btn');
     buttons.forEach(btn => {
-        // Skip the hamburger toggle — it has its own title="Actions" tooltip
-        if (btn.id === 'actionsMenuBtn') return;
         btn.addEventListener('mouseenter', (e) => {
             const typeKey = btn.dataset.type || btn.textContent.trim();
             const label = displayNames[typeKey] || btn.textContent.trim();
             let content = '<div style="font-weight:700;">' + label + '</div>';
-            if (typeKey === 'mine' || /mine/i.test(typeKey)) {
+            if (btn.id === 'actionsMenuBtn') {
+                content = '<div style="font-weight:700;">☰ Action Menu</div>';
+                content += '<div>Click to build structures or perform actions.</div>';
+                content += '<div style="margin-top:4px; color:#888; font-size:11px;">⛏️ Build · 💥 Sabotage</div>';
+            } else if (typeKey === 'mine' || /mine/i.test(typeKey)) {
                 content = '<div style="font-weight:700;">⛏️ ' + label + '</div>';
                 content += '<div>Place a Mine to extract raw uranium from the ground.</div>';
                 content += '<div>💰 Cost: ' + buildingTypes.mine.cost + ' tokens</div>';
@@ -2546,26 +2548,25 @@ function addButtonTooltips() {
                 content += `<div>${unread > 0 ? unread + ' unread' : 'No new notifications'}. Click to open.</div>`;
             }
             const rect = btn.getBoundingClientRect();
-            // Bell sits in the top-right corner — anchor tooltip to the left, never follow mouse
-            if (btn.id === 'notifBellBtn') {
+            // Bell and hamburger: anchor tooltip to the left, never follow mouse
+            if (btn.id === 'notifBellBtn' || btn.id === 'actionsMenuBtn') {
                 const t = document.getElementById('tooltip');
                 if (t) {
                     t.innerHTML = content;
                     t.style.display = 'block';
                     t.style.position = 'fixed';
-                    // Measure after render so we get the real width
                     const tw = t.offsetWidth || 180;
                     const th = t.offsetHeight || 40;
                     t.style.left = (rect.left - tw - 10) + 'px';
                     t.style.top  = (rect.top + (rect.height - th) / 2) + 'px';
                 }
-                return; // skip showTooltipAt so repositionTooltip never touches this
+                return;
             }
             showTooltipAt(rect.right + 8, rect.top, content);
         });
         btn.addEventListener('mousemove', (e) => {
-            // Bell tooltip is anchored — don't let mouse movement reposition it
-            if (btn.id === 'notifBellBtn') return;
+            // Bell and hamburger tooltips are anchored — don't reposition on mouse move
+            if (btn.id === 'notifBellBtn' || btn.id === 'actionsMenuBtn') return;
             const x = e.clientX + 12; const y = e.clientY + 12;
             repositionTooltip(x, y);
         });
