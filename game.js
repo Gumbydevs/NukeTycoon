@@ -556,15 +556,10 @@ function initMenu() {
         } catch (e) { }
     }
 
-    // Close when clicking outside (use bubble phase, not capture, so button click fires first)
-    document.addEventListener('click', (e) => {
-        if (!actionsMenu || !actionsBtn) return;
-        if (!actionsMenu.contains(e.target) && !actionsBtn.contains(e.target)) {
-            setMenuOpen(false);
-        }
-    }, false);
+    // Menu is a persistent toggle — only close via hamburger click, M key, or Escape.
+    // Do NOT add an outside-click handler; grid clicks must not dismiss the menu.
 
-    // Menu item actions
+    // Menu item actions — menu stays open after selection; click hamburger again to close
     document.querySelectorAll('.menu-item').forEach(mi => {
         mi.addEventListener('click', (e) => {
             const type = mi.dataset.type;
@@ -574,13 +569,20 @@ function initMenu() {
                 if (mi.id === 'profileMenuItem') showProfile();
                 if (mi.id === 'devMenuItem') toggleDevPanel();
             }
-            setMenuOpen(false);
+            // intentionally NOT closing the menu here
         });
     });
 
-    // Keyboard: Escape closes menu
+    // Keyboard: Escape closes menu, M toggles it
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') setMenuOpen(false);
+        // Ignore key shortcuts when typing in an input/textarea
+        const tag = document.activeElement && document.activeElement.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+        if (e.key === 'Escape') { setMenuOpen(false); return; }
+        if (e.key === 'm' || e.key === 'M') {
+            const expanded = actionsBtn && actionsBtn.getAttribute('aria-expanded') === 'true';
+            setMenuOpen(!expanded);
+        }
     });
 }
 
@@ -2520,6 +2522,7 @@ function addButtonTooltips() {
                 content = '<div style="font-weight:700;">☰ Action Menu</div>';
                 content += '<div>Click to build structures or perform actions.</div>';
                 content += '<div style="margin-top:4px; color:#888; font-size:11px;">⛏️ Build · 💥 Sabotage</div>';
+                content += '<div style="margin-top:4px; color:#ffb84d; font-size:11px;">Press <b>M</b> to toggle</div>';
             } else if (typeKey === 'mine' || /mine/i.test(typeKey)) {
                 content = '<div style="font-weight:700;">⛏️ ' + label + '</div>';
                 content += '<div>Place a Mine to extract raw uranium from the ground.</div>';
