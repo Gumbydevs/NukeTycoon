@@ -677,6 +677,7 @@ function buildBuilding(id, type) {
                 showTooltipAt(rect.right + 8, rect.top, msg);
             }
             console.warn('Cannot build silo without completed reactor');
+            addNotification('warning', '🔴 Silo blocked — you need at least 1 completed Reactor first.');
             return;
         }
         
@@ -691,6 +692,7 @@ function buildBuilding(id, type) {
                 showTooltipAt(rect.right + 8, rect.top, msg);
             }
             console.warn('Exceeded max silos per round');
+            addNotification('warning', `🔴 Silo limit reached — max ${game.maxSilosPerRound} per round.`);
             return;
         }
     }
@@ -711,12 +713,16 @@ function buildBuilding(id, type) {
     const cost = buildingTypes[type].cost;
     if (game.playerWallet < cost) {
         console.warn('Insufficient funds');
+        addNotification('danger', `💸 Not enough tokens to build ${displayNames[type] || type} (need ${cost.toLocaleString()}, have ${game.playerWallet.toLocaleString()}).`);
         return;
     }
 
     game.playerWallet -= cost;
     game.tokensBurned += cost;
     game.prizePool += Math.floor(cost * 0.10);
+    // show floating cost indicator
+    const _walletEl = document.getElementById('wallet');
+    if (_walletEl) showFloatingText('-' + cost.toLocaleString(), '#ff6b6b', _walletEl);
     // drain liquidity pool → pushes price up via bonding curve
     game.market.tokenPool = Math.max(1, game.market.tokenPool - cost / game.market.poolBurnRate);
     game.buildings.push({ 
@@ -726,6 +732,19 @@ function buildBuilding(id, type) {
         constructionTimeRemaining: buildingTypes[type].constructionTime,
         isUnderConstruction: true
     });
+
+    const _depositBonus = (type === 'mine') ? getDepositBonus(id) : null;
+    const _roadBonus    = (type === 'plant') ? cellHasRoadNeighbor(id) : false;
+    let _buildMsg = `🛠️ ${displayNames[type] || type} placed — construction started. Cost: -${cost.toLocaleString()} tokens.`;
+    if (_depositBonus !== null) {
+        const _qi = _depositBonus === 1.5 ? '💰 On deposit (1.5× yield!)' :
+                    _depositBonus === 1.25 ? '💰 Near deposit (1.25× yield)' :
+                    _depositBonus === 0.7  ? '⚠️ Far from deposit (0.7× yield)' :
+                    '❌ Off-deposit (0.1× yield — consider moving!)';
+        _buildMsg += ` ${_qi}`;
+    }
+    if (_roadBonus) _buildMsg += ' 🛣️ Road bonus active (+40% income).';
+    addNotification('success', _buildMsg);
 
     if (type === 'storage') {
         game.maxStorage += 1000;
@@ -871,6 +890,7 @@ function executeTemporaryDisable(cellId, cost) {
     }
 
     console.info(`⏸️ Temporary disable on ${enemy.type} for 45s`);
+    addNotification('warning', `⏸️ Disabled enemy ${displayNames[enemy.type] || enemy.type} — 50% production for 45s.`);
     updateUI();
     game.selectedMode = null;
 }
@@ -897,6 +917,7 @@ function executeStealResources(cellId, cost) {
     game.uraniumRaw += stolen;
 
     console.info(`💰 Stole ${stolen.toFixed(1)} uranium from enemy`);
+    addNotification('success', `💰 Stole ${stolen.toFixed(1)} U from enemy ${displayNames[enemy.type] || enemy.type}.`);
     updateUI();
     game.selectedMode = null;
 }
@@ -909,6 +930,7 @@ function executeNuclearStrike(targetId) {
     // Check cooldown
     if (game.dayStrikes >= game.maxSilosPerRound) {
         console.warn('Strike cooldown active');
+        addNotification('warning', '⚠️ Nuclear strike on cooldown — only 1 strike allowed per day.');
         return;
     }
     
@@ -995,6 +1017,7 @@ function triggerNuclearExplosion(centerId) {
     });
     
     console.info(`💥 Nuclear strike at cell ${centerId}! ${destroyed.length} enemy buildings destroyed.`);
+    addNotification('danger', `💥 Nuclear strike! ${destroyed.length} enemy building${destroyed.length !== 1 ? 's' : ''} destroyed. Watch for fallout.`);
 }
 
 /**
@@ -1163,7 +1186,14 @@ function calculatePower() {
             const jitter = Math.sin((Date.now() / 1000) + building.id) * 2; // -2..2
             // road-proximity bonus: reactor next to a road tile sells power to more customers (+40%)
             const roadMult = cellHasRoadNeighbor(building.id) ? 1.4 : 1.0;
-            const power = Math.max(0, base + jitter) * roadMult;
+            // same-type proximity bonus: nearby reactors share grid load (+25% per neighbor, cap 3)
+            let samePlants = 0;
+            game.buildings.forEach(other => {
+                if (other.id !== building.id && other.type === 'plant' && !other.isUnderConstruction
+                    && distance(building.id, other.id) <= game.proximityRange) samePlants++;
+            });
+            const plantProxMult = 1 + (Math.min(samePlants, 3) * 0.25);
+            const power = Math.max(0, base + jitter) * roadMult * plantProxMult;
             totalPower += power;
         } else if (building.type === 'mine') {
             totalMines++;
@@ -1222,6 +1252,20 @@ function updateUI() {
     if (portfolioEl) {
         const value = game.playerWallet + ((game.uraniumRaw + game.uraniumRefined) * game.market.price);
         portfolioEl.textContent = '$' + value.toFixed(2).toLocaleString();
+    }
+
+    // live rank — recalculated every UI update
+    const rankEl = document.getElementById('rank');
+    if (rankEl && game.players && game.players.length) {
+        const localScore = calculatePower() + (game.playerWallet / 1000);
+        const botScores = game.players.filter(p => p.isBot).map(p => {
+            const botB = game.enemyBuildings.filter(b => b.owner === p.name);
+            const plants = botB.filter(b => b.type === 'plant').length;
+            const mines  = botB.filter(b => b.type === 'mine').length;
+            return (plants * 100) + (mines * 50 * game.market.price / 1000);
+        });
+        const rank = 1 + botScores.filter(s => s > localScore).length;
+        rankEl.textContent = '#' + rank;
     }
 
     // Token economy stats
@@ -1443,6 +1487,32 @@ function toggleProfile() {
     if (modal.style.display === 'none' || modal.style.display === '') showProfile(); else closeProfile();
 }
 
+/* Prize Pool / Conversion modal */
+function showConversionModal() {
+    const modal = document.getElementById('conversionModal');
+    if (!modal) return;
+
+    // Populate dynamic conversion rate text
+    const rateEl = document.getElementById('conversionRateText');
+    if (rateEl) {
+        const rate   = game.tokensPerUSD || 2000;
+        const pool   = formatPrizePool(game.prizePool, false);
+        const circ   = Math.max(0, game.tokensIssued - game.tokensBurned);
+        rateEl.innerHTML =
+            `<strong>${rate.toLocaleString()} tokens = $1 USDC</strong>. ` +
+            `Current prize pool: ${pool}. ` +
+            `Circulating supply: ${formatSupply(circ)} tokens.`;
+    }
+
+    modal.style.display = 'flex';
+}
+
+function closeConversionModal() {
+    const modal = document.getElementById('conversionModal');
+    if (!modal) return;
+    modal.style.display = 'none';
+}
+
 async function checkPassword() {
     const input = document.getElementById('passwordInput');
     if (!input) return;
@@ -1478,6 +1548,29 @@ document.addEventListener('DOMContentLoaded', function() {
     if (pwd) pwd.addEventListener('keyup', (e) => { if (e.key === 'Enter') checkPassword(); });
     if (profileBtn) profileBtn.addEventListener('click', toggleProfile);
     if (mobileMenuBtn) mobileMenuBtn.addEventListener('click', toggleMobileMenu);
+
+    const prizeInfoBtn = document.getElementById('prizeInfoBtn');
+    if (prizeInfoBtn) prizeInfoBtn.addEventListener('click', showConversionModal);
+
+    // Notification bell
+    const bellBtn    = document.getElementById('notifBellBtn');
+    const closeBtn   = document.getElementById('notifCloseBtn');
+    const clearBtn   = document.getElementById('notifClearBtn');
+    if (bellBtn)  bellBtn.addEventListener('click', () => {
+        const drawer = document.getElementById('notifDrawer');
+        const isOpen = drawer && drawer.classList.contains('notif-drawer--open');
+        isOpen ? closeNotifications() : openNotifications();
+    });
+    if (closeBtn) closeBtn.addEventListener('click', closeNotifications);
+    if (clearBtn) clearBtn.addEventListener('click', clearAllNotifications);
+
+    // Close drawer when clicking outside of it
+    document.addEventListener('click', (e) => {
+        const drawer = document.getElementById('notifDrawer');
+        const bell   = document.getElementById('notifBellBtn');
+        if (!drawer || !drawer.classList.contains('notif-drawer--open')) return;
+        if (!drawer.contains(e.target) && !bell.contains(e.target)) closeNotifications();
+    });
 });
 
 /* Mobile menu open/close */
@@ -1521,6 +1614,9 @@ function startSimLoops() {
         game._clockInterval = setInterval(clockTick, 500);
         game._lastClockTS = Date.now();
     }
+
+    // bot AI loop — bots build and sabotage dynamically
+    startBotAI();
 }
 
 /**
@@ -1564,6 +1660,13 @@ function productionTick() {
                 b.isUnderConstruction = false;
                 // Re-render to show completed building
                 renderBuilding(b.id, b.type, true, b);
+                // Brief pulse to signal completion
+                const _c = document.querySelector('[data-id="' + b.id + '"]');
+                if (_c) {
+                    _c.classList.add('build-complete');
+                    setTimeout(() => _c.classList.remove('build-complete'), 900);
+                }
+                addNotification('success', `✅ ${displayNames[b.type] || b.type} construction complete!`);
             } else {
                 // Update progress display
                 renderBuilding(b.id, b.type, true, b);
@@ -1594,7 +1697,15 @@ function productionTick() {
         // Apply deposit proximity bonus
         const depositBonus = getDepositBonus(mine.id);
         amount *= depositBonus;
-        
+
+        // Apply same-type proximity bonus: nearby mines share resources (+25% per neighbor, cap 3)
+        let sameMines = 0;
+        game.buildings.forEach(other => {
+            if (other.id !== mine.id && other.type === 'mine' && !other.isUnderConstruction
+                && distance(mine.id, other.id) <= game.proximityRange) sameMines++;
+        });
+        amount *= (1 + (Math.min(sameMines, 3) * 0.25));
+
         // Apply fallout penalty if affected
         if (mine.fallout && mine.fallout.endTime > Date.now()) {
             amount *= mine.fallout.multiplier; // Apply 50% reduction
@@ -1640,6 +1751,10 @@ function productionTick() {
     }
 
     game.playerWallet += income;
+    if (income >= 40) {
+        const _incomeEl = document.getElementById('wallet');
+        if (_incomeEl) showFloatingText('+' + income.toLocaleString(), '#4CAF50', _incomeEl);
+    }
     if (income > 0) {
         // Income rewards are new tokens minted from the 1B reserve — real issuance event.
         game.tokensIssued += income;
@@ -1733,6 +1848,9 @@ function onHourAdvance() {
 }
 
 function onDayAdvance() {
+    // Show dramatic day transition overlay
+    showDayTransition(game.time.day);
+
     // Reset daily strike counter
     game.dayStrikes = 0;
     
@@ -1780,7 +1898,18 @@ function onDayAdvance() {
     
     // Show end-of-day summary for days 1-7
     showEndOfDaySummary();
-    
+
+    // Push a persistent notification so players can review the day even after closing the modal
+    const _power = calculatePower();
+    addNotification(
+        'info',
+        `\ud83d\udcc5 Day ${game.time.day - 1} recap \u2014 ` +
+        `Income: +${game.dailyIncome.toLocaleString()} tokens \u00b7 ` +
+        `Mined: ${formatUranium(game.dailyProduced)} U \u00b7 ` +
+        `Power: ${_power.toFixed(1)} MW \u00b7 ` +
+        `Prize pool: ${formatPrizePool(game.prizePool)}`
+    );
+
     // Reset daily accumulators for next day
     game.dailyProduced = 0;
     game.dailyIncome = 0;
@@ -2007,7 +2136,8 @@ function returnToMenu() {
     
     // Stop the simulation loops
     if (game._productionInterval) clearInterval(game._productionInterval);
-    if (game._timeInterval) clearInterval(game._timeInterval);
+    if (game._clockInterval) clearInterval(game._clockInterval);
+    if (game._botInterval) { clearInterval(game._botInterval); game._botInterval = null; }
     
     // Reset game state
     game.runEnded = false;
@@ -2529,4 +2659,306 @@ function setSimSpeed(minutesPerSecond) {
     game.time.minutesPerSecond = minutesPerSecond;
     // reset clock timestamp to avoid a large delta
     game._lastClockTS = Date.now();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Game Juice: floating text, toasts, day transition
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Show a small "+120" / "-800" floating label that drifts upward from anchorEl
+ * then fades out. Used for income/spend feedback.
+ */
+function showFloatingText(text, color, anchorEl) {
+    const el = document.createElement('div');
+    el.style.cssText = [
+        'position:fixed',
+        `color:${color}`,
+        'font-size:12px',
+        'font-weight:700',
+        'pointer-events:none',
+        'z-index:9999',
+        'animation:floatUp 1.2s ease-out forwards',
+        'font-family:monospace',
+        'transform:translateX(-50%)',
+        'white-space:nowrap'
+    ].join(';');
+    el.textContent = text;
+    const rect = (anchorEl || document.body).getBoundingClientRect();
+    el.style.left = (rect.left + rect.width / 2) + 'px';
+    el.style.top  = (rect.top - 4) + 'px';
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 1200);
+}
+
+/**
+ * showToast — thin alias kept for backwards compat. Prefer addNotification().
+ */
+function showToast(text, color) {
+    const typeMap = { '#4CAF50': 'success', '#ff6b6b': 'danger', '#ffb84d': 'warning' };
+    addNotification(typeMap[color] || 'info', text);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Notification System
+// Single entry point: addNotification(type, message, data)
+// Backend-ready: a WebSocket handler just calls addNotification() directly.
+//   e.g.  socket.on('notification', ({ type, message, data }) =>
+//               addNotification(type, message, data));
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Initialise notifications array on game object so it persists across ticks
+if (!game.notifications) game.notifications = [];
+
+/**
+ * Add a persistent notification.
+ * @param {string} type    - 'success' | 'warning' | 'danger' | 'info'
+ * @param {string} message - Display text
+ * @param {object} [data]  - Optional payload (reserved for backend use)
+ */
+function addNotification(type, message, data) {
+    const notif = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        type: type || 'info',
+        message,
+        timestamp: Date.now(),
+        read: false,
+        data: data || null
+    };
+    game.notifications.unshift(notif); // newest first
+    // Cap stored notifications at 50 to prevent unbounded growth
+    if (game.notifications.length > 50) game.notifications.length = 50;
+    renderNotifications();
+}
+
+/** Render the notification list and update the badge. */
+function renderNotifications() {
+    const list    = document.getElementById('notifList');
+    const empty   = document.getElementById('notifEmpty');
+    const badge   = document.getElementById('notifBadge');
+    if (!list) return;
+
+    const unread = game.notifications.filter(n => !n.read).length;
+    if (badge) {
+        badge.textContent = unread > 9 ? '9+' : unread;
+        badge.style.display = unread > 0 ? 'inline-flex' : 'none';
+    }
+
+    if (game.notifications.length === 0) {
+        if (empty) empty.style.display = 'block';
+        // Remove all rendered items
+        list.querySelectorAll('.notif-item').forEach(el => el.remove());
+        return;
+    }
+    if (empty) empty.style.display = 'none';
+
+    // Diff-render: only add/remove items that changed
+    const existing = new Set([...list.querySelectorAll('.notif-item')].map(el => el.dataset.id));
+    const current  = new Set(game.notifications.map(n => n.id));
+
+    // Remove stale
+    list.querySelectorAll('.notif-item').forEach(el => {
+        if (!current.has(el.dataset.id)) el.remove();
+    });
+
+    // Add new (prepend)
+    for (const notif of game.notifications) {
+        if (existing.has(notif.id)) continue;
+        const typeColors = {
+            success: '#4CAF50',
+            danger:  '#ff6b6b',
+            warning: '#ffb84d',
+            info:    '#7ec8e3'
+        };
+        const color = typeColors[notif.type] || '#ccc';
+        const timeStr = new Date(notif.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const dateStr = new Date(notif.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' });
+
+        const el = document.createElement('div');
+        el.className = 'notif-item' + (notif.read ? '' : ' notif-unread');
+        el.dataset.id = notif.id;
+        el.style.borderLeftColor = color;
+        el.innerHTML = `
+            <div class="notif-item-body">
+                <span class="notif-msg" style="color:${color};">${notif.message}</span>
+                <span class="notif-time">${dateStr} ${timeStr}</span>
+            </div>
+            <button class="notif-dismiss" data-id="${notif.id}" title="Dismiss">✕</button>
+        `;
+        el.querySelector('.notif-dismiss').addEventListener('click', (e) => {
+            e.stopPropagation();
+            dismissNotification(notif.id);
+        });
+        // insert at correct position (top of list, after empty el)
+        const firstItem = list.querySelector('.notif-item');
+        if (firstItem) list.insertBefore(el, firstItem); else list.appendChild(el);
+    }
+}
+
+/** Mark all as read (called when drawer opens) */
+function markAllRead() {
+    game.notifications.forEach(n => { n.read = true; });
+    document.querySelectorAll('.notif-item.notif-unread').forEach(el => el.classList.remove('notif-unread'));
+    const badge = document.getElementById('notifBadge');
+    if (badge) badge.style.display = 'none';
+}
+
+function dismissNotification(id) {
+    game.notifications = game.notifications.filter(n => n.id !== id);
+    const el = document.querySelector(`.notif-item[data-id="${id}"]`);
+    if (el) {
+        el.style.transition = 'opacity 0.2s, max-height 0.25s';
+        el.style.opacity = '0';
+        el.style.maxHeight = '0';
+        el.style.overflow = 'hidden';
+        el.style.padding = '0';
+        setTimeout(() => el.remove(), 260);
+    }
+    const badge = document.getElementById('notifBadge');
+    const unread = game.notifications.filter(n => !n.read).length;
+    if (badge) {
+        badge.textContent = unread > 9 ? '9+' : unread;
+        badge.style.display = unread > 0 ? 'inline-flex' : 'none';
+    }
+    const list = document.getElementById('notifList');
+    if (list && game.notifications.length === 0) {
+        const empty = document.getElementById('notifEmpty');
+        if (empty) empty.style.display = 'block';
+    }
+}
+
+function openNotifications() {
+    const drawer = document.getElementById('notifDrawer');
+    if (!drawer) return;
+    drawer.style.display = 'flex';
+    drawer.setAttribute('aria-hidden', 'false');
+    setTimeout(() => drawer.classList.add('notif-drawer--open'), 10);
+    markAllRead();
+}
+
+function closeNotifications() {
+    const drawer = document.getElementById('notifDrawer');
+    if (!drawer) return;
+    drawer.classList.remove('notif-drawer--open');
+    setTimeout(() => {
+        drawer.style.display = 'none';
+        drawer.setAttribute('aria-hidden', 'true');
+    }, 260);
+}
+
+function clearAllNotifications() {
+    game.notifications = [];
+    const list = document.getElementById('notifList');
+    if (list) list.querySelectorAll('.notif-item').forEach(el => el.remove());
+    const empty = document.getElementById('notifEmpty');
+    if (empty) empty.style.display = 'block';
+    const badge = document.getElementById('notifBadge');
+    if (badge) badge.style.display = 'none';
+}
+
+/**
+ * Flash a large "DAY N" overlay when a new day begins.
+ */
+function showDayTransition(day) {
+    // Don't show on day 1 (it's the game start)
+    if (day <= 1) return;
+    const el = document.createElement('div');
+    el.style.cssText = [
+        'position:fixed',
+        'left:0','top:0','right:0','bottom:0',
+        'display:flex',
+        'align-items:center',
+        'justify-content:center',
+        'background:rgba(0,0,0,0.55)',
+        'z-index:7000',
+        'pointer-events:none',
+        'animation:fadeInOut 2.2s ease-in-out forwards'
+    ].join(';');
+    const isLastDay = day > game.runLength;
+    const label = isLastDay ? 'RUN OVER' : `DAY ${day}`;
+    const color = isLastDay ? '#ff6b6b' : '#ffb84d';
+    el.innerHTML = `<div style="font-size:52px;font-weight:700;color:${color};font-family:monospace;` +
+        `text-shadow:0 0 40px ${color}80;letter-spacing:8px;">${label}</div>`;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 2200);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bot AI — bots dynamically build and occasionally sabotage the player
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Start the bot AI interval. Called once per run from startSimLoops().
+ */
+function startBotAI() {
+    if (game._botInterval) return;
+    // Bots act every ~30 seconds; fire once after 8s so the map feels alive early
+    game._botInterval = setInterval(tickBotAI, 30000);
+    setTimeout(tickBotAI, 8000);
+}
+
+/**
+ * One AI tick: each bot either builds a new building or sabotages the player.
+ */
+function tickBotAI() {
+    if (game.runEnded) return;
+    game.players.filter(p => p.isBot).forEach(bot => {
+        // 70% build, 30% sabotage (only if player has completed buildings)
+        const completedPlayerBuildings = game.buildings.filter(b => !b.isUnderConstruction);
+        if (Math.random() < 0.70 || completedPlayerBuildings.length === 0) {
+            botBuildRandom(bot);
+        } else {
+            botSabotagePlayer(bot, completedPlayerBuildings);
+        }
+    });
+    calculateProximity();
+}
+
+/**
+ * Bot picks a weighted-random building type and places it on a random empty cell.
+ */
+function botBuildRandom(bot) {
+    // Weighted building preference: mines favoured early, plants later
+    const pool = ['mine', 'mine', 'mine', 'processor', 'processor', 'plant', 'storage'];
+    const type = pool[Math.floor(Math.random() * pool.length)];
+    const cost = buildingTypes[type].cost;
+    if (bot.wallet < cost) return;
+
+    for (let attempt = 0; attempt < 80; attempt++) {
+        const cellId = Math.floor(Math.random() * 400);
+        const blocked  = game.terrain && ['road','road-h','road-x'].includes(game.terrain[cellId]);
+        const occupied = game.enemyBuildings.find(b => b.id === cellId) ||
+                         game.buildings.find(b => b.id === cellId);
+        if (!blocked && !occupied) {
+            bot.wallet -= cost;
+            game.enemyBuildings.push({ id: cellId, type, owner: bot.name });
+            renderBuilding(cellId, type, false);
+            return;
+        }
+    }
+}
+
+/**
+ * Bot applies a short production debuff to one of the player's completed buildings.
+ */
+function botSabotagePlayer(bot, targets) {
+    const cost = 280;
+    if (bot.wallet < cost) return;
+    const target = targets[Math.floor(Math.random() * targets.length)];
+    // Skip if already debuffed
+    if (target.fallout && target.fallout.endTime > Date.now()) return;
+
+    bot.wallet -= cost;
+    // 25-second production penalty (softer than player nuke fallout)
+    target.fallout = { endTime: Date.now() + 25000, multiplier: 0.55 };
+
+    // flash the targeted cell red briefly
+    const cell = document.querySelector(`[data-id="${target.id}"]`);
+    if (cell) {
+        cell.style.outline = '2px solid #ff4444';
+        cell.style.outlineOffset = '-2px';
+        setTimeout(() => { cell.style.outline = ''; cell.style.outlineOffset = ''; }, 800);
+    }
+
+    addNotification('danger', `⚠️ ${bot.name} sabotaged your ${displayNames[target.type] || target.type}!`);
 }
