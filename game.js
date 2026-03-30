@@ -741,7 +741,7 @@ function buildBuilding(id, type) {
 
     const _depositBonus = (type === 'mine') ? getDepositBonus(id) : null;
     const _roadBonus    = (type === 'plant') ? cellHasRoadNeighbor(id) : false;
-    let _buildMsg = `🛠️ ${displayNames[type] || type} placed — construction started. Cost: -${cost.toLocaleString()} tokens.`;
+    let _buildMsg = `🛠️ ${displayNames[type] || type} construction started. Cost: -${cost.toLocaleString()} tokens.`;
     if (_depositBonus !== null) {
         const _qi = _depositBonus === 1.5 ? '💰 On deposit (1.5× yield!)' :
                     _depositBonus === 1.25 ? '💰 Near deposit (1.25× yield)' :
