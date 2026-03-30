@@ -1298,11 +1298,11 @@ function updateUI() {
     const incomeEl = document.getElementById('income');
     if (incomeEl) incomeEl.textContent = (game.lastIncome || 0).toLocaleString();
 
-    // portfolio value = wallet + uranium * market.price
+    // portfolio value = wallet + uranium * market.price — updates every tick so it breathes with market
     const portfolioEl = document.getElementById('portfolio');
     if (portfolioEl) {
         const value = game.playerWallet + ((game.uraniumRaw + game.uraniumRefined) * game.market.price);
-        portfolioEl.textContent = '$' + value.toFixed(2).toLocaleString();
+        setPortfolioDisplay(value);
     }
 
     // live rank — recalculated every UI update
@@ -1525,7 +1525,7 @@ function showProfile() {
     const statsEl = document.getElementById('profileStats');
     if (statsEl) {
         const portfolio = (game.playerWallet + ((game.uraniumRaw + game.uraniumRefined) * game.market.price)) || 0;
-        statsEl.textContent = `Tokens: ${game.playerWallet.toLocaleString()} — Raw: ${formatUranium(game.uraniumRaw)} / Ref: ${formatUranium(game.uraniumRefined)} — Portfolio: $${portfolio.toFixed(2)}`;
+        statsEl.textContent = `Tokens: ${game.playerWallet.toLocaleString()} — Raw: ${formatUranium(game.uraniumRaw)} / Ref: ${formatUranium(game.uraniumRefined)} — Portfolio: ${Math.round(portfolio).toLocaleString()} tokens`;
     }
     modal.style.display = 'flex';
 }
@@ -1635,7 +1635,7 @@ function showMobileMenu() {
     const s = document.getElementById('mobileMenuStats');
     if (s) {
         const portfolio = (game.playerWallet + ((game.uraniumRaw + game.uraniumRefined) * game.market.price)) || 0;
-        s.innerHTML = `Round: ${game.round} — Tokens: ${game.playerWallet.toLocaleString()} — Raw: ${formatUranium(game.uraniumRaw)} / Ref: ${formatUranium(game.uraniumRefined)} — Portfolio: $${portfolio.toFixed(2)}`;
+        s.innerHTML = `Round: ${game.round} — Tokens: ${game.playerWallet.toLocaleString()} — Raw: ${formatUranium(game.uraniumRaw)} / Ref: ${formatUranium(game.uraniumRefined)} — Portfolio: ${Math.round(portfolio).toLocaleString()} tokens`;
     }
     modal.style.display = 'block';
     document.body.classList.add('mobile-menu-open');
@@ -2779,6 +2779,48 @@ function setSimSpeed(minutesPerSecond) {
  * jumping on every production tick. A new call mid-animation just updates the
  * target — the animation re-aims without restarting.
  */
+/**
+ * Smoothly animate the portfolio display toward `target`, and pulse green/red
+ * when the value moves up or down. Portfolio is driven by market price every
+ * UI tick so it naturally breathes — this just makes the movement silky.
+ */
+function setPortfolioDisplay(target) {
+    const el = document.getElementById('portfolio');
+    if (!el) return;
+    if (game._portfolioDisplayed === undefined) game._portfolioDisplayed = target;
+    const prev = game._portfolioDisplayed;
+    game._portfolioTarget = target;
+    // Color pulse on direction change
+    if (Math.abs(target - prev) > 1) {
+        const up = target > prev;
+        el.style.transition = 'color 0.3s';
+        el.style.color = up ? '#4CAF50' : '#ff6b6b';
+        clearTimeout(game._portfolioColorReset);
+        game._portfolioColorReset = setTimeout(() => {
+            el.style.color = '';
+        }, 800);
+    }
+    if (game._portfolioAnimFrame) return;
+    const startVal  = game._portfolioDisplayed;
+    const startTime = performance.now();
+    const duration  = 800;
+    function step(now) {
+        const t    = Math.min(1, (now - startTime) / duration);
+        const ease = 1 - Math.pow(1 - t, 3);
+        const cur  = startVal + (game._portfolioTarget - startVal) * ease;
+        game._portfolioDisplayed = cur;
+        el.textContent = Math.round(cur).toLocaleString();
+        if (t < 1) {
+            game._portfolioAnimFrame = requestAnimationFrame(step);
+        } else {
+            game._portfolioDisplayed = game._portfolioTarget;
+            el.textContent = Math.round(game._portfolioTarget).toLocaleString();
+            game._portfolioAnimFrame = null;
+        }
+    }
+    game._portfolioAnimFrame = requestAnimationFrame(step);
+}
+
 function setWalletDisplay(target) {
     const el = document.getElementById('wallet');
     if (!el) return;
