@@ -2699,6 +2699,27 @@ function showToast(text, color) {
     addNotification(typeMap[color] || 'info', text);
 }
 
+/**
+ * _flashToast — internal ephemeral bottom-center flash.
+ * Only creates the DOM element; persistence is handled by addNotification / the drawer.
+ */
+function _flashToast(message, type) {
+    // Strip emoji/markdown noise for the brief flash — keep it short
+    const typeColors = { success: '#4CAF50', danger: '#ff6b6b', warning: '#ffb84d', info: '#7ec8e3' };
+    const color = typeColors[type] || '#fff';
+    // If a toast is already showing, remove it so the new one starts fresh
+    const existing = document.querySelector('.toast-notification');
+    if (existing) existing.remove();
+
+    const el = document.createElement('div');
+    el.className = 'toast-notification';
+    el.style.color = color;
+    el.textContent = message;
+    document.body.appendChild(el);
+    // Remove from DOM after animation completes (3s)
+    setTimeout(() => el.remove(), 3050);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Notification System
 // Single entry point: addNotification(type, message, data)
@@ -2729,6 +2750,8 @@ function addNotification(type, message, data) {
     // Cap stored notifications at 50 to prevent unbounded growth
     if (game.notifications.length > 50) game.notifications.length = 50;
     renderNotifications();
+    // Also flash the ephemeral bottom-centre toast
+    _flashToast(message, type);
 }
 
 /** Render the notification list and update the badge. */

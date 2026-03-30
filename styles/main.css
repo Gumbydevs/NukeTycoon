@@ -755,29 +755,32 @@ body.mobile-menu-open .dropdown { display: none !important; }
     100% { opacity: 0; }
 }
 
-/* Toast notification slide-in from bottom */
-@keyframes slideInUp {
-    0%   { opacity: 0; transform: translateX(-50%) translateY(16px); }
-    100% { opacity: 1; transform: translateX(-50%) translateY(0); }
+/* Ephemeral bottom-center flash — text only, transparent */
+@keyframes toastLife {
+    0%   { opacity: 0; transform: translateX(-50%) translateY(10px); }
+    12%  { opacity: 1; transform: translateX(-50%) translateY(0); }
+    72%  { opacity: 1; }
+    100% { opacity: 0; transform: translateX(-50%) translateY(-6px); }
 }
 
 .toast-notification {
     position: fixed;
-    bottom: 72px;
+    bottom: 52px;
     left: 50%;
     transform: translateX(-50%);
-    background: rgba(10, 10, 10, 0.95);
-    border: 1px solid #444;
+    background: transparent;
+    border: none;
     color: #fff;
-    padding: 8px 18px;
-    border-radius: 4px;
+    padding: 0;
     font-family: monospace;
     font-size: 13px;
     font-weight: 600;
+    letter-spacing: 0.02em;
+    text-shadow: 0 1px 6px rgba(0,0,0,0.9), 0 0 12px rgba(0,0,0,0.7);
     z-index: 9000;
     pointer-events: none;
     white-space: nowrap;
-    animation: slideInUp 0.3s ease-out;
+    animation: toastLife 3s ease-in-out forwards;
 }
 
 /* Build-complete pulse: brief golden ring around the newly finished cell */
