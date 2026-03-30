@@ -2700,24 +2700,27 @@ function setSimSpeed(minutesPerSecond) {
  */
 function showFloatingText(text, color, anchorEl) {
     const el = document.createElement('div');
+    const duration = 2200;
     el.style.cssText = [
         'position:fixed',
         `color:${color}`,
-        'font-size:12px',
-        'font-weight:700',
+        'font-size:15px',
+        'font-weight:800',
         'pointer-events:none',
         'z-index:9999',
-        'animation:floatUp 1.2s ease-out forwards',
+        `animation:floatPop ${duration}ms cubic-bezier(0.22,1,0.36,1) forwards`,
         'font-family:monospace',
-        'transform:translateX(-50%)',
+        'letter-spacing:0.5px',
+        `text-shadow:0 0 8px ${color}88, 0 1px 3px #000a`,
         'white-space:nowrap'
     ].join(';');
     el.textContent = text;
     const rect = (anchorEl || document.body).getBoundingClientRect();
+    // Center horizontally over the anchor, sit just above it
     el.style.left = (rect.left + rect.width / 2) + 'px';
-    el.style.top  = (rect.top - 4) + 'px';
+    el.style.top  = (rect.top + rect.height / 2) + 'px';
     document.body.appendChild(el);
-    setTimeout(() => el.remove(), 1200);
+    setTimeout(() => el.remove(), duration);
 }
 
 /**

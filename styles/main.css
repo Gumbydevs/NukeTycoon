@@ -741,10 +741,12 @@ body.mobile-menu-open .dropdown { display: none !important; }
 /* ── Game Juice animations ──────────────────────────────────────────────────── */
 
 /* Floating income/spend text that drifts upward */
-@keyframes floatUp {
-    0%   { opacity: 1; transform: translateX(-50%) translateY(0); }
-    60%  { opacity: 1; }
-    100% { opacity: 0; transform: translateX(-50%) translateY(-48px); }
+@keyframes floatPop {
+    0%   { opacity: 0;   transform: translateX(-50%) translateY(0)   scale(0.6); }
+    15%  { opacity: 1;   transform: translateX(-50%) translateY(-6px)  scale(1.35); }
+    45%  { opacity: 1;   transform: translateX(-50%) translateY(-10px) scale(1.1); }
+    75%  { opacity: 0.8; transform: translateX(-50%) translateY(-14px) scale(0.95); }
+    100% { opacity: 0;   transform: translateX(-50%) translateY(-18px) scale(0.7); }
 }
 
 /* Day transition overlay: fade in, hold, fade out */
