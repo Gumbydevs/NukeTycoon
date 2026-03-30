@@ -1245,7 +1245,7 @@ function calculatePower() {
  * Update UI with current game state
  */
 function updateUI() {
-    document.getElementById('wallet').textContent = game.playerWallet.toLocaleString();
+    setWalletDisplay(game.playerWallet);
     document.getElementById('uranium').textContent = formatUranium(game.uraniumRaw) + ' / ' + formatUranium(game.uraniumRefined);
     const totalStored = game.uraniumRaw + game.uraniumRefined;
     document.getElementById('stored').textContent = formatUranium(totalStored) + '/' + formatUranium(game.maxStorage);
@@ -1789,9 +1789,17 @@ function productionTick() {
     }
 
     game.playerWallet += income;
-    if (income >= 40) {
-        const _incomeEl = document.getElementById('wallet');
-        if (_incomeEl) showFloatingText('+' + income.toLocaleString(), '#4CAF50', _incomeEl);
+    // Accumulate income across ticks; show one floating label every 5 ticks
+    // so the wallet area isn't spammed every second.
+    game._pendingIncomeDisplay = (game._pendingIncomeDisplay || 0) + income;
+    game._incomeTickCount = (game._incomeTickCount || 0) + 1;
+    if (game._incomeTickCount >= 5) {
+        if (game._pendingIncomeDisplay >= 40) {
+            const _incomeEl = document.getElementById('wallet');
+            if (_incomeEl) showFloatingText('+' + Math.round(game._pendingIncomeDisplay).toLocaleString(), '#4CAF50', _incomeEl);
+        }
+        game._pendingIncomeDisplay = 0;
+        game._incomeTickCount = 0;
     }
     if (income > 0) {
         // Income rewards are new tokens minted from the 1B reserve — real issuance event.
@@ -2745,6 +2753,40 @@ function setSimSpeed(minutesPerSecond) {
  * Show a small "+120" / "-800" floating label that drifts upward from anchorEl
  * then fades out. Used for income/spend feedback.
  */
+/**
+ * Smoothly animate the wallet display from its current shown value to `target`.
+ * Uses requestAnimationFrame so the number counts up/down fluidly instead of
+ * jumping on every production tick. A new call mid-animation just updates the
+ * target — the animation re-aims without restarting.
+ */
+function setWalletDisplay(target) {
+    const el = document.getElementById('wallet');
+    if (!el) return;
+    // Initialise tracked display value on first call
+    if (game._walletDisplayed === undefined) game._walletDisplayed = target;
+    game._walletTarget = target;
+    // If already animating, just let the running frame pick up the new target
+    if (game._walletAnimFrame) return;
+    const startVal = game._walletDisplayed;
+    const startTime = performance.now();
+    const duration = 600; // ms — long enough to feel smooth, short enough to stay accurate
+    function step(now) {
+        const t = Math.min(1, (now - startTime) / duration);
+        const ease = 1 - Math.pow(1 - t, 3); // ease-out cubic
+        const current = Math.round(startVal + (game._walletTarget - startVal) * ease);
+        game._walletDisplayed = current;
+        el.textContent = current.toLocaleString();
+        if (t < 1) {
+            game._walletAnimFrame = requestAnimationFrame(step);
+        } else {
+            game._walletDisplayed = game._walletTarget;
+            el.textContent = game._walletTarget.toLocaleString();
+            game._walletAnimFrame = null;
+        }
+    }
+    game._walletAnimFrame = requestAnimationFrame(step);
+}
+
 function showFloatingText(text, color, anchorEl) {
     const el = document.createElement('div');
     const duration = 2200;
