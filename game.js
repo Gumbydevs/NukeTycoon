@@ -2540,12 +2540,32 @@ function addButtonTooltips() {
             } else if (typeKey === 'dev' || /dev/i.test(typeKey)) {
                 content = '<div style="font-weight:700;">🔧 Dev Tools</div>';
                 content += '<div>Advance time, change simulation speed for testing.</div>';
+            } else if (btn.id === 'notifBellBtn') {
+                const unread = (game.notifications || []).filter(n => !n.read).length;
+                content = '<div style="font-weight:700;">🔔 Notifications</div>';
+                content += `<div>${unread > 0 ? unread + ' unread' : 'No new notifications'}. Click to open.</div>`;
             }
             const rect = btn.getBoundingClientRect();
+            // Bell sits in the top-right corner — anchor tooltip to the left, never follow mouse
+            if (btn.id === 'notifBellBtn') {
+                const t = document.getElementById('tooltip');
+                if (t) {
+                    t.innerHTML = content;
+                    t.style.display = 'block';
+                    t.style.position = 'fixed';
+                    // Measure after render so we get the real width
+                    const tw = t.offsetWidth || 180;
+                    const th = t.offsetHeight || 40;
+                    t.style.left = (rect.left - tw - 10) + 'px';
+                    t.style.top  = (rect.top + (rect.height - th) / 2) + 'px';
+                }
+                return; // skip showTooltipAt so repositionTooltip never touches this
+            }
             showTooltipAt(rect.right + 8, rect.top, content);
         });
         btn.addEventListener('mousemove', (e) => {
-            // reposition tooltip near cursor while clamping to viewport
+            // Bell tooltip is anchored — don't let mouse movement reposition it
+            if (btn.id === 'notifBellBtn') return;
             const x = e.clientX + 12; const y = e.clientY + 12;
             repositionTooltip(x, y);
         });
