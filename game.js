@@ -1262,15 +1262,7 @@ function updateUI() {
     // Only display the wallet value that corresponds to a visible float event.
     // _walletShown is set when income/spend floats fire; stays frozen between events.
     if (game._walletShown === undefined) game._walletShown = game.playerWallet;
-
-    // Gently breathe the displayed wallet with market price movement.
-    // _walletMarketBaseline is the market price at the last confirmed event.
-    // A ±5% market swing nudges the display ±1.5% — purely cosmetic feel.
-    if (game._walletMarketBaseline === undefined) game._walletMarketBaseline = game.market.price;
-    const marketDrift = (game.market.price / game._walletMarketBaseline) - 1; // e.g. +0.03 = market up 3%
-    const driftOffset  = Math.round(game._walletShown * marketDrift * 0.3);   // scale down to ~0.9% max feel
-    const softTarget   = game._walletShown + driftOffset;
-    setWalletDisplay(softTarget);
+    setWalletDisplay(game._walletShown);
     document.getElementById('uranium').textContent = formatUranium(game.uraniumRaw) + ' / ' + formatUranium(game.uraniumRefined);
     const totalStored = game.uraniumRaw + game.uraniumRefined;
     document.getElementById('stored').textContent = formatUranium(totalStored) + '/' + formatUranium(game.maxStorage);
