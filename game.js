@@ -189,7 +189,27 @@ function initPlayerRegistry() {
 }
 
 /**
- * Collect buy-ins from all players and seed the prize pool + bonding curve pool.
+ * Resolve an owner name string to a full player record from game.players.
+ * Returns a plain object so callers get a consistent shape even when the
+ * record is missing (e.g. during a reconnect before the server has re-sent
+ * the player list).
+ *
+ * BACKEND_STUB: When the backend is live, game.players will be populated
+ *   from the server 'run:players' payload and this function stays unchanged.
+ *   To enrich with live stats (rank, score, ping) just add those fields
+ *   to the objects the server sends — they will flow through here automatically.
+ *
+ * @param {string} ownerName  The owner string stored on a building (b.owner)
+ * @returns {{ name:string, isBot:boolean, isLocal:boolean, id:string|null }}
+ */
+function resolveOwner(ownerName) {
+    const p = (game.players || []).find(pl => pl.name === ownerName);
+    if (p) return p;
+    // Fallback for buildings spawned before the player registry was initialised
+    return { name: ownerName || 'Unknown', isBot: true, isLocal: false, id: null };
+}
+
+/**
  * Called once per run (a run = 8 rounds, each round lasting one real 24-hour day).
  *
  * Each player pays game.buyIn tokens:
@@ -649,13 +669,21 @@ function toggleActionsMenu(e) {
  * Place a building or select a cell
  */
 function placeOrSelect(id) {
+    // Direct click on an enemy building always opens the sabotage menu,
+    // regardless of which mode (or no mode) is currently selected.
+    const enemy = game.enemyBuildings.find(b => b.id === id);
+    if (enemy) {
+        showSabotageMenu(id);
+        return;
+    }
+
     if (!game.selectedMode) return;
 
     const cell = document.querySelector('[data-id="' + id + '"]');
 
-        if (game.selectedMode === 'sabotage') {
-            const enemy = game.enemyBuildings.find(b => b.id === id);
-            if (enemy) showSabotageMenu(id);
+    if (game.selectedMode === 'sabotage') {
+        // No enemy on this cell — nothing to target
+        return;
     } else if (game.selectedMode === 'strike') {
         // Strike mode: target enemy buildings in AoE
         executeNuclearStrike(id);
@@ -2333,12 +2361,28 @@ function onCellHover(id, e) {
     // If hovering an enemy building (only show details when NOT in build mode)
     if (enemy && !game.selectedMode) {
         const type = enemy.type;
-        const sabotageCost = Math.max(0, buildingTypes[type].cost - 200);
+        const owner = resolveOwner(enemy.owner);
+        const sabotageCost = Math.max(0, buildingTypes[type] ? buildingTypes[type].cost - 200 : 300);
         const label = displayNames[type] || type;
         const icon = (buildingTypes[type] && buildingTypes[type].emoji) ? buildingTypes[type].emoji + ' ' : '';
-        content = `<div style="font-weight:700;">${icon}${label} <span style="color:#ff6b6b;">(Enemy)</span></div>` +
-            `<div>💥 Sabotage cost: ${sabotageCost.toLocaleString()} tokens</div>` +
-            `<div>🗑️ Effect: destroys building, removes its production</div>`;
+        // Owner label: bot tag for bots, 'Player' for future human opponents
+        const ownerTag = owner.isLocal ? 'You'
+            : owner.isBot ? `<span style="color:#ff9944;">${owner.name} <span style="font-size:10px;color:#666;">[BOT]</span></span>`
+            : `<span style="color:#e05ce0;">${owner.name} <span style="font-size:10px;color:#aaa;">[PLAYER]</span></span>`;
+        const ownerBuildings = game.enemyBuildings.filter(b => b.owner === enemy.owner).length;
+        // Active debuffs on this building
+        const now = Date.now();
+        let statusLine = '';
+        if (enemy.disabled && enemy.disabled.endTime > now) {
+            const secsLeft = Math.ceil((enemy.disabled.endTime - now) / 1000);
+            statusLine += `<div style="color:#ffb84d; margin-top:4px;">⏸️ Disabled — ${secsLeft}s remaining (${Math.round((1 - enemy.disabled.multiplier) * 100)}% penalty)</div>`;
+        }
+        content = `<div style="font-weight:700;">${icon}${label}</div>` +
+            `<div style="margin-top:2px;">Owner: ${ownerTag}</div>` +
+            `<div style="color:#888; font-size:11px;">${ownerBuildings} building${ownerBuildings !== 1 ? 's' : ''} total</div>` +
+            statusLine +
+            `<div style="margin-top:6px; color:#ff6b6b;">💥 Sabotage cost: ${sabotageCost.toLocaleString()} tokens</div>` +
+            `<div style="color:#aaa; font-size:11px;">Click to open sabotage menu</div>`;
         showTooltipAt(rect.right + 8, rect.top, content);
         return;
     }
