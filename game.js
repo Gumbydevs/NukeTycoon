@@ -683,7 +683,7 @@ function buildBuilding(id, type) {
                 showTooltipAt(rect.right + 8, rect.top, msg);
             }
             console.warn('Cannot build silo without completed reactor');
-            addNotification('warning', '🔴 Silo blocked — you need at least 1 completed Reactor first.');
+            addNotification('warning', '🔴 Silo blocked. You need at least 1 completed Reactor first.');
             return;
         }
         
@@ -698,7 +698,7 @@ function buildBuilding(id, type) {
                 showTooltipAt(rect.right + 8, rect.top, msg);
             }
             console.warn('Exceeded max silos per round');
-            addNotification('warning', `🔴 Silo limit reached — max ${game.maxSilosPerRound} per round.`);
+            addNotification('warning', `🔴 Silo limit reached. Max ${game.maxSilosPerRound} per round.`);
             return;
         }
     }
@@ -896,7 +896,7 @@ function executeTemporaryDisable(cellId, cost) {
     }
 
     console.info(`⏸️ Temporary disable on ${enemy.type} for 45s`);
-    addNotification('warning', `⏸️ Disabled enemy ${displayNames[enemy.type] || enemy.type} — 50% production for 45s.`);
+    addNotification('warning', `⏸️ Disabled enemy ${displayNames[enemy.type] || enemy.type}. Production cut to 50% for 45s.`);
     updateUI();
     game.selectedMode = null;
 }
@@ -936,7 +936,7 @@ function executeNuclearStrike(targetId) {
     // Check cooldown
     if (game.dayStrikes >= game.maxSilosPerRound) {
         console.warn('Strike cooldown active');
-        addNotification('warning', '⚠️ Nuclear strike on cooldown — only 1 strike allowed per day.');
+        addNotification('warning', '⚠️ Nuclear strike on cooldown. Only 1 strike allowed per day.');
         return;
     }
     
@@ -1913,11 +1913,11 @@ function onDayAdvance() {
     const _power = calculatePower();
     addNotification(
         'info',
-        `\ud83d\udcc5 Day ${game.time.day - 1} recap \u2014 ` +
-        `Income: +${game.dailyIncome.toLocaleString()} tokens \u00b7 ` +
-        `Mined: ${formatUranium(game.dailyProduced)} U \u00b7 ` +
-        `Power: ${_power.toFixed(1)} MW \u00b7 ` +
-        `Prize pool: ${formatPrizePool(game.prizePool)}`
+        `📅 Day ${game.time.day - 1} recap: ` +
+        `Income +${game.dailyIncome.toLocaleString()} tokens · ` +
+        `Mined ${formatUranium(game.dailyProduced)} U · ` +
+        `Power ${_power.toFixed(1)} MW · ` +
+        `Prize pool ${formatPrizePool(game.prizePool)}`
     );
 
     // Reset daily accumulators for next day
