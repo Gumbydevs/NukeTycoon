@@ -9,25 +9,52 @@ const db         = require('./db');
 const { setupGameLoop } = require('./gameLoop');
 const { registerHandlers } = require('./socket/handlers');
 
+let dbReady = false;
+let gameLoopStarted = false;
+
+function stripSqlComments(sql) {
+    return sql
+        .split(/\r?\n/)
+        .map((line) => line.replace(/--.*$/, '').trimEnd())
+        .join('\n');
+}
+
 // Auto-run schema migration on every boot (all statements are IF NOT EXISTS — safe to re-run)
 async function runMigration() {
-    const client = await db.connect();
+    let client;
     try {
-        const sql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
-        // Split on semicolons, run each statement individually so pg handles them correctly
+        client = await db.connect();
+        const sql = stripSqlComments(fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
         const statements = sql
             .split(';')
-            .map(s => s.trim())
-            .filter(s => s.length > 0 && !s.startsWith('--'));
-        for (const stmt of statements) {
-            await client.query(stmt);
+            .map((statement) => statement.trim())
+            .filter(Boolean);
+
+        for (const statement of statements) {
+            await client.query(statement);
         }
+
+        dbReady = true;
         console.log('✅ Schema migration OK');
+        return true;
     } catch (err) {
-        // Log but don't crash — tables may already exist from a previous deploy
-        console.error('⚠️  Schema migration warning:', err.message);
+        console.error('⚠️  Database init failed:', err.message);
+        return false;
     } finally {
-        client.release();
+        if (client) client.release();
+    }
+}
+
+async function initializeDatabase(io) {
+    const ok = await runMigration();
+    if (!ok) {
+        setTimeout(() => initializeDatabase(io), 5000);
+        return;
+    }
+
+    if (!gameLoopStarted) {
+        setupGameLoop(io);
+        gameLoopStarted = true;
     }
 }
 
@@ -51,7 +78,7 @@ app.use(cors({
 app.use(express.json());
 
 // Health check — Railway uses this to verify the service is alive
-app.get('/health', (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
+app.get('/health', (_req, res) => res.json({ ok: true, dbReady, ts: new Date().toISOString() }));
 
 // Minimal REST: current run status (useful for debugging)
 app.get('/status', async (_req, res) => {
@@ -73,13 +100,9 @@ io.on('connection', (socket) => {
     });
 });
 
-// Run the persistent game loop (day advancement, auto-start new runs)
-setupGameLoop(io);
-
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
-runMigration().then(() => {
-    server.listen(PORT, () => {
-        console.log(`☢️  NukeTycoon server listening on port ${PORT}`);
-    });
+server.listen(PORT, () => {
+    console.log(`☢️  NukeTycoon server listening on port ${PORT}`);
+    initializeDatabase(io);
 });
