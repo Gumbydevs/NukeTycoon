@@ -3,9 +3,23 @@ const express    = require('express');
 const http       = require('http');
 const { Server } = require('socket.io');
 const cors       = require('cors');
+const fs         = require('fs');
+const path       = require('path');
 const db         = require('./db');
 const { setupGameLoop } = require('./gameLoop');
 const { registerHandlers } = require('./socket/handlers');
+
+// Auto-run schema migration on every boot (all statements are IF NOT EXISTS — safe to re-run)
+async function runMigration() {
+    try {
+        const sql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
+        await db.query(sql);
+        console.log('✅ Schema migration OK');
+    } catch (err) {
+        console.error('❌ Schema migration failed:', err.message);
+        process.exit(1);
+    }
+}
 
 const app    = express();
 const server = http.createServer(app);
@@ -53,6 +67,9 @@ io.on('connection', (socket) => {
 setupGameLoop(io);
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
-server.listen(PORT, () => {
-    console.log(`☢️  NukeTycoon server listening on port ${PORT}`);
+
+runMigration().then(() => {
+    server.listen(PORT, () => {
+        console.log(`☢️  NukeTycoon server listening on port ${PORT}`);
+    });
 });
