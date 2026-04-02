@@ -3,7 +3,7 @@ const jwt = require('jsonwebtoken');
 const { Resend } = require('resend');
 const db = require('./db');
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 // Simple in-memory rate limit: max 3 OTP requests per email per 10 minutes
 const otpRateLimit = new Map();
@@ -43,6 +43,11 @@ function verifyJWT(token) {
 }
 
 async function sendOTP(email) {
+    if (!resend) {
+        console.error('RESEND_API_KEY is missing. Email login is disabled.');
+        return { ok: false, error: 'Email login is not configured yet.' };
+    }
+
     if (!checkRateLimit(email)) {
         return { ok: false, error: 'Too many code requests. Wait a few minutes.' };
     }
