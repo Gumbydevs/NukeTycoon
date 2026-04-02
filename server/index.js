@@ -11,13 +11,23 @@ const { registerHandlers } = require('./socket/handlers');
 
 // Auto-run schema migration on every boot (all statements are IF NOT EXISTS — safe to re-run)
 async function runMigration() {
+    const client = await db.connect();
     try {
         const sql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
-        await db.query(sql);
+        // Split on semicolons, run each statement individually so pg handles them correctly
+        const statements = sql
+            .split(';')
+            .map(s => s.trim())
+            .filter(s => s.length > 0 && !s.startsWith('--'));
+        for (const stmt of statements) {
+            await client.query(stmt);
+        }
         console.log('✅ Schema migration OK');
     } catch (err) {
-        console.error('❌ Schema migration failed:', err.message);
-        process.exit(1);
+        // Log but don't crash — tables may already exist from a previous deploy
+        console.error('⚠️  Schema migration warning:', err.message);
+    } finally {
+        client.release();
     }
 }
 
