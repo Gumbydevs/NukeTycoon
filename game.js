@@ -804,20 +804,33 @@ function showSabotageMenu(cellId) {
     if (!cell) return;
 
     const rect = cell.getBoundingClientRect();
-    
+
+    // Compute viewport-safe position — prefer right of cell, fall back to left
+    const menuW = 248; // slightly over min-width for safety margin
+    const menuH = 220; // estimated max height
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let menuLeft = rect.right + 8;
+    if (menuLeft + menuW > vw - 8) {
+        menuLeft = rect.left - menuW - 8; // try left side
+    }
+    menuLeft = Math.max(8, Math.min(vw - menuW - 8, menuLeft)); // hard clamp
+    const menuTop = Math.max(8, Math.min(vh - menuH - 8, rect.top));
+
     // Create menu
     const menu = document.createElement('div');
     menu.className = 'sabotage-menu';
     menu.style.cssText = `
         position: fixed;
-        left: ${rect.right + 8}px;
-        top: ${rect.top}px;
+        left: ${menuLeft}px;
+        top: ${menuTop}px;
         background: rgba(0, 0, 0, 0.95);
         border: 1px solid #f57c00;
         border-radius: 4px;
         padding: 8px 0;
         z-index: 100;
         min-width: 240px;
+        max-width: calc(100vw - 16px);
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.8);
     `;
 
@@ -2866,9 +2879,17 @@ function showFloatingText(text, color, anchorEl) {
         'white-space:nowrap'
     ].join(';');
     el.textContent = text;
-    const rect = (anchorEl || document.body).getBoundingClientRect();
-    // Center horizontally over the anchor, sit just above it
-    el.style.left = (rect.left + rect.width / 2) + 'px';
+    let rect = (anchorEl || document.body).getBoundingClientRect();
+    // If the anchor is hidden (e.g. desktop stat-items hidden on mobile), fall
+    // back to the mobile compact stats bar so the float appears on-screen.
+    if (!rect.width && !rect.height) {
+        const fallback = document.getElementById('mobileStatsCompact');
+        rect = fallback ? fallback.getBoundingClientRect()
+                        : { left: window.innerWidth / 2, top: 48, width: 0, height: 0 };
+    }
+    // Center horizontally over the anchor, sit just above it — then clamp to viewport
+    const cx = Math.max(30, Math.min(window.innerWidth - 30, rect.left + rect.width / 2));
+    el.style.left = cx + 'px';
     el.style.top  = (rect.top + rect.height / 2) + 'px';
     document.body.appendChild(el);
     setTimeout(() => el.remove(), duration);
