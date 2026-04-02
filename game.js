@@ -882,6 +882,7 @@ window.addEventListener('DOMContentLoaded', () => {
     // Shift+D+V secret shortcut to reveal/hide the Dev button
     const _devHeldKeys = new Set();
     document.addEventListener('keydown', (ev) => {
+        if (typeof ev.key !== 'string') return;
         _devHeldKeys.add(ev.key.toLowerCase());
         if (ev.shiftKey && _devHeldKeys.has('d') && _devHeldKeys.has('v')) {
             const devBtn = document.getElementById('devToggle');
@@ -892,6 +893,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     });
     document.addEventListener('keyup', (ev) => {
+        if (typeof ev.key !== 'string') return;
         _devHeldKeys.delete(ev.key.toLowerCase());
     });
 });
