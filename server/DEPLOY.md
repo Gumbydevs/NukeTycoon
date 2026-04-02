@@ -1,37 +1,4 @@
-# Nuclear Tycoon — Server Deployment Guide
 
-## Prerequisites
-
-| What | Where |
-|------|-------|
-| Railway account | https://railway.app |
-| Resend account (email OTP) | https://resend.com |
-| Node.js 18+ (local dev) | https://nodejs.org |
-
----
-
-## 1. Set up Resend (email delivery)
-
-1. Sign up at https://resend.com (free tier = 100 emails/day)
-2. Add & verify your domain, **or** use `onboarding@resend.dev` for testing
-3. Go to **API Keys** → create a key with "Sending access"
-4. Copy the key — you'll need it for `RESEND_API_KEY`
-
----
-
-## 2. Create the Railway project (GitHub-connected)
-
-1. Go to https://railway.app → **New Project**
-2. Choose **Deploy from GitHub repo**
-3. Authorise Railway to access your GitHub account if prompted
-4. Select your `NukeTycoon` repository
-5. When asked for the **Root Directory**, set it to `server` — this tells Railway the `package.json` lives there
-6. Railway will detect Node.js automatically and set the start command to `npm start`
-7. Click **Deploy** — it will fail on the first deploy because env vars aren't set yet, that's fine
-
-From now on, every `git push` to your default branch triggers an automatic redeploy.
-
----
 
 ## 3. Add a PostgreSQL database
 

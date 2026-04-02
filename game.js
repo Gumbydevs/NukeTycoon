@@ -3,7 +3,7 @@
 // During local development the server runs on port 3001.
 const SERVER_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     ? 'http://localhost:3001'
-    : 'https://YOUR-NUKETYCOON-SERVER.railway.app'; // ← replace with your Railway URL after deploy
+    : 'https://nuketycoon-production.up.railway.app'; // Railway server
 
 let socket = null;
 let _authJWT = null;     // stored JWT for all socket events
