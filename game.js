@@ -19,7 +19,7 @@ function getLocalPlayerId() {
 }
 
 function connectSocket() {
-    socket = io(SERVER_URL, { transports: ['polling', 'websocket'], autoConnect: true });
+    socket = io(SERVER_URL, { transports: ['websocket'], autoConnect: true });
 
     socket.on('connect', () => {
         console.log('☢️ Connected to server');

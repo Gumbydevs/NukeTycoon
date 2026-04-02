@@ -38,7 +38,7 @@ async function runMigration() {
         console.log('✅ Schema migration OK');
         return true;
     } catch (err) {
-        console.error('⚠️  Database init failed:', err.message);
+        console.error('⚠️  Database init failed:', err && (err.stack || err.message || String(err)));
         return false;
     } finally {
         if (client) client.release();
@@ -102,7 +102,7 @@ io.on('connection', (socket) => {
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
-server.listen(PORT, () => {
-    console.log(`☢️  NukeTycoon server listening on port ${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`☢️  NukeTycoon server listening on 0.0.0.0:${PORT}`);
     initializeDatabase(io);
 });
