@@ -1,4 +1,266 @@
-﻿// Game state
+﻿// ── Server connection ─────────────────────────────────────────────────────────
+// Set SERVER_URL to your Railway service URL when deploying.
+// During local development the server runs on port 3001.
+const SERVER_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:3001'
+    : 'https://YOUR-NUKETYCOON-SERVER.railway.app'; // ← replace with your Railway URL after deploy
+
+let socket = null;
+let _authJWT = null;     // stored JWT for all socket events
+let _localPlayerId = null;
+
+function getLocalPlayerId() {
+    if (_localPlayerId) return _localPlayerId;
+    if (!_authJWT) return null;
+    try {
+        _localPlayerId = JSON.parse(atob(_authJWT.split('.')[1])).id;
+        return _localPlayerId;
+    } catch { return null; }
+}
+
+function connectSocket() {
+    socket = io(SERVER_URL, { transports: ['websocket'], autoConnect: true });
+
+    socket.on('connect', () => {
+        console.log('☢️ Connected to server');
+        // Restore session on page reload
+        const saved = localStorage.getItem('nuke_jwt');
+        if (saved) socket.emit('auth:reconnect', { jwt: saved });
+    });
+
+    socket.on('disconnect', (reason) => {
+        console.warn('Server disconnected:', reason);
+        addNotification('warning', '⚠️ Lost connection to server. Reconnecting…');
+    });
+
+    socket.on('connect_error', (err) => {
+        console.error('Socket connect error:', err.message);
+        document.getElementById('loginError') &&
+            (document.getElementById('loginError').textContent = 'Cannot reach server. Check your connection.');
+    });
+
+    // ── Auth events ─────────────────────────────────────────────────────
+    socket.on('auth:code_sent', ({ email }) => {
+        document.getElementById('loginStep1').style.display = 'none';
+        document.getElementById('loginStep2').style.display = 'block';
+        document.getElementById('loginEmailDisplay').textContent = email;
+        document.getElementById('loginCode').focus();
+    });
+
+    socket.on('auth:success', ({ player, jwt }) => {
+        _authJWT = jwt;
+        _localPlayerId = player.id;
+        localStorage.setItem('nuke_jwt', jwt);
+        game.playerWallet = player.token_balance;
+        game.playerName   = player.username;
+        authenticate();
+    });
+
+    socket.on('auth:session_expired', () => {
+        localStorage.removeItem('nuke_jwt');
+        _authJWT = null;
+        _localPlayerId = null;
+        // Show login modal again
+        const modal = document.getElementById('loginModal');
+        if (modal) modal.style.display = 'flex';
+        document.body.classList.remove('authenticated');
+    });
+
+    socket.on('auth:error', ({ message }) => {
+        const el1 = document.getElementById('loginError');
+        const el2 = document.getElementById('loginError2');
+        if (el2 && el2.parentElement.style.display !== 'none') el2.textContent = message;
+        else if (el1) el1.textContent = message;
+    });
+
+    // ── Run events ──────────────────────────────────────────────────────
+    socket.on('run:state', ({ run, buildings, players, yourWallet, isNewJoiner }) => {
+        // Set authoritative run state from server
+        game.playerWallet = yourWallet;
+        game.time.day     = run.current_day;
+        game.round        = run.current_day;
+        game.runLength    = run.run_length;
+        game.prizePool    = run.prize_pool;
+        game._serverRunId = run.id;
+
+        // Replace local bot registry with real player list from server
+        game.players = players.map(p => ({
+            id:      p.id,
+            name:    p.username,
+            isLocal: p.id === getLocalPlayerId(),
+            isBot:   false,
+            wallet:  parseInt(p.token_balance, 10),
+            score:   0,
+        }));
+
+        // Render all existing buildings on the grid
+        game.buildings      = [];
+        game.enemyBuildings = [];
+        buildings.forEach(b => {
+            if (b.player_id === getLocalPlayerId()) {
+                const bObj = { id: b.cell_id, type: b.type, owner: game.playerName };
+                game.buildings.push(bObj);
+                renderBuilding(b.cell_id, b.type, true, bObj);
+            } else {
+                const bObj = { id: b.cell_id, type: b.type, owner: b.owner_name };
+                game.enemyBuildings.push(bObj);
+                renderBuilding(b.cell_id, b.type, false);
+            }
+        });
+
+        updateUI();
+
+        if (isNewJoiner) {
+            // Fresh joiner: show the lobby modal with server-populated data
+            _updateLobbyFromServerState(run, players, yourWallet);
+            const modal = document.getElementById('lobbyModal');
+            if (modal) modal.style.display = 'flex';
+        } else {
+            // Returning player: skip lobby, go straight into the game
+            const modal = document.getElementById('lobbyModal');
+            if (modal) modal.style.display = 'none';
+            startGame();
+        }
+    });
+
+    socket.on('run:player_joined', ({ player }) => {
+        if (!game.players.find(p => p.id === player.id)) {
+            game.players.push({ id: player.id, name: player.username, isLocal: false, isBot: false, wallet: 45000, score: 0 });
+        }
+        addNotification('info', `👤 ${player.username} joined the run.`);
+    });
+
+    socket.on('run:join_error', ({ message }) => {
+        const errEl = document.getElementById('lobbyError');
+        if (errEl) errEl.textContent = message;
+    });
+
+    socket.on('run:day_advanced', ({ day, runLength, scores }) => {
+        if (day > game.time.day) {
+            game.time.day   = day;
+            game.time.hour  = 0;
+            game.time.minute = 0;
+            onDayAdvance();
+        }
+        scores.forEach(s => {
+            const p = game.players.find(pl => pl.name === s.username);
+            if (p) p.score = s.score;
+        });
+    });
+
+    socket.on('run:ended', ({ runNumber, scores, payouts }) => {
+        // Apply server-authoritative payout to local wallet
+        const me = payouts.find(p => p.player_id === getLocalPlayerId());
+        if (me) game.playerWallet = me.token_balance;
+        onRunEnd();
+    });
+
+    socket.on('run:new', ({ runId, runNumber }) => {
+        addNotification('info', `🔄 Run #${runNumber} has started! Rejoin via the lobby.`);
+    });
+
+    // ── Building events ─────────────────────────────────────────────────
+    socket.on('building:placed', ({ building, ownerName, placedBy }) => {
+        const isMyBuilding = placedBy === getLocalPlayerId();
+        if (isMyBuilding) {
+            // Server confirmed our placement — render it locally now
+            if (!game.buildings.find(b => b.id === building.cell_id)) {
+                const bObj = {
+                    id: building.cell_id, type: building.type, owner: game.playerName,
+                    constructionTimeRemaining: buildingTypes[building.type]?.constructionTime || 0,
+                    isUnderConstruction: (buildingTypes[building.type]?.constructionTime || 0) > 0
+                };
+                game.buildings.push(bObj);
+                renderBuilding(building.cell_id, building.type, true, bObj);
+                calculateProximity();
+                if (building.type === 'storage') game.maxStorage += 1000;
+                addNotification('success', `🛠️ ${displayNames[building.type] || building.type} construction started.`);
+                updateUI();
+            }
+            game.selectedMode = null;
+            return;
+        }
+        // Another player placed a building — render it as an enemy building
+        if (!game.enemyBuildings.find(b => b.id === building.cell_id)) {
+            const bObj = { id: building.cell_id, type: building.type, owner: ownerName };
+            game.enemyBuildings.push(bObj);
+            renderBuilding(building.cell_id, building.type, false);
+        }
+    });
+
+    socket.on('building:place_error', ({ message }) => {
+        addNotification('danger', `❌ ${message}`);
+    });
+
+    // ── Sabotage events ─────────────────────────────────────────────────
+    socket.on('sabotage:applied', ({ attackType, cellId, attackerName, attackerId,
+                                      disableUntil, stolenAmount, destroyedCells, falloutDuration }) => {
+        const isMe = attackerId === getLocalPlayerId();
+
+        if (attackType === 'disable' && disableUntil) {
+            const b = game.enemyBuildings.find(e => e.id === cellId);
+            if (b) b.disabled = { endTime: new Date(disableUntil).getTime(), multiplier: 0.5 };
+        }
+        if (attackType === 'steal' && isMe && stolenAmount) {
+            game.uraniumRaw += stolenAmount;
+        }
+        if (attackType === 'nuke' && destroyedCells) {
+            destroyedCells.forEach(cId => {
+                const idx = game.enemyBuildings.findIndex(e => e.id === cId);
+                if (idx !== -1) game.enemyBuildings.splice(idx, 1);
+                const cell = document.querySelector(`[data-id="${cId}"]`);
+                if (cell) { cell.innerHTML = ''; cell.className = cell.className.replace(/building.*/, '').trim(); }
+            });
+        }
+        if (!isMe) {
+            addNotification('warning', `⚔️ ${attackerName} executed a ${attackType} attack!`);
+        }
+        updateUI();
+    });
+
+    // ── Wallet sync ─────────────────────────────────────────────────────
+    socket.on('player:wallet_update', ({ token_balance }) => {
+        game.playerWallet = token_balance;
+        updateUI();
+    });
+
+    socket.on('error', ({ message }) => {
+        addNotification('warning', `⚠️ ${message}`);
+    });
+}
+
+// Sync locally-earned income to the server every 60 seconds
+// so the server wallet stays close to the client wallet.
+let _incomeSinceLastSync = 0;
+function _trackLocalIncome(amount) {
+    _incomeSinceLastSync += amount;
+}
+setInterval(() => {
+    if (socket?.connected && _authJWT && _incomeSinceLastSync > 0) {
+        socket.emit('player:income_sync', { jwt: _authJWT, income: Math.floor(_incomeSinceLastSync) });
+        _incomeSinceLastSync = 0;
+    }
+}, 60000);
+
+function _updateLobbyFromServerState(run, players, yourWallet) {
+    const preview = run.prize_pool + Math.floor(players.length * 5000 * 0.8);
+    const el = (id) => document.getElementById(id);
+    if (el('lobbyBuyIn'))      el('lobbyBuyIn').textContent      = game.buyIn.toLocaleString();
+    if (el('lobbyBuyInBtn'))   el('lobbyBuyInBtn').textContent   = game.buyIn.toLocaleString();
+    if (el('lobbyWalletAfter'))el('lobbyWalletAfter').textContent= (yourWallet).toLocaleString();
+    if (el('lobbyPrizePreview'))el('lobbyPrizePreview').textContent = formatPrizePool(preview);
+    const list = el('lobbyPlayerList');
+    if (list) {
+        list.innerHTML = players.map(p =>
+            `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #1e1e1e;">
+                <span style="color:${p.id === getLocalPlayerId() ? '#ffb84d' : '#888'};">${p.username}</span>
+                <span style="color:#4CAF50;">${parseInt(p.token_balance,10).toLocaleString()} tokens</span>
+            </div>`
+        ).join('');
+    }
+}
+
+// ── Game state ────────────────────────────────────────────────────────────────
 const game = {
     playerWallet: 50000,
     uraniumRaw: 0,      // mined by Mine buildings
@@ -690,7 +952,12 @@ function placeOrSelect(id) {
     } else {
         // For building placement, check that cell is empty
         if (cell.innerHTML && cell.innerHTML !== '') return; // Already occupied
-        buildBuilding(id, game.selectedMode);
+        if (socket?.connected && _authJWT) {
+            // Server validates, deducts wallet, and broadcasts building:placed back to all players
+            socket.emit('building:place', { jwt: _authJWT, cellId: id, type: game.selectedMode });
+        } else {
+            buildBuilding(id, game.selectedMode);
+        }
     }
 }
 
@@ -923,6 +1190,12 @@ function executeTemporaryDisable(cellId, cost) {
     const enemy = game.enemyBuildings.find(b => b.id === cellId);
     if (!enemy) return;
 
+    if (socket?.connected && _authJWT) {
+        socket.emit('sabotage:execute', { jwt: _authJWT, cellId, attackType: 'disable' });
+        game.selectedMode = null;
+        return;
+    }
+
     if (game.playerWallet < cost) {
         console.warn('Insufficient funds');
         return;
@@ -954,6 +1227,12 @@ function executeTemporaryDisable(cellId, cost) {
 function executeStealResources(cellId, cost) {
     const enemy = game.enemyBuildings.find(b => b.id === cellId);
     if (!enemy) return;
+
+    if (socket?.connected && _authJWT) {
+        socket.emit('sabotage:execute', { jwt: _authJWT, cellId, attackType: 'steal' });
+        game.selectedMode = null;
+        return;
+    }
 
     if (game.playerWallet < cost) {
         console.warn('Insufficient funds');
@@ -997,7 +1276,14 @@ function executeNuclearStrike(targetId) {
         console.warn('No completed silo available');
         return;
     }
-    
+
+    if (socket?.connected && _authJWT) {
+        socket.emit('sabotage:execute', { jwt: _authJWT, cellId: targetId, attackType: 'nuke' });
+        game.dayStrikes++;
+        game.selectedMode = null;
+        return;
+    }
+
     // Strike cost: 40-60% of current wallet
     const costPercent = 0.5; // 50% for balanced gameplay
     const strikeCost = Math.floor(game.playerWallet * costPercent);
@@ -1452,16 +1738,19 @@ function startGame() {
 }
 
 function authenticate() {
-    // mark body as authenticated to reveal UI
     document.body.classList.add('authenticated');
     const modal = document.getElementById('loginModal');
     if (modal) modal.style.display = 'none';
-    // persist session for the tab
     sessionStorage.setItem('nuke_auth', '1');
-    // Pre-render the game map so it's visible behind the lobby overlay
+    // Pre-render the game map so it's visible behind the lobby
     initGrid();
-    // Show lobby before launching
-    showLobby();
+    // Ask the server for the active run state (will show lobby or drop into game)
+    if (socket?.connected && _authJWT) {
+        socket.emit('run:join', { jwt: _authJWT });
+    } else {
+        // Server unavailable — fall back to single-player mode
+        showLobby();
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1470,12 +1759,10 @@ function authenticate() {
 
 /**
  * Show the pre-run lobby modal.
- * Builds the player list and displays buy-in details so the player can
- * confirm before tokens are deducted. A run consists of 8 rounds, each
- * lasting one real 24-hour day.
- *
- * BACKEND_STUB: In production, open a WebSocket connection here, register
- *   the player, and wait for 'run:ready' before enabling the confirm button.
+ * When server-connected, called only for offline/fallback. The live path goes:
+ *   authenticate() → socket.emit('run:join') → run:state event →
+ *     _updateLobbyFromServerState() → lobbyModal shown.
+ * The offline path calls showLobby() directly with bot players.
  */
 function showLobby() {
     initPlayerRegistry(); // populate game.players (no buy-in yet)
@@ -1516,14 +1803,23 @@ function showLobby() {
  * Player confirmed buy-in — deduct tokens, seed pools, launch run.
  */
 function confirmBuyIn() {
-    if (game.playerWallet < game.buyIn) {
-        document.getElementById('lobbyError').textContent =
-            'Insufficient tokens for buy-in.';
-        return;
+    if (socket?.connected && _authJWT) {
+        // Server-mode: deduction + validation happens server-side.
+        // The run:state event already joined us; just close the lobby and start.
+        const modal = document.getElementById('lobbyModal');
+        if (modal) modal.style.display = 'none';
+        startGame();
+    } else {
+        // Offline fallback
+        if (game.playerWallet < game.buyIn) {
+            const errEl = document.getElementById('lobbyError');
+            if (errEl) errEl.textContent = 'Insufficient tokens for buy-in.';
+            return;
+        }
+        const modal = document.getElementById('lobbyModal');
+        if (modal) modal.style.display = 'none';
+        startGame();
     }
-    const modal = document.getElementById('lobbyModal');
-    if (modal) modal.style.display = 'none';
-    startGame();
 }
 
 /* Profile modal handlers */
@@ -1581,39 +1877,73 @@ function closeConversionModal() {
     modal.style.display = 'none';
 }
 
-async function checkPassword() {
-    const input = document.getElementById('passwordInput');
-    if (!input) return;
-    const v = input.value || '';
-    try {
-        const h = await sha256Hex(v);
-        if (h === EXPECTED_PASSWORD_HASH) {
-            authenticate();
-        } else {
-            alert('Incorrect password');
-        }
-    } catch (err) {
-        console.error('Hash error', err);
-        alert('Authentication error');
+function requestLoginCode() {
+    const emailEl = document.getElementById('loginEmail');
+    const errEl   = document.getElementById('loginError');
+    const email   = (emailEl?.value || '').trim();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        if (errEl) errEl.textContent = 'Please enter a valid email address.';
+        return;
     }
+    if (errEl) errEl.textContent = '';
+    if (!socket?.connected) {
+        if (errEl) errEl.textContent = 'Not connected to server. Please wait and try again.';
+        return;
+    }
+    const btn = document.getElementById('loginSendBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+    socket.emit('auth:request', { email });
+    // Re-enable after a delay in case of error
+    setTimeout(() => { if (btn) { btn.disabled = false; btn.textContent = 'Send Code'; } }, 8000);
+}
+
+function verifyLoginCode() {
+    const code  = (document.getElementById('loginCode')?.value || '').trim();
+    const email = document.getElementById('loginEmailDisplay')?.textContent || '';
+    const errEl = document.getElementById('loginError2');
+    if (!code || code.length < 6) {
+        if (errEl) errEl.textContent = 'Enter the 6-digit code from your email.';
+        return;
+    }
+    if (errEl) errEl.textContent = '';
+    const btn = document.getElementById('loginVerifyBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Verifying…'; }
+    socket.emit('auth:verify', { email, code });
+    setTimeout(() => { if (btn) { btn.disabled = false; btn.textContent = 'Verify'; } }, 8000);
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    // if session token present, bypass login but still show lobby for buy-in
-    if (sessionStorage.getItem('nuke_auth') === '1') {
-        document.body.classList.add('authenticated');
-        const modal = document.getElementById('loginModal');
-        if (modal) modal.style.display = 'none';
-        showLobby();
+    // Connect to the server immediately on page load
+    connectSocket();
+
+    // Wire login step 1
+    const sendBtn  = document.getElementById('loginSendBtn');
+    const emailIn  = document.getElementById('loginEmail');
+    if (sendBtn) sendBtn.addEventListener('click', requestLoginCode);
+    if (emailIn)  emailIn.addEventListener('keyup', (e) => { if (e.key === 'Enter') requestLoginCode(); });
+
+    // Wire login step 2
+    const verifyBtn = document.getElementById('loginVerifyBtn');
+    const codeIn    = document.getElementById('loginCode');
+    const backBtn   = document.getElementById('loginBackBtn');
+    if (verifyBtn) verifyBtn.addEventListener('click', verifyLoginCode);
+    if (codeIn)    codeIn.addEventListener('keyup', (e) => { if (e.key === 'Enter') verifyLoginCode(); });
+    if (backBtn)   backBtn.addEventListener('click', () => {
+        document.getElementById('loginStep1').style.display = 'block';
+        document.getElementById('loginStep2').style.display = 'none';
+        document.getElementById('loginError').textContent = '';
+        document.getElementById('loginEmail').value = '';
+    });
+
+    // If a valid JWT is stored, try to reconnect silently
+    const saved = localStorage.getItem('nuke_jwt');
+    if (saved) {
+        // connectSocket() already emits auth:reconnect on 'connect'
+        // so nothing extra needed here
     }
 
-    // show login modal and wire events
-    const loginBtn = document.getElementById('loginBtn');
-    const pwd = document.getElementById('passwordInput');
     const profileBtn = document.getElementById('profileBtn');
     const mobileMenuBtn = document.getElementById('mobileMenuBtn');
-    if (loginBtn) loginBtn.addEventListener('click', checkPassword);
-    if (pwd) pwd.addEventListener('keyup', (e) => { if (e.key === 'Enter') checkPassword(); });
     if (profileBtn) profileBtn.addEventListener('click', toggleProfile);
     if (mobileMenuBtn) mobileMenuBtn.addEventListener('click', toggleMobileMenu);
 
