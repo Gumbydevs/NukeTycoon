@@ -62,12 +62,12 @@ async function sendOTP(email) {
     );
 
     const { error } = await resend.emails.send({
-        from: process.env.EMAIL_FROM || 'Nuclear Tycoon <onboarding@resend.dev>',
+        from: process.env.EMAIL_FROM || 'NUKWAR <onboarding@resend.dev>',
         to: email,
-        subject: `${code} — your Nuclear Tycoon login code`,
+        subject: `${code} — your NUKWAR login code`,
         html: `
             <div style="background:#0d0d0d;color:#fff;padding:32px;font-family:monospace;max-width:480px;">
-                <div style="font-size:20px;font-weight:bold;color:#ffb84d;margin-bottom:16px;">☢️ Nuclear Tycoon</div>
+                <div style="font-size:20px;font-weight:bold;color:#ffb84d;margin-bottom:16px;">☢️ NUKWAR</div>
                 <p style="color:#ccc;margin-bottom:8px;">Your login code:</p>
                 <div style="font-size:40px;font-weight:bold;color:#ffb84d;letter-spacing:10px;margin:20px 0;padding:16px;background:#111;text-align:center;border-radius:4px;">${code}</div>
                 <p style="color:#888;font-size:12px;">Expires in 10 minutes. Do not share this code.</p>
