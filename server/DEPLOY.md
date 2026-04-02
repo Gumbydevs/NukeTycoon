@@ -29,8 +29,9 @@ In Railway → your service → **Variables**, add:
 | `RESEND_API_KEY` | your Resend API key |
 | `EMAIL_FROM` | `Nuclear Tycoon <noreply@yourdomain.com>` |
 | `CLIENT_ORIGIN` | URL where your frontend is hosted (e.g. `https://nuketycoon.up.railway.app`) |
-| `PORT` | `3001` (Railway sets this automatically too) |
 | `DAY_DURATION_MS` | `86400000` for 24hr days; use `60000` (1 min) for testing |
+
+> Do not create a `PORT` variable in Railway. Railway injects its own internal port automatically, and overriding it can stop the app from responding.
 
 ---
 
