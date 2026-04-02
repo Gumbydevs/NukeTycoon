@@ -53,6 +53,7 @@ function connectSocket() {
         localStorage.setItem('nuke_jwt', jwt);
         game.playerWallet = player.token_balance;
         game.playerName   = player.username;
+        game.playerEmail  = player.email;
         authenticate();
     });
 
@@ -222,6 +223,22 @@ function connectSocket() {
     socket.on('player:wallet_update', ({ token_balance }) => {
         game.playerWallet = token_balance;
         updateUI();
+    });
+
+    // ── Username rename ──────────────────────────────────────────────────
+    socket.on('player:rename_success', ({ username }) => {
+        game.playerName = username;
+        const nameEl = document.getElementById('profileName');
+        if (nameEl) nameEl.textContent = username;
+        const input = document.getElementById('profileUsernameInput');
+        if (input) input.value = username;
+        const msgEl = document.getElementById('profileUsernameMsg');
+        if (msgEl) { msgEl.style.color = '#4CAF50'; msgEl.textContent = 'Username updated!'; }
+    });
+
+    socket.on('player:rename_error', ({ message }) => {
+        const msgEl = document.getElementById('profileUsernameMsg');
+        if (msgEl) { msgEl.style.color = '#ff6b6b'; msgEl.textContent = message; }
     });
 
     socket.on('error', ({ message }) => {
@@ -1828,17 +1845,47 @@ function confirmBuyIn() {
 function showProfile() {
     const modal = document.getElementById('profileModal');
     if (!modal) return;
-    // populate some fields
     const walletEl = document.getElementById('profileWallet');
-    if (walletEl) walletEl.textContent = '$' + (game.playerWallet || 0).toLocaleString();
+    if (walletEl) walletEl.textContent = (game.playerWallet || 0).toLocaleString() + ' tokens';
     const nameEl = document.getElementById('profileName');
-    if (nameEl) nameEl.textContent = displayNames.player || 'You';
+    if (nameEl) nameEl.textContent = game.playerName || 'You';
+    const emailEl = document.getElementById('profileEmail');
+    if (emailEl) emailEl.textContent = game.playerEmail || '';
+    const usernameInput = document.getElementById('profileUsernameInput');
+    if (usernameInput) usernameInput.value = game.playerName || '';
+    const msgEl = document.getElementById('profileUsernameMsg');
+    if (msgEl) msgEl.textContent = '';
     const statsEl = document.getElementById('profileStats');
     if (statsEl) {
         const portfolio = (game.playerWallet + ((game.uraniumRaw + game.uraniumRefined) * game.market.price)) || 0;
         statsEl.textContent = `Tokens: ${game.playerWallet.toLocaleString()} — Raw: ${formatUranium(game.uraniumRaw)} / Ref: ${formatUranium(game.uraniumRefined)} — Portfolio: ${Math.round(portfolio).toLocaleString()} tokens`;
     }
     modal.style.display = 'flex';
+}
+
+function changeUsername() {
+    const input = document.getElementById('profileUsernameInput');
+    const msgEl = document.getElementById('profileUsernameMsg');
+    if (!input || !msgEl) return;
+    const newName = input.value.trim();
+    if (!newName || newName.length < 3) {
+        msgEl.style.color = '#ff6b6b';
+        msgEl.textContent = 'Username must be at least 3 characters.';
+        return;
+    }
+    if (!/^[a-zA-Z0-9_]+$/.test(newName)) {
+        msgEl.style.color = '#ff6b6b';
+        msgEl.textContent = 'Only letters, numbers, and underscores allowed.';
+        return;
+    }
+    if (!socket?.connected || !_authJWT) {
+        msgEl.style.color = '#ff6b6b';
+        msgEl.textContent = 'Not connected to server.';
+        return;
+    }
+    msgEl.style.color = '#888';
+    msgEl.textContent = 'Saving...';
+    socket.emit('player:rename', { jwt: _authJWT, username: newName });
 }
 
 function closeProfile() {

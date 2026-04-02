@@ -388,6 +388,36 @@ function registerHandlers(io, socket) {
             );
         });
     });
+
+    // ── USERNAME RENAME ───────────────────────────────────────────────────────
+    socket.on('player:rename', async ({ jwt, username }) => {
+        await requireAuth(socket, jwt, async (decoded, player) => {
+            if (!username || typeof username !== 'string') {
+                socket.emit('player:rename_error', { message: 'Invalid username.' });
+                return;
+            }
+            const clean = username.trim();
+            if (clean.length < 3 || clean.length > 20) {
+                socket.emit('player:rename_error', { message: 'Username must be 3–20 characters.' });
+                return;
+            }
+            if (!/^[a-zA-Z0-9_]+$/.test(clean)) {
+                socket.emit('player:rename_error', { message: 'Only letters, numbers, and underscores allowed.' });
+                return;
+            }
+            // Check uniqueness
+            const taken = await db.query(
+                'SELECT id FROM players WHERE username = $1 AND id != $2',
+                [clean, player.id]
+            );
+            if (taken.rows.length > 0) {
+                socket.emit('player:rename_error', { message: 'Username already taken.' });
+                return;
+            }
+            await db.query('UPDATE players SET username = $1 WHERE id = $2', [clean, player.id]);
+            socket.emit('player:rename_success', { username: clean });
+        });
+    });
 }
 
 module.exports = { registerHandlers };
