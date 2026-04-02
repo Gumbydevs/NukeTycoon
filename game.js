@@ -2009,6 +2009,9 @@ function onRoundEnd(roundNumber) {
  */
 function onRunEnd() {
     console.info('🔥 RUN COMPLETE! All rounds finished.');
+
+    // Distribute prize pool FIRST so wallet values in the leaderboard are accurate
+    const prizeAwards = distributePrizePool();
     
     // Freeze the grid
     const grid = document.getElementById('gameGrid');
@@ -2111,11 +2114,16 @@ function onRunEnd() {
         const medal = ['🥇 1ST', '🥈 2ND', '🥉 3RD'][i] || `#${i+1}`;
         const color = p.isLocal ? '#ffb84d' : '#ccc';
         const you = p.isLocal ? ' (YOU)' : '';
+        const award = prizeAwards[p.name];
+        const prizeHTML = award
+            ? `<div style="color:#4CAF50; font-weight:bold;">🏆 Prize: +${award.toLocaleString()} tokens</div>`
+            : '';
         return `
             <div style="margin-bottom: 12px; padding: 12px; background: rgba(255,255,255,0.05); border-left: 3px solid ${color}; border-radius: 4px;">
                 <div style="color: ${color}; font-weight: bold; margin-bottom: 6px;">
                     ${medal} ${p.name}${you}
                 </div>
+                ${prizeHTML}
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 11px; color: #aaa;">
                     <div><strong>Score:</strong> ${p.score.toFixed(1)}</div>
                     <div><strong>Portfolio:</strong> $${p.portfolio.toFixed(2)}</div>
@@ -2256,14 +2264,14 @@ function returnToMenu() {
  *   client only needs to display the result, not compute it.
  */
 function distributePrizePool() {
-    if (game.prizePool <= 0) return;
+    if (game.prizePool <= 0) return {};
     const pool = game.prizePool;
     const shares = [0.50, 0.30, 0.20];
 
     // Score every player
     const scored = game.players.map(p => {
         if (p.isLocal) {
-            const portfolio = game.playerWallet + (game.uranium * game.market.price);
+            const portfolio = game.playerWallet + ((game.uraniumRaw + game.uraniumRefined) * game.market.price);
             return { ...p, calcScore: calculatePower() + (portfolio / 1000) };
         }
         // Estimate bot score from their buildings on the grid
@@ -2276,20 +2284,25 @@ function distributePrizePool() {
 
     scored.sort((a, b) => b.calcScore - a.calcScore);
 
-    // Award local player if they placed top 3
-    const localRank = scored.findIndex(p => p.isLocal);
-    if (localRank < 3) {
-        const award = Math.floor(pool * shares[localRank]);
-        game.playerWallet += award;
-        // also sync back to player registry
-        const localEntry = game.players.find(p => p.isLocal);
-        if (localEntry) localEntry.wallet = game.playerWallet;
+    // Award all top-3 players; bots get simulated wallet credit, local player gets real tokens
+    const awards = {}; // name -> award amount
+    scored.slice(0, 3).forEach((p, rank) => {
+        const award = Math.floor(pool * shares[rank]);
+        awards[p.name] = award;
+        if (p.isLocal) {
+            game.playerWallet += award;
+            const localEntry = game.players.find(pl => pl.isLocal);
+            if (localEntry) localEntry.wallet = game.playerWallet;
+        } else {
+            const botEntry = game.players.find(pl => pl.name === p.name);
+            if (botEntry) botEntry.wallet += award;
+        }
         console.info(
-            `Round ${game.round} over! Pool: ${pool.toLocaleString()} | ` +
-            `Rank: #${localRank + 1} | Awarded: +${award.toLocaleString()} tokens`
+            `Run end payout | Rank: #${rank + 1} ${p.name} | Award: +${award.toLocaleString()} tokens`
         );
-    }
+    });
     game.prizePool = 0;
+    return awards;
 }
 
 /**
