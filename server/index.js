@@ -23,6 +23,11 @@ function stripSqlComments(sql) {
 async function runMigration() {
     let client;
     try {
+        if (!process.env.DATABASE_URL) {
+            console.error('⚠️  Database init failed: DATABASE_URL is missing. Link the Postgres service to this Railway service or add a DATABASE_URL reference in Variables.');
+            return false;
+        }
+
         client = await db.connect();
         const sql = stripSqlComments(fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
         const statements = sql
