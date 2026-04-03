@@ -2025,6 +2025,9 @@ function renderBuilding(id, type, isPlayer, building) {
 
         const tint = isPlayer ? PLAYER_COLOR : ENEMY_COLOR;
         const emoji = buildingTypes[type].emoji || '';
+        // expose timing info on the DOM so a separate UI updater can animate progress
+        if (building && building.constructionEndsAtMs) cell.dataset.constructionEndsAt = String(building.constructionEndsAtMs);
+        if (building && building.constructionTotalMs) cell.dataset.constructionTotalMs = String(building.constructionTotalMs);
 
         cell.innerHTML = `
             <div style="position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
@@ -2041,6 +2044,11 @@ function renderBuilding(id, type, isPlayer, building) {
         // Render normal (complete) building
         if (building) {
             building.isUnderConstruction = false;
+        }
+        // remove any construction DOM markers
+        if (cell && cell.dataset) {
+            delete cell.dataset.constructionEndsAt;
+            delete cell.dataset.constructionTotalMs;
         }
         const tint = isPlayer ? PLAYER_COLOR : ENEMY_COLOR;
         if (USE_SVG_ICONS || type === 'storage') {
@@ -2853,14 +2861,32 @@ function startSimLoops() {
     if (!game._constructionUIInterval) {
         game._constructionUIInterval = setInterval(() => {
             try {
-                (game.buildings || []).forEach(b => {
-                    if (b && (b.isUnderConstruction || b.constructionEndsAtMs)) renderBuilding(b.id, b.type, true, b);
-                });
-                (game.enemyBuildings || []).forEach(b => {
-                    if (b && (b.isUnderConstruction || b.constructionEndsAtMs)) renderBuilding(b.id, b.type, false, b);
+                // Animate SVG progress rings directly using DOM-stored timestamps so
+                // the visuals update even if renderBuilding isn't re-invoked.
+                document.querySelectorAll('.cell').forEach(cell => {
+                    const endsAt = Number(cell.dataset.constructionEndsAt || 0);
+                    const totalMs = Number(cell.dataset.constructionTotalMs || 0);
+                    if (!endsAt || !totalMs) return;
+                    const now = Date.now();
+                    if (endsAt <= now) {
+                        // final render to ensure completed state
+                        const id = Number(cell.getAttribute('data-id'));
+                        const b = (game.buildings || []).find(x => x.id === id) || (game.enemyBuildings || []).find(x => x.id === id);
+                        if (b) renderBuilding(id, b.type, b.ownerId === getLocalPlayerId(), b);
+                        return;
+                    }
+                    const elapsed = now - (endsAt - totalMs);
+                    const progress = Math.max(0.02, Math.min(1, elapsed / totalMs));
+                    const circumference = 2 * Math.PI * 45;
+                    const strokeDashoffset = circumference * (1 - progress);
+                    const svg = cell.querySelector('svg');
+                    if (svg) {
+                        const progCircle = svg.querySelector('circle:nth-of-type(2)');
+                        if (progCircle) progCircle.setAttribute('stroke-dashoffset', strokeDashoffset);
+                    }
                 });
             } catch (e) { console.debug('constructionUIInterval error', e && e.message); }
-        }, 500);
+        }, 120);
     }
 }
 
