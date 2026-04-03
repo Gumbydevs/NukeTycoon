@@ -114,7 +114,9 @@
       <section class="card">
         <h2>Access</h2>
         <label for="adminKey" class="muted">Admin Key</label>
-        <input id="adminKey" type="password" placeholder="Enter ADMIN_KEY from Railway variables" />
+        <form onsubmit="event.preventDefault(); saveKey();">
+          <input id="adminKey" type="password" placeholder="Enter ADMIN_KEY from Railway variables" />
+        </form>
         <div class="row">
           <button class="primary" id="saveKeyBtn">Save Key</button>
           <button id="refreshBtn">Refresh Status</button>
@@ -164,23 +166,32 @@
 
   <script>
     const $ = (id) => document.getElementById(id);
+
+    // Compute which server host to talk to. Priority order:
+    // 1) ?api= override on the URL
+    // 2) if running on localhost (static dev server), talk to local server :3001
+    // 3) otherwise talk to the current origin (useful when this file is served by the server itself)
+    const API_BASE = (function () {
+      const qp = new URLSearchParams(location.search).get('api');
+      if (qp) return qp.replace(/\/$/, '');
+      if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') return 'http://localhost:3001';
+      return location.origin;
+    })();
+
     const savedKey = localStorage.getItem('nukwar_admin_key') || new URLSearchParams(location.search).get('key') || '';
-    $('adminKey').value = savedKey;
+    const adminKeyInput = $('adminKey');
+    if (adminKeyInput) adminKeyInput.value = savedKey;
 
-    function getKey() {
-      return $('adminKey').value.trim();
-    }
+    function getKey() { return (adminKeyInput?.value || '').trim(); }
 
-    function saveKey() {
-      localStorage.setItem('nukwar_admin_key', getKey());
-      $('msg').textContent = 'Admin key saved in this browser.';
-    }
+    function saveKey() { localStorage.setItem('nukwar_admin_key', getKey()); $('msg').textContent = 'Admin key saved in this browser.'; }
 
     async function api(path, options = {}) {
       const key = getKey();
       const headers = Object.assign({ 'Content-Type': 'application/json' }, options.headers || {});
       if (key) headers['x-admin-key'] = key;
-      const res = await fetch(path, Object.assign({}, options, { headers }));
+      const url = API_BASE.replace(/\/$/, '') + path;
+      const res = await fetch(url, Object.assign({}, options, { headers }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data.error || ('Request failed: ' + res.status));
