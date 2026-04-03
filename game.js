@@ -2007,6 +2007,7 @@ function playNuclearEffects() {
  */
 function renderBuilding(id, type, isPlayer, building) {
     const cell = document.querySelector('[data-id="' + id + '"]');
+    if (!cell) return; // grid cell not in DOM (grid may have been rebuilt)
     cell.className = 'cell owned ' + type + (isPlayer ? ' owned-player' : ' owned-enemy');
 
     // Use only the wall-clock end timestamp to decide construction state.
@@ -2025,9 +2026,6 @@ function renderBuilding(id, type, isPlayer, building) {
 
         const tint = isPlayer ? PLAYER_COLOR : ENEMY_COLOR;
         const emoji = buildingTypes[type].emoji || '';
-        // expose timing info on the DOM so a separate UI updater can animate progress
-        if (building && building.constructionEndsAtMs) cell.dataset.constructionEndsAt = String(building.constructionEndsAtMs);
-        if (building && building.constructionTotalMs) cell.dataset.constructionTotalMs = String(building.constructionTotalMs);
 
         cell.innerHTML = `
             <div style="position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
@@ -2035,7 +2033,7 @@ function renderBuilding(id, type, isPlayer, building) {
                     <circle cx="50" cy="50" r="45" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="3"/>
                     <circle cx="50" cy="50" r="45" fill="none" stroke="${tint}" stroke-width="3" 
                             stroke-dasharray="${circumference}" stroke-dashoffset="${strokeDashoffset}"
-                            stroke-linecap="round" style="transition: stroke-dashoffset 0.1s linear; transform: rotate(-90deg); transform-origin: 50px 50px;"/>
+                            stroke-linecap="round" style="transform: rotate(-90deg); transform-origin: 50px 50px;"/>
                 </svg>
                 <span class="icon-emoji" style="font-size: 20px; z-index: 1; opacity: 0.6;">${emoji}</span>
             </div>
@@ -2044,11 +2042,6 @@ function renderBuilding(id, type, isPlayer, building) {
         // Render normal (complete) building
         if (building) {
             building.isUnderConstruction = false;
-        }
-        // remove any construction DOM markers
-        if (cell && cell.dataset) {
-            delete cell.dataset.constructionEndsAt;
-            delete cell.dataset.constructionTotalMs;
         }
         const tint = isPlayer ? PLAYER_COLOR : ENEMY_COLOR;
         if (USE_SVG_ICONS || type === 'storage') {
@@ -2840,54 +2833,24 @@ function toggleMobileMenu() {
 
 /**
  * Start simulation intervals for production and clock.
+ * Always tears down old intervals first so this is safe to call multiple times
+ * (e.g. reconnect, return-to-menu → new game).
  */
 function startSimLoops() {
-    // production tick (gives realtime feel)
-    if (!game._productionInterval) {
-        game._productionInterval = setInterval(productionTick, 1000);
-    }
+    // ── Tear down any lingering intervals first ──────────────────────────
+    if (game._productionInterval) { clearInterval(game._productionInterval); game._productionInterval = null; }
+    if (game._clockInterval)      { clearInterval(game._clockInterval);      game._clockInterval = null; }
+    if (game._constructionUIInterval) { clearInterval(game._constructionUIInterval); game._constructionUIInterval = null; }
 
-    // clock tick advances simulated minutes based on minutesPerSecond
-    if (!game._clockInterval) {
-        // keep a regular interval but advance using real elapsed time
-        game._clockInterval = setInterval(clockTick, 500);
-        game._lastClockTS = Date.now();
-    }
+    // production tick — drives construction timers + resource production (1 Hz)
+    game._productionInterval = setInterval(productionTick, 1000);
+
+    // clock tick — advances simulated minutes based on minutesPerSecond (2 Hz)
+    game._lastClockTS = Date.now();
+    game._clockInterval = setInterval(clockTick, 500);
 
     // bot AI loop — bots build and sabotage dynamically
     startBotAI();
-
-    // Construction UI updater: ensure progress rings animate even if other loops are paused
-    if (!game._constructionUIInterval) {
-        game._constructionUIInterval = setInterval(() => {
-            try {
-                // Animate SVG progress rings directly using DOM-stored timestamps so
-                // the visuals update even if renderBuilding isn't re-invoked.
-                document.querySelectorAll('.cell').forEach(cell => {
-                    const endsAt = Number(cell.dataset.constructionEndsAt || 0);
-                    const totalMs = Number(cell.dataset.constructionTotalMs || 0);
-                    if (!endsAt || !totalMs) return;
-                    const now = Date.now();
-                    if (endsAt <= now) {
-                        // final render to ensure completed state
-                        const id = Number(cell.getAttribute('data-id'));
-                        const b = (game.buildings || []).find(x => x.id === id) || (game.enemyBuildings || []).find(x => x.id === id);
-                        if (b) renderBuilding(id, b.type, b.ownerId === getLocalPlayerId(), b);
-                        return;
-                    }
-                    const elapsed = now - (endsAt - totalMs);
-                    const progress = Math.max(0.02, Math.min(1, elapsed / totalMs));
-                    const circumference = 2 * Math.PI * 45;
-                    const strokeDashoffset = circumference * (1 - progress);
-                    const svg = cell.querySelector('svg');
-                    if (svg) {
-                        const progCircle = svg.querySelector('circle:nth-of-type(2)');
-                        if (progCircle) progCircle.setAttribute('stroke-dashoffset', strokeDashoffset);
-                    }
-                });
-            } catch (e) { console.debug('constructionUIInterval error', e && e.message); }
-        }, 120);
-    }
 }
 
 /**
@@ -2924,6 +2887,7 @@ function productionTick() {
     const now = Date.now();
     const updateConstructionTimers = (buildings, isPlayerOwned) => {
         (buildings || []).forEach((b) => {
+          try {
             // Drive entirely from the wall-clock end timestamp when present.
             // Also keep isUnderConstruction in sync so the guard never blocks valid buildings.
             if (b.constructionEndsAtMs && b.constructionEndsAtMs > now) {
@@ -2958,6 +2922,9 @@ function productionTick() {
             } else {
                 renderBuilding(b.id, b.type, isPlayerOwned, b);
             }
+          } catch (err) {
+            console.warn('updateConstructionTimers error for building', b?.id, err);
+          }
         });
     };
 
@@ -3463,10 +3430,10 @@ function returnToMenu() {
     const modal = document.getElementById('runEndModal');
     if (modal) modal.remove();
     
-    // Stop the simulation loops
-    if (game._productionInterval) clearInterval(game._productionInterval);
-    if (game._clockInterval) clearInterval(game._clockInterval);
-    if (game._botInterval) { clearInterval(game._botInterval); game._botInterval = null; }
+    // Stop the simulation loops — null out refs so startSimLoops can recreate them
+    if (game._productionInterval) { clearInterval(game._productionInterval); game._productionInterval = null; }
+    if (game._clockInterval)      { clearInterval(game._clockInterval);      game._clockInterval = null; }
+    if (game._botInterval)        { clearInterval(game._botInterval);        game._botInterval = null; }
     if (game._constructionUIInterval) { clearInterval(game._constructionUIInterval); game._constructionUIInterval = null; }
     
     // Reset game state
