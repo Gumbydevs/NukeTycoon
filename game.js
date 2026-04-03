@@ -24,6 +24,7 @@ function getLocalPlayerId() {
 function connectSocket() {
     socket = io(SERVER_URL, {
         transports: ['websocket', 'polling'],
+        rememberUpgrade: true,
         autoConnect: true,
         reconnection: true,
         reconnectionAttempts: Infinity,
@@ -98,14 +99,16 @@ function connectSocket() {
     });
 
     // ── Run events ──────────────────────────────────────────────────────
-    socket.on('run:state', ({ run, buildings, players, yourWallet, isNewJoiner }) => {
+    socket.on('run:state', ({ run, buildings, players, scores, yourWallet, isNewJoiner }) => {
         // Set authoritative run state from server
         game.playerWallet = yourWallet;
         game.time.day     = run.current_day;
         game.round        = run.current_day;
         game.runLength    = run.run_length;
-        game.prizePool    = run.prize_pool;
+        game.prizePool    = parseInt(run.prize_pool, 10) || 0;
         game._serverRunId = run.id;
+        game._serverFinalScores = null;
+        game._serverPrizeAwards = null;
 
         // Replace local bot registry with real player list from server
         game.players = players.map(p => ({
@@ -114,11 +117,14 @@ function connectSocket() {
             avatar:  p.avatar || DEFAULT_PLAYER_AVATAR,
             isLocal: p.id === getLocalPlayerId(),
             isBot:   false,
-            wallet:  parseInt(p.token_balance, 10),
+            wallet:  parseInt(p.token_balance, 10) || 0,
             score:   0,
         }));
+        applyServerScores(scores);
+        syncLocalPlayerEntry();
 
-        // Render all existing buildings on the grid
+        // Rebuild the grid from the shared run seed, then render the live buildings.
+        initGrid();
         game.buildings      = [];
         game.enemyBuildings = [];
         buildings.forEach(b => {
@@ -167,7 +173,7 @@ function connectSocket() {
                 avatar: player.avatar || DEFAULT_PLAYER_AVATAR,
                 isLocal: false,
                 isBot: false,
-                wallet: 45000,
+                wallet: parseInt(player.token_balance, 10) || 0,
                 score: 0
             });
         }
@@ -179,23 +185,38 @@ function connectSocket() {
         if (errEl) errEl.textContent = message;
     });
 
-    socket.on('run:day_advanced', ({ day, runLength, scores }) => {
+    socket.on('run:day_advanced', ({ day, runLength, prizePool, scores }) => {
         if (day > game.time.day) {
             game.time.day   = day;
             game.time.hour  = 0;
             game.time.minute = 0;
             onDayAdvance();
         }
-        scores.forEach(s => {
-            const p = game.players.find(pl => pl.name === s.username);
-            if (p) p.score = s.score;
-        });
+        if (Number.isFinite(Number(prizePool))) game.prizePool = Number(prizePool);
+        applyServerScores(scores);
+    });
+
+    socket.on('run:economy_update', ({ prizePool, scores }) => {
+        if (Number.isFinite(Number(prizePool))) game.prizePool = Number(prizePool);
+        applyServerScores(scores);
+        updateUI();
     });
 
     socket.on('run:ended', ({ runNumber, scores, payouts }) => {
+        game._serverFinalScores = Array.isArray(scores) ? scores : [];
+        game._serverPrizeAwards = (Array.isArray(payouts) ? payouts : []).reduce((acc, p) => {
+            acc[p.username] = p.award;
+            return acc;
+        }, {});
+        game.prizePool = 0;
+
         // Apply server-authoritative payout to local wallet
-        const me = payouts.find(p => p.player_id === getLocalPlayerId());
-        if (me) game.playerWallet = me.token_balance;
+        const me = (Array.isArray(payouts) ? payouts : []).find(p => p.player_id === getLocalPlayerId());
+        if (me && Number.isFinite(Number(me.token_balance))) {
+            game.playerWallet = parseInt(me.token_balance, 10);
+        }
+        applyServerScores(scores);
+        syncLocalPlayerEntry();
         onRunEnd();
     });
 
@@ -304,6 +325,7 @@ function connectSocket() {
     // ── Wallet sync ─────────────────────────────────────────────────────
     socket.on('player:wallet_update', ({ token_balance }) => {
         game.playerWallet = token_balance;
+        syncLocalPlayerEntry();
         updateUI();
     });
 
@@ -365,7 +387,7 @@ setInterval(() => {
 }, 60000);
 
 function _updateLobbyFromServerState(run, players, yourWallet) {
-    const preview = run.prize_pool + Math.floor(players.length * 5000 * 0.8);
+    const preview = parseInt(run.prize_pool, 10) || 0;
     const el = (id) => document.getElementById(id);
     if (el('lobbyBuyIn'))      el('lobbyBuyIn').textContent      = game.buyIn.toLocaleString();
     if (el('lobbyBuyInBtn'))   el('lobbyBuyInBtn').textContent   = game.buyIn.toLocaleString();
@@ -656,6 +678,106 @@ function resolveOwner(ownerRef) {
     return { name: ownerRef || 'Unknown', avatar: DEFAULT_PLAYER_AVATAR, isBot: true, isLocal: false, id: null };
 }
 
+function syncLocalPlayerEntry() {
+    const localId = getLocalPlayerId();
+    game.players = game.players || [];
+
+    let me = game.players.find(pl => pl.isLocal || (localId && pl.id === localId));
+    if (!me && (localId || game.playerName)) {
+        me = {
+            id: localId || 'local',
+            name: game.playerName || 'You',
+            avatar: game.playerAvatar || DEFAULT_PLAYER_AVATAR,
+            isLocal: true,
+            isBot: false,
+            wallet: game.playerWallet || 0,
+            score: 0,
+        };
+        game.players.push(me);
+    }
+
+    if (!me) return null;
+    me.id = localId || me.id;
+    me.name = game.playerName || me.name || 'You';
+    me.avatar = game.playerAvatar || me.avatar || DEFAULT_PLAYER_AVATAR;
+    me.isLocal = true;
+    me.isBot = false;
+    me.wallet = Number.isFinite(Number(game.playerWallet)) ? game.playerWallet : (parseInt(me.wallet, 10) || 0);
+    return me;
+}
+
+function getPlayerBuildingsForScore(player) {
+    if (!player) return [];
+    const localId = getLocalPlayerId();
+    if (player.isLocal || (localId && player.id === localId)) {
+        return game.buildings || [];
+    }
+    return (game.enemyBuildings || []).filter((b) => {
+        if (player.id && b.ownerId === player.id) return true;
+        return !!player.name && b.owner === player.name;
+    });
+}
+
+function calculateLeaderboardScore(player) {
+    if (!player) return 0;
+
+    const localId = getLocalPlayerId();
+    const isLocalPlayer = !!(player.isLocal || (localId && player.id === localId));
+    const authoritativeScore = Number(player.score);
+    if (!isLocalPlayer && Number.isFinite(authoritativeScore) && authoritativeScore > 0) {
+        return authoritativeScore;
+    }
+
+    const ownedBuildings = getPlayerBuildingsForScore(player);
+    const plants = ownedBuildings.filter((b) => b.type === 'plant').length;
+    const mines = ownedBuildings.filter((b) => b.type === 'mine').length;
+    const wallet = isLocalPlayer
+        ? (Number(game.playerWallet) || 0)
+        : (parseInt(player.wallet, 10) || 0);
+
+    return (plants * 100) + (mines * 50) + Math.floor(wallet / 1000);
+}
+
+function applyServerScores(scores) {
+    if (!Array.isArray(scores) || !scores.length) {
+        syncLocalPlayerEntry();
+        return;
+    }
+
+    game.players = game.players || [];
+    const localId = getLocalPlayerId();
+
+    scores.forEach((s) => {
+        const playerId = s.player_id ?? s.id;
+        let player = game.players.find((pl) => pl.id === playerId || pl.name === s.username);
+
+        if (!player) {
+            player = {
+                id: playerId,
+                name: s.username,
+                avatar: DEFAULT_PLAYER_AVATAR,
+                isLocal: !!(localId && playerId === localId),
+                isBot: false,
+                wallet: 0,
+                score: 0,
+            };
+            game.players.push(player);
+        }
+
+        player.id = playerId || player.id;
+        player.name = s.username || player.name;
+        player.isLocal = !!(player.isLocal || (localId && player.id === localId));
+        player.isBot = false;
+        if (Number.isFinite(Number(s.token_balance))) player.wallet = parseInt(s.token_balance, 10);
+        if (Number.isFinite(Number(s.score))) player.score = Number(s.score);
+    });
+
+    const me = syncLocalPlayerEntry();
+    if (me) {
+        me.score = calculateLeaderboardScore(me);
+    }
+}
+
 /**
  * Called once per run (a run = 8 rounds, each round lasting one real 24-hour day).
  *
@@ -793,11 +915,33 @@ function spawnEnemyBuildings() {
     }
 }
 
+function hashSeed(input) {
+    const text = String(input || 'seed');
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < text.length; i++) {
+        h ^= text.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+}
+
+function createSeededRandom(label) {
+    let seed = hashSeed(`${label}:${game._serverRunId || 'offline'}:${game.runLength || 8}`);
+    return function seededRandom() {
+        seed += 0x6D2B79F5;
+        let t = seed;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
 /**
  * Generate a simple terrain map for the grid.
  * Returns an array of length width*height with values 'grass'|'dirt'|'road'.
  */
 function generateTerrain(width, height) {
+    const rand = createSeededRandom(`terrain:${width}x${height}`);
     const out = new Array(width * height).fill('grass');
     // 1-tile-wide vertical road down the center column
     const centerX = Math.floor(width / 2);
@@ -808,11 +952,11 @@ function generateTerrain(width, height) {
     // 2 horizontal branches off the spine at random rows, random length (3–7 tiles each direction)
     const branchRows = [];
     while (branchRows.length < 2) {
-        const row = 2 + Math.floor(Math.random() * (height - 4)); // avoid very top/bottom
+        const row = 2 + Math.floor(rand() * (height - 4)); // avoid very top/bottom
         if (!branchRows.includes(row)) branchRows.push(row);
     }
     branchRows.forEach(row => {
-        const len = 3 + Math.floor(Math.random() * 5); // 3–7 tiles each side
+        const len = 3 + Math.floor(rand() * 5); // 3–7 tiles each side
         // mark the junction cell as a crossroads
         out[row * width + centerX] = 'road-x';
         for (let dx = 1; dx <= len; dx++) {
@@ -823,15 +967,15 @@ function generateTerrain(width, height) {
 
     // scatter dirt patches (clusters)
     for (let i = 0; i < width * height * 0.08; i++) {
-        const cx = Math.floor(Math.random() * width);
-        const cy = Math.floor(Math.random() * height);
-        const radius = 1 + Math.floor(Math.random() * 2);
+        const cx = Math.floor(rand() * width);
+        const cy = Math.floor(rand() * height);
+        const radius = 1 + Math.floor(rand() * 2);
         for (let dy = -radius; dy <= radius; dy++) {
             for (let dx = -radius; dx <= radius; dx++) {
                 const x = cx + dx; const y = cy + dy;
                 if (x >= 0 && x < width && y >= 0 && y < height) {
                     const idx = y * width + x;
-                    if (out[idx] !== 'road' && out[idx] !== 'road-h' && out[idx] !== 'road-x' && Math.random() > 0.25) out[idx] = 'dirt';
+                    if (out[idx] !== 'road' && out[idx] !== 'road-h' && out[idx] !== 'road-x' && rand() > 0.25) out[idx] = 'dirt';
                 }
             }
         }
@@ -844,26 +988,27 @@ function generateTerrain(width, height) {
  * Generate uranium ore deposits scattered across the map
  */
 function generateDeposits(width, height) {
+    const rand = createSeededRandom(`deposits:${width}x${height}`);
     const deposits = [];
-    const numDeposits = 5 + Math.floor(Math.random() * 4); // 5-8 deposit clusters
+    const numDeposits = 5 + Math.floor(rand() * 4); // 5-8 deposit clusters
     
     for (let d = 0; d < numDeposits; d++) {
         // Random deposit center
-        const cx = 2 + Math.floor(Math.random() * (width - 4));
-        const cy = 2 + Math.floor(Math.random() * (height - 4));
-        const depositRadius = 1 + Math.floor(Math.random() * 2); // 1-2 cell radius
+        const cx = 2 + Math.floor(rand() * (width - 4));
+        const cy = 2 + Math.floor(rand() * (height - 4));
+        const depositRadius = 1 + Math.floor(rand() * 2); // 1-2 cell radius
         
         // Generate deposit ore at this location
         for (let dy = -depositRadius; dy <= depositRadius; dy++) {
             for (let dx = -depositRadius; dx <= depositRadius; dx++) {
-                if (Math.random() > 0.25) { // sparse within radius
+                if (rand() > 0.25) { // sparse within radius
                     const x = cx + dx;
                     const y = cy + dy;
                     if (x >= 0 && x < width && y >= 0 && y < height) {
                         const cellId = y * width + x;
                         // Skip roads
                         if (!['road', 'road-h', 'road-x'].includes(game.terrain[cellId])) {
-                            deposits.push({ cellId, quality: 0.5 + Math.random() * 0.5 }); // 0.5-1.0 quality
+                            deposits.push({ cellId, quality: 0.5 + rand() * 0.5 }); // 0.5-1.0 quality
                         }
                     }
                 }
@@ -1769,6 +1914,7 @@ function updateUI() {
     document.getElementById('uranium').textContent = formatUranium(game.uraniumRaw) + ' / ' + formatUranium(game.uraniumRefined);
     const totalStored = game.uraniumRaw + game.uraniumRefined;
     document.getElementById('stored').textContent = formatUranium(totalStored) + '/' + formatUranium(game.maxStorage);
+    syncLocalPlayerEntry();
     
     const power = calculatePower();
     // show power with one decimal place to avoid long floats
@@ -1808,17 +1954,19 @@ function updateUI() {
         setPortfolioDisplay(value);
     }
 
-    // live rank — recalculated every UI update
+    // live rank — recalculated every UI update from the shared player list
     const rankEl = document.getElementById('rank');
     if (rankEl && game.players && game.players.length) {
-        const localScore = calculatePower() + (game.playerWallet / 1000);
-        const botScores = game.players.filter(p => p.isBot).map(p => {
-            const botB = game.enemyBuildings.filter(b => b.owner === p.name);
-            const plants = botB.filter(b => b.type === 'plant').length;
-            const mines  = botB.filter(b => b.type === 'mine').length;
-            return (plants * 100) + (mines * 50 * game.market.price / 1000);
-        });
-        const rank = 1 + botScores.filter(s => s > localScore).length;
+        const localId = getLocalPlayerId();
+        const me = game.players.find((p) => p.isLocal || (localId && p.id === localId)) || syncLocalPlayerEntry();
+        const localScore = calculateLeaderboardScore(me || { isLocal: true, id: localId, wallet: game.playerWallet, score: 0 });
+        if (me) me.score = localScore;
+
+        const rank = 1 + game.players
+            .filter((p) => !(p.isLocal || (localId && p.id === localId)))
+            .filter((p) => calculateLeaderboardScore(p) > localScore)
+            .length;
+
         rankEl.textContent = '#' + rank;
     }
 
@@ -2761,8 +2909,11 @@ function onRoundEnd(roundNumber) {
 function onRunEnd() {
     console.info('🔥 RUN COMPLETE! All rounds finished.');
 
-    // Distribute prize pool FIRST so wallet values in the leaderboard are accurate
-    const prizeAwards = distributePrizePool();
+    // In multiplayer, use the server-authoritative payouts; otherwise fall back to local distribution.
+    const prizeAwards = game._serverPrizeAwards || distributePrizePool();
+    const serverScoreMap = new Map(
+        (Array.isArray(game._serverFinalScores) ? game._serverFinalScores : []).map((row) => [row.player_id ?? row.username, row])
+    );
     
     // Freeze the grid
     const grid = document.getElementById('gameGrid');
@@ -2774,46 +2925,47 @@ function onRunEnd() {
     }
     
     // Build final leaderboard with all scores and stats
-    const finalScores = game.players.map(p => {
+    const finalScores = (game.players || []).map((p) => {
         let buildingStats = { mines: 0, processors: 0, storage: 0, plants: 0 };
         let totalBuildings = 0;
-        
+        const serverRow = serverScoreMap.get(p.id) || serverScoreMap.get(p.name) || null;
+
         if (p.isLocal) {
-            game.buildings.forEach(b => {
+            game.buildings.forEach((b) => {
                 buildingStats[b.type]++;
                 totalBuildings++;
             });
             const portfolio = game.playerWallet + ((game.uraniumRaw + game.uraniumRefined) * game.market.price);
-            return { 
-                name: p.name, 
-                isLocal: true, 
-                score: calculatePower() + (portfolio / 1000), 
+            return {
+                name: p.name,
+                isLocal: true,
+                score: Number.isFinite(Number(serverRow?.score)) ? Number(serverRow.score) : calculateLeaderboardScore(p),
                 portfolio,
-                wallet: game.playerWallet,
+                wallet: Number.isFinite(Number(serverRow?.token_balance)) ? parseInt(serverRow.token_balance, 10) : game.playerWallet,
                 buildingStats,
                 totalBuildings,
                 power: calculatePower(),
                 uranium: game.uraniumRaw + game.uraniumRefined
             };
         }
-        
-        const botBuildings = game.enemyBuildings.filter(b => b.owner === p.name);
-        botBuildings.forEach(b => {
+
+        const ownedBuildings = getPlayerBuildingsForScore(p);
+        ownedBuildings.forEach((b) => {
             buildingStats[b.type]++;
             totalBuildings++;
         });
-        const plants = buildingStats.plants;
-        const mines = buildingStats.mines;
-        const estPortfolio = (plants * 100) + (mines * 50 * game.market.price);
-        return { 
-            name: p.name, 
-            isLocal: false, 
-            score: (plants * 100) + (estPortfolio / 1000), 
+        const estPortfolio = Number.isFinite(Number(serverRow?.token_balance))
+            ? parseInt(serverRow.token_balance, 10)
+            : (parseInt(p.wallet, 10) || 0);
+        return {
+            name: p.name,
+            isLocal: false,
+            score: Number.isFinite(Number(serverRow?.score)) ? Number(serverRow.score) : calculateLeaderboardScore(p),
             portfolio: estPortfolio,
-            wallet: p.wallet,
+            wallet: estPortfolio,
             buildingStats,
             totalBuildings,
-            power: plants * 100,
+            power: buildingStats.plants * (buildingTypes.plant.power || 0),
             uranium: 0
         };
     });
@@ -2991,6 +3143,8 @@ function returnToMenu() {
     game.prizePool = 0;
     game.dailyProduced = 0;
     game.dailyIncome = 0;
+    game._serverFinalScores = null;
+    game._serverPrizeAwards = null;
     
     // Re-enable grid
     document.querySelectorAll('.cell').forEach(cell => {
@@ -3019,19 +3173,11 @@ function distributePrizePool() {
     const pool = game.prizePool;
     const shares = [0.50, 0.30, 0.20];
 
-    // Score every player
-    const scored = game.players.map(p => {
-        if (p.isLocal) {
-            const portfolio = game.playerWallet + ((game.uraniumRaw + game.uraniumRefined) * game.market.price);
-            return { ...p, calcScore: calculatePower() + (portfolio / 1000) };
-        }
-        // Estimate bot score from their buildings on the grid
-        const botBuildings = game.enemyBuildings.filter(b => b.owner === p.name);
-        const plants = botBuildings.filter(b => b.type === 'plant').length;
-        const mines  = botBuildings.filter(b => b.type === 'mine').length;
-        const estPortfolio = (plants * 100) + (mines * 50 * game.market.price);
-        return { ...p, calcScore: (plants * 100) + (estPortfolio / 1000) };
-    });
+    // Score every player using the same formula the server uses for rank/payouts.
+    const scored = (game.players || []).map((p) => ({
+        ...p,
+        calcScore: calculateLeaderboardScore(p),
+    }));
 
     scored.sort((a, b) => b.calcScore - a.calcScore);
 
@@ -3329,16 +3475,17 @@ function showEndOfDaySummary() {
 
     // build leaderboard from game.players
     // BACKEND_STUB: replace with server-sent scores from 'round:scores' event
-    const entries = game.players.map(p => {
-        if (p.isLocal) {
-            const portfolio = game.playerWallet + ((game.uraniumRaw + game.uraniumRefined) * game.market.price);
-            return { name: p.name, isLocal: true, score: power + (portfolio / 1000), portfolio };
-        }
-        const botBuildings = game.enemyBuildings.filter(b => b.owner === p.name);
-        const plants = botBuildings.filter(b => b.type === 'plant').length;
-        const mines  = botBuildings.filter(b => b.type === 'mine').length;
-        const estPortfolio = (plants * 100) + (mines * 50 * game.market.price);
-        return { name: p.name, isLocal: false, score: (plants * 100) + (estPortfolio / 1000), portfolio: estPortfolio };
+    const entries = (game.players || []).map((p) => {
+        const portfolio = p.isLocal
+            ? game.playerWallet + ((game.uraniumRaw + game.uraniumRefined) * game.market.price)
+            : (parseInt(p.wallet, 10) || 0);
+
+        return {
+            name: p.name,
+            isLocal: !!p.isLocal,
+            score: calculateLeaderboardScore(p),
+            portfolio,
+        };
     });
     entries.sort((a, b) => b.score - a.score);
     lb.innerHTML = entries.map((r, i) => {

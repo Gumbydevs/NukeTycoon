@@ -29,6 +29,26 @@ async function requireAuth(socket, jwt, cb) {
     await cb(decoded, result.rows[0]);
 }
 
+async function emitRunEconomy(io, runId) {
+    if (!runId) return;
+
+    const [runResult, scores] = await Promise.all([
+        db.query('SELECT id, current_day, run_length, prize_pool FROM runs WHERE id = $1', [runId]),
+        calculateScores(runId),
+    ]);
+
+    const run = runResult.rows[0];
+    if (!run) return;
+
+    io.to(`run:${runId}`).emit('run:economy_update', {
+        runId: run.id,
+        day: run.current_day,
+        runLength: run.run_length,
+        prizePool: parseInt(run.prize_pool, 10) || 0,
+        scores,
+    });
+}
+
 function registerHandlers(io, socket) {
 
     // ── AUTH ─────────────────────────────────────────────────────────────────
@@ -225,7 +245,7 @@ function registerHandlers(io, socket) {
             socket.playerId = player.id;
 
             // Fetch everything the client needs to rebuild its state
-            const [buildingsResult, playersResult, updatedPlayer, freshRun] = await Promise.all([
+            const [buildingsResult, playersResult, updatedPlayer, freshRun, scores] = await Promise.all([
                 db.query(
                     `SELECT b.*, p.username AS owner_name
                      FROM buildings b
@@ -242,20 +262,28 @@ function registerHandlers(io, socket) {
                 ),
                 db.query('SELECT token_balance FROM players WHERE id = $1', [player.id]),
                 db.query('SELECT * FROM runs WHERE id = $1', [run.id]),
+                calculateScores(run.id),
             ]);
 
             socket.emit('run:state', {
                 run:         freshRun.rows[0],
                 buildings:   buildingsResult.rows,
                 players:     playersResult.rows,
+                scores,
                 yourWallet:  parseInt(updatedPlayer.rows[0].token_balance, 10),
                 isNewJoiner,
             });
 
             if (isNewJoiner) {
                 socket.to(`run:${run.id}`).emit('run:player_joined', {
-                    player: { id: player.id, username: player.username, avatar: player.avatar || DEFAULT_AVATAR },
+                    player: {
+                        id: player.id,
+                        username: player.username,
+                        avatar: player.avatar || DEFAULT_AVATAR,
+                        token_balance: parseInt(updatedPlayer.rows[0].token_balance, 10),
+                    },
                 });
+                await emitRunEconomy(io, run.id);
             }
         });
     });
@@ -329,6 +357,13 @@ function registerHandlers(io, socket) {
                 'INSERT INTO buildings (run_id, player_id, type, cell_id) VALUES ($1, $2, $3, $4) RETURNING *',
                 [run.id, player.id, type, cellId]
             );
+            const prizeContribution = Math.floor(cost * 0.10);
+            if (prizeContribution > 0) {
+                await db.query(
+                    'UPDATE runs SET prize_pool = prize_pool + $1 WHERE id = $2',
+                    [prizeContribution, run.id]
+                );
+            }
             const newWallet = parseInt(player.token_balance, 10) - cost;
 
             // Broadcast the new building to everyone in the run
@@ -340,6 +375,7 @@ function registerHandlers(io, socket) {
 
             // Send authoritative wallet balance back to the placing player only
             socket.emit('player:wallet_update', { token_balance: newWallet });
+            await emitRunEconomy(io, run.id);
         });
     });
 
@@ -405,6 +441,14 @@ function registerHandlers(io, socket) {
                 [cost, player.id]
             );
 
+            const prizeContribution = Math.floor(cost * 0.10);
+            if (prizeContribution > 0) {
+                await db.query(
+                    'UPDATE runs SET prize_pool = prize_pool + $1 WHERE id = $2',
+                    [prizeContribution, run.id]
+                );
+            }
+
             // Log event
             await db.query(
                 'INSERT INTO sabotage_events (run_id, attacker_id, target_cell_id, attack_type, cost) VALUES ($1,$2,$3,$4,$5)',
@@ -454,6 +498,7 @@ function registerHandlers(io, socket) {
             // Broadcast to entire run room (everyone sees the attack)
             io.to(`run:${run.id}`).emit('sabotage:applied', payload);
             socket.emit('player:wallet_update', { token_balance: bal - cost });
+            await emitRunEconomy(io, run.id);
         });
     });
 
@@ -467,6 +512,9 @@ function registerHandlers(io, socket) {
                 'UPDATE players SET token_balance = token_balance + $1 WHERE id = $2',
                 [Math.floor(income), player.id]
             );
+            if (socket.runId) {
+                await emitRunEconomy(io, socket.runId);
+            }
         });
     });
 

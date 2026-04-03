@@ -88,7 +88,7 @@ async function endRun(io, run) {
              WHERE run_id = $3 AND player_id = $4`,
             [i + 1, award, run.id, p.player_id]
         );
-        payouts.push({ ...p, rank: i + 1, award });
+        payouts.push({ ...p, rank: i + 1, award, token_balance: p.token_balance + award });
     }
 
     console.log(`🏁 Run #${run.run_number} ended. Awarded ${payouts.length} players.`);
@@ -133,6 +133,7 @@ async function advanceDay(io, run) {
         day:       newDay,
         runLength: run.run_length,
         nextDayAt: nextDayAt.toISOString(),
+        prizePool: parseInt(run.prize_pool, 10) || 0,
         scores,
     });
 
