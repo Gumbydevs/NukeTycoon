@@ -2029,12 +2029,19 @@ function renderBuilding(id, type, isPlayer, building) {
     if (stillBuilding) {
         const elapsed = now - (endsAt - totalMs);
         const progress = totalMs > 0 ? Math.max(0.02, Math.min(1, elapsed / totalMs)) : 0;
+        const pct = Math.round(progress * 100);
 
         const circumference = 2 * Math.PI * 45;
         const strokeDashoffset = circumference * (1 - progress);
 
         const tint = isPlayer ? PLAYER_COLOR : ENEMY_COLOR;
         const emoji = buildingTypes[type].emoji || '';
+
+        // Log every call so we can verify progress is advancing
+        if (!building._lastLoggedPct || pct !== building._lastLoggedPct) {
+            building._lastLoggedPct = pct;
+            console.log('[renderBuilding] CONSTRUCTING', type, 'cell', id, pct + '%', 'offset', strokeDashoffset.toFixed(1));
+        }
 
         cell.innerHTML = `
             <div style="position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
@@ -2044,6 +2051,7 @@ function renderBuilding(id, type, isPlayer, building) {
                             stroke-dasharray="${circumference}" stroke-dashoffset="${strokeDashoffset}"
                             stroke-linecap="round" style="transform: rotate(-90deg); transform-origin: 50px 50px;"/>
                 </svg>
+                <span style="font-size: 11px; z-index: 2; color: #fff; font-weight: bold; position: absolute; bottom: 1px; right: 2px; text-shadow: 0 0 3px #000;">${pct}%</span>
                 <span class="icon-emoji" style="font-size: 20px; z-index: 1; opacity: 0.6;">${emoji}</span>
             </div>
         `;
@@ -2955,7 +2963,11 @@ function constructionAnimLoop() {
             // Throttle to every 100ms per building to avoid excessive DOM churn
             if (b._lastConstructionRender && (now - b._lastConstructionRender) < 100) continue;
             b._lastConstructionRender = now;
-            renderBuilding(b.id, b.type, isPlayerOwned, b);
+            try {
+                renderBuilding(b.id, b.type, isPlayerOwned, b);
+            } catch (e) {
+                console.error('[constructionRAF] renderBuilding THREW:', e);
+            }
         }
     };
 
