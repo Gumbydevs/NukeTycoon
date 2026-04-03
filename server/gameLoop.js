@@ -1,7 +1,9 @@
 const db = require('./db');
 
 const DAY_DURATION_MS = parseInt(process.env.DAY_DURATION_MS || '86400000', 10);
-const RUN_LENGTH = 8;
+const RUN_LENGTH = parseInt(process.env.RUN_LENGTH || '3', 10);
+let _nextRunLength = RUN_LENGTH;  // can be overridden at runtime by admin
+function setNextRunLength(n) { _nextRunLength = n; }
 const BUY_IN = 5000;
 const GRID_COLS = 20;
 const GRID_ROWS = 20;
@@ -71,7 +73,7 @@ async function createNewRun() {
         )
          VALUES ($1, 1, $2, 0, $3, $3, $4, $4, 0, 0, $5, $6, $7, 'active')
          RETURNING *`,
-        [runNumber, RUN_LENGTH, MARKET_BASE_PRICE, MARKET_TOKEN_POOL_INITIAL, TOTAL_TOKEN_SUPPLY, DAY_DURATION_MS, nextDayAt]
+        [runNumber, _nextRunLength, MARKET_BASE_PRICE, MARKET_TOKEN_POOL_INITIAL, TOTAL_TOKEN_SUPPLY, DAY_DURATION_MS, nextDayAt]
     );
     console.log(`🔥 New run #${runNumber} started (day duration: ${DAY_DURATION_MS}ms)`);
     return parseRunRow(result.rows[0]);
@@ -735,4 +737,6 @@ module.exports = {
     BUILDING_RULES,
     DAY_DURATION_MS,
     BUY_IN,
+    setNextRunLength,
+    getNextRunLength: () => _nextRunLength,
 };

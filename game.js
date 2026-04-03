@@ -400,6 +400,13 @@ function connectSocket() {
         addNotification('warning', '🔄 The live Railway run was reset. Rejoin the new round if needed.');
     });
 
+    socket.on('run:config_update', ({ run_length }) => {
+        if (Number.isFinite(Number(run_length))) {
+            game.runLength = Number(run_length);
+            updateUI();
+        }
+    });
+
     // ── Sabotage events ─────────────────────────────────────────────────
     socket.on('sabotage:applied', ({ attackType, cellId, attackerName, attackerId,
                                       disableUntil, stolenAmount, destroyedCells, falloutDuration }) => {

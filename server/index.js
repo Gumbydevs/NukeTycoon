@@ -6,7 +6,7 @@ const cors       = require('cors');
 const fs         = require('fs');
 const path       = require('path');
 const db         = require('./db');
-const { setupGameLoop, getActiveRun, createNewRun } = require('./gameLoop');
+const { setupGameLoop, getActiveRun, createNewRun, setNextRunLength, getNextRunLength } = require('./gameLoop');
 const { registerHandlers } = require('./socket/handlers');
 
 let dbReady = false;
@@ -323,6 +323,25 @@ app.post('/admin/api/full-db-reset', requireAdmin, async (_req, res) => {
         const newRun = await createNewRun();
         io.emit('run:new', { runId: newRun.id, runNumber: newRun.run_number, forced: true });
         res.json({ ok: true, message: 'Full DB reset complete.', newRun });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Set run length for next (and optionally current) run
+app.post('/admin/api/set-run-length', requireAdmin, async (req, res) => {
+    try {
+        const len = parseInt(req.body.runLength, 10);
+        if (!Number.isFinite(len) || len < 1 || len > 365) {
+            res.status(400).json({ error: 'runLength must be 1–365.' }); return;
+        }
+        setNextRunLength(len);
+        const run = await getActiveRun();
+        if (run) {
+            await db.query('UPDATE runs SET run_length = $1 WHERE id = $2', [len, run.id]);
+            io.to(`run:${run.id}`).emit('run:config_update', { run_length: len });
+        }
+        res.json({ ok: true, runLength: len, appliedToCurrentRun: !!run });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
