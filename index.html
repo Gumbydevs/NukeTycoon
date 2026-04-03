@@ -165,9 +165,9 @@
         </div>
     </div>
 
-    <div id="devPanel" style="display:none; position:fixed; right:16px; top:60px; background:rgba(0,0,0,0.9); border:1px solid #333; padding:12px; z-index:20; font-size:12px;">
+    <div id="devPanel" style="display:none; position:fixed; right:16px; top:60px; background:rgba(0,0,0,0.9); border:1px solid #333; padding:12px; z-index:20; font-size:12px; max-width:320px;">
         <div style="margin-bottom:8px; font-weight:600; color:#fff;">Dev Tools</div>
-        <div style="display:flex; gap:8px; margin-bottom:8px;">
+        <div style="display:flex; gap:8px; margin-bottom:8px; flex-wrap:wrap;">
             <button class="btn" onclick="advanceHours(1)">+1 Hour</button>
             <button class="btn" onclick="advanceHours(6)">+6 Hours</button>
             <button class="btn" onclick="advanceHours(24)">+24 Hours</button>
@@ -178,7 +178,7 @@
         </div>
         <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
             <label style="color:#888;">Speed:</label>
-            <select id="speedSelect" onchange="setSimSpeed(Number(this.value))" style="background:#111; border:1px solid #333; color:#fff; padding:4px;">
+            <select id="speedSelect" onchange="setSimSpeed(Number(this.value))" style="background:#111; border:1px solid #333; color:#fff; padding:4px; max-width:210px;">
                 <option value="0.0166667" selected>Real time (1 day = 24 hrs)</option>
                 <option value="1">1 min/sec</option>
                 <option value="5">5 min/sec</option>
@@ -186,9 +186,18 @@
                 <option value="1440">1 day/sec</option>
             </select>
         </div>
-        <div style="display:flex; gap:8px; align-items:center;">
+        <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px;">
             <label style="color:#888;">Bots:</label>
             <button class="btn" id="botToggleBtn" onclick="toggleAIBots()">AI Bots: ON</button>
+        </div>
+        <div style="border-top:1px solid #222; padding-top:10px;">
+            <div style="margin-bottom:6px; font-weight:600; color:#ffb84d;">Railway Server</div>
+            <input id="adminKeyInput" type="password" placeholder="ADMIN_KEY" oninput="setAdminKey(this.value)" style="width:100%; padding:6px; background:#111; border:1px solid #333; color:#fff; margin-bottom:8px;" />
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <button class="btn" onclick="openServerAdmin()">Server Admin</button>
+                <button class="btn" onclick="adminClearCellPrompt()">Clear Cell</button>
+                <button class="btn" onclick="adminResetActiveBuildings()">Reset Buildings</button>
+            </div>
         </div>
     </div>
     <div id="tooltip" style="display:none; position:fixed; z-index:9500;

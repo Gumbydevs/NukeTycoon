@@ -10,6 +10,7 @@ let _authJWT = null;     // stored JWT for all socket events
 let _localPlayerId = null;
 const DEFAULT_PLAYER_AVATAR = '☢️';
 const AVATAR_OPTIONS = ['☢️', '🧑‍🚀', '👩‍🔬', '👨‍🔬', '🤖', '🦊', '🐺', '🐉'];
+const ADMIN_KEY_STORAGE = 'nukwar_admin_key';
 
 function getLocalPlayerId() {
     if (_localPlayerId) return _localPlayerId;
@@ -240,6 +241,36 @@ function connectSocket() {
 
     socket.on('building:place_error', ({ message }) => {
         addNotification('danger', `❌ ${message}`);
+        if (/occupied/i.test(message) && socket?.connected && _authJWT) {
+            socket.emit('run:join', { jwt: _authJWT });
+        }
+    });
+
+    socket.on('admin:cell_cleared', ({ cellId, cleared }) => {
+        game.buildings = (game.buildings || []).filter((b) => b.id !== cellId);
+        game.enemyBuildings = (game.enemyBuildings || []).filter((b) => b.id !== cellId);
+        restoreEmptyCell(cellId);
+        calculateProximity();
+        updateUI();
+        addNotification('info', `🧹 Server cleared cell ${cellId}${cleared ? ` (${cleared} row${cleared === 1 ? '' : 's'})` : ''}.`);
+    });
+
+    socket.on('admin:buildings_reset', ({ cellIds, cleared }) => {
+        (cellIds || []).forEach((cellId) => restoreEmptyCell(cellId));
+        game.buildings = [];
+        game.enemyBuildings = [];
+        calculateProximity();
+        updateUI();
+        addNotification('warning', `🧪 Server reset ${cleared || 0} active building${cleared === 1 ? '' : 's'} for testing.`);
+    });
+
+    socket.on('admin:run_reset', () => {
+        game.buildings = [];
+        game.enemyBuildings = [];
+        initGrid();
+        calculateProximity();
+        updateUI();
+        addNotification('warning', '🔄 The live Railway run was reset. Rejoin the new round if needed.');
     });
 
     // ── Sabotage events ─────────────────────────────────────────────────
@@ -1042,11 +1073,14 @@ window.addEventListener('DOMContentLoaded', () => {
         console.warn('DOMContentLoaded: initMenu error', err);
     }
 
+    syncAdminKeyUI();
+
     // Shift+D+V secret shortcut to reveal/hide the Dev button
     const _devHeldKeys = new Set();
     document.addEventListener('keydown', (ev) => {
-        if (typeof ev.key !== 'string') return;
-        _devHeldKeys.add(ev.key.toLowerCase());
+        const k = ev && typeof ev.key === 'string' ? ev.key.toLowerCase() : null;
+        if (!k) return;
+        _devHeldKeys.add(k);
         if (ev.shiftKey && _devHeldKeys.has('d') && _devHeldKeys.has('v')) {
             const devBtn = document.getElementById('devToggle');
             if (devBtn) {
@@ -1056,8 +1090,9 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     });
     document.addEventListener('keyup', (ev) => {
-        if (typeof ev.key !== 'string') return;
-        _devHeldKeys.delete(ev.key.toLowerCase());
+        const k = ev && typeof ev.key === 'string' ? ev.key.toLowerCase() : null;
+        if (!k) return;
+        _devHeldKeys.delete(k);
     });
 });
 
@@ -3392,6 +3427,74 @@ function addButtonTooltips() {
 /**
  * Dev controls
  */
+function getAdminKey() {
+    return (localStorage.getItem(ADMIN_KEY_STORAGE) || '').trim();
+}
+
+function setAdminKey(value) {
+    const trimmed = (value || '').trim();
+    if (trimmed) localStorage.setItem(ADMIN_KEY_STORAGE, trimmed);
+    else localStorage.removeItem(ADMIN_KEY_STORAGE);
+}
+
+function syncAdminKeyUI() {
+    const input = document.getElementById('adminKeyInput');
+    if (!input) return;
+    const saved = getAdminKey();
+    if (saved && input.value !== saved) input.value = saved;
+}
+
+async function serverAdminRequest(path, options = {}) {
+    const input = document.getElementById('adminKeyInput');
+    if (input) setAdminKey(input.value);
+    const key = getAdminKey();
+    if (!key) {
+        addNotification('warning', '🔐 Enter the Railway ADMIN_KEY in the Dev panel first.');
+        return null;
+    }
+
+    const headers = Object.assign({ 'Content-Type': 'application/json', 'x-admin-key': key }, options.headers || {});
+    const response = await fetch(`${SERVER_URL}${path}`, Object.assign({}, options, { headers }));
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        const message = data.error || `Server admin request failed (${response.status}).`;
+        addNotification('danger', `❌ ${message}`);
+        throw new Error(message);
+    }
+    return data;
+}
+
+function openServerAdmin() {
+    const key = getAdminKey();
+    const query = key ? `?key=${encodeURIComponent(key)}` : '';
+    window.open(`${SERVER_URL}/admin${query}`, '_blank', 'noopener');
+}
+
+async function adminClearCellPrompt() {
+    const value = window.prompt('Clear which Railway cell ID? (0-399)');
+    if (value === null) return;
+    const cellId = Number(value);
+    if (!Number.isInteger(cellId) || cellId < 0 || cellId > 399) {
+        addNotification('warning', '⚠️ Enter a valid cell ID from 0 to 399.');
+        return;
+    }
+
+    const data = await serverAdminRequest('/admin/api/clear-cell', {
+        method: 'POST',
+        body: JSON.stringify({ cellId }),
+    });
+    if (data) addNotification('success', `🧹 Cleared Railway cell ${cellId}.`);
+}
+
+async function adminResetActiveBuildings() {
+    if (!window.confirm('Clear all active buildings in the live Railway run?')) return;
+    const data = await serverAdminRequest('/admin/api/reset-buildings', {
+        method: 'POST',
+        body: JSON.stringify({}),
+    });
+    if (data) addNotification('success', `🧪 Reset ${data.cleared || 0} active building(s) on Railway.`);
+}
+
 function syncBotToggleUI() {
     const btn = document.getElementById('botToggleBtn');
     if (!btn) return;
@@ -3460,6 +3563,7 @@ function toggleDevPanel() {
     if (!panel) return;
     panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
     syncBotToggleUI();
+    syncAdminKeyUI();
 }
 
 function advanceHours(n) {

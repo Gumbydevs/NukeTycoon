@@ -173,4 +173,4 @@ function setupGameLoop(io) {
     }, 2000);
 }
 
-module.exports = { setupGameLoop, getActiveRun, calculateScores };
+module.exports = { setupGameLoop, getActiveRun, createNewRun, calculateScores };

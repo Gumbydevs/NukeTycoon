@@ -6,7 +6,7 @@ const cors       = require('cors');
 const fs         = require('fs');
 const path       = require('path');
 const db         = require('./db');
-const { setupGameLoop } = require('./gameLoop');
+const { setupGameLoop, getActiveRun, createNewRun } = require('./gameLoop');
 const { registerHandlers } = require('./socket/handlers');
 
 let dbReady = false;
@@ -63,6 +63,65 @@ async function initializeDatabase(io) {
     }
 }
 
+function getAdminKeyFromRequest(req) {
+    const headerKey = req.headers['x-admin-key'];
+    const queryKey = req.query?.key;
+    const bodyKey = req.body?.key;
+    return [headerKey, queryKey, bodyKey].find((value) => typeof value === 'string' && value.trim())?.trim() || '';
+}
+
+function requireAdmin(req, res, next) {
+    const expected = (process.env.ADMIN_KEY || '').trim();
+    if (!expected) {
+        res.status(503).json({ error: 'ADMIN_KEY is not configured on the Railway server.' });
+        return;
+    }
+
+    const provided = getAdminKeyFromRequest(req);
+    if (provided !== expected) {
+        res.status(401).json({ error: 'Invalid admin key.' });
+        return;
+    }
+
+    next();
+}
+
+async function getAdminSnapshot() {
+    const run = await getActiveRun();
+    if (!run) {
+        return {
+            dbReady,
+            run: null,
+            counts: { players: 0, buildings: 0 },
+            recentBuildings: [],
+        };
+    }
+
+    const [playersResult, buildingCountResult, recentBuildingsResult] = await Promise.all([
+        db.query('SELECT COUNT(*)::int AS count FROM run_players WHERE run_id = $1', [run.id]),
+        db.query('SELECT COUNT(*)::int AS count FROM buildings WHERE run_id = $1 AND is_active = TRUE', [run.id]),
+        db.query(
+            `SELECT b.cell_id, b.type, b.player_id, b.placed_at, p.username AS owner_name
+             FROM buildings b
+             LEFT JOIN players p ON p.id = b.player_id
+             WHERE b.run_id = $1 AND b.is_active = TRUE
+             ORDER BY b.placed_at DESC
+             LIMIT 50`,
+            [run.id]
+        ),
+    ]);
+
+    return {
+        dbReady,
+        run,
+        counts: {
+            players: parseInt(playersResult.rows[0]?.count || 0, 10),
+            buildings: parseInt(buildingCountResult.rows[0]?.count || 0, 10),
+        },
+        recentBuildings: recentBuildingsResult.rows,
+    };
+}
+
 const app    = express();
 const server = http.createServer(app);
 
@@ -97,6 +156,110 @@ app.get('/status', async (_req, res) => {
             "SELECT id, run_number, current_day, run_length, prize_pool, next_day_at, status FROM runs WHERE status = 'active' LIMIT 1"
         );
         res.json({ run: result.rows[0] || null });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/admin', (_req, res) => {
+    res.sendFile(path.join(__dirname, 'admin.html'));
+});
+
+app.get('/admin/api/status', requireAdmin, async (_req, res) => {
+    try {
+        res.json(await getAdminSnapshot());
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/admin/api/clear-cell', requireAdmin, async (req, res) => {
+    try {
+        const cellId = Number(req.body?.cellId);
+        if (!Number.isInteger(cellId) || cellId < 0 || cellId > 399) {
+            res.status(400).json({ error: 'cellId must be an integer from 0 to 399.' });
+            return;
+        }
+
+        const run = await getActiveRun();
+        if (!run) {
+            res.status(404).json({ error: 'No active run found.' });
+            return;
+        }
+
+        const result = await db.query(
+            `UPDATE buildings
+             SET is_active = FALSE, destroyed_at = NOW()
+             WHERE run_id = $1 AND cell_id = $2 AND is_active = TRUE
+             RETURNING cell_id`,
+            [run.id, cellId]
+        );
+
+        io.to(`run:${run.id}`).emit('admin:cell_cleared', {
+            runId: run.id,
+            cellId,
+            cleared: result.rowCount,
+        });
+
+        res.json({ ok: true, cleared: result.rowCount, status: await getAdminSnapshot() });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/admin/api/reset-buildings', requireAdmin, async (_req, res) => {
+    try {
+        const run = await getActiveRun();
+        if (!run) {
+            res.status(404).json({ error: 'No active run found.' });
+            return;
+        }
+
+        const result = await db.query(
+            `UPDATE buildings
+             SET is_active = FALSE, destroyed_at = NOW()
+             WHERE run_id = $1 AND is_active = TRUE
+             RETURNING cell_id`,
+            [run.id]
+        );
+
+        io.to(`run:${run.id}`).emit('admin:buildings_reset', {
+            runId: run.id,
+            cellIds: result.rows.map((row) => row.cell_id),
+            cleared: result.rowCount,
+        });
+
+        res.json({ ok: true, cleared: result.rowCount, status: await getAdminSnapshot() });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/admin/api/reset-run', requireAdmin, async (_req, res) => {
+    try {
+        const activeRun = await getActiveRun();
+        if (activeRun) {
+            await db.query(
+                `UPDATE buildings
+                 SET is_active = FALSE, destroyed_at = COALESCE(destroyed_at, NOW())
+                 WHERE run_id = $1 AND is_active = TRUE`,
+                [activeRun.id]
+            );
+            await db.query(
+                "UPDATE runs SET status = 'ended', ended_at = NOW() WHERE id = $1",
+                [activeRun.id]
+            );
+            io.to(`run:${activeRun.id}`).emit('admin:run_reset', { runId: activeRun.id });
+        }
+
+        const newRun = await createNewRun();
+        io.emit('run:new', {
+            runId: newRun.id,
+            runNumber: newRun.run_number,
+            forced: true,
+        });
+
+        res.json({ ok: true, newRun, status: await getAdminSnapshot() });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
