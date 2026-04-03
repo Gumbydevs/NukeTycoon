@@ -1135,7 +1135,7 @@ function initGrid() {
         : generateTerrain(20, 20);
     const deposits = Array.isArray(game._serverDeposits)
         ? game._serverDeposits
-        : generateDeposits(20, 20);
+        : generateDeposits(20, 20, terrain); // pass terrain so road cells are skipped correctly
 
     game.terrain = terrain;
     game.deposits = deposits;
@@ -1375,10 +1375,12 @@ function generateTerrain(width, height) {
 /**
  * Generate uranium ore deposits scattered across the map
  */
-function generateDeposits(width, height) {
+function generateDeposits(width, height, terrain) {
     const rand = createSeededRandom(`deposits:${width}x${height}`);
     const deposits = [];
     const numDeposits = 5 + Math.floor(rand() * 4); // 5-8 deposit clusters
+    // Use passed-in terrain; fall back to game.terrain if available, then allow all cells
+    const terrainRef = terrain || game.terrain || [];
     
     for (let d = 0; d < numDeposits; d++) {
         // Random deposit center
@@ -1395,7 +1397,7 @@ function generateDeposits(width, height) {
                     if (x >= 0 && x < width && y >= 0 && y < height) {
                         const cellId = y * width + x;
                         // Skip roads
-                        if (!['road', 'road-h', 'road-x'].includes(game.terrain[cellId])) {
+                        if (!['road', 'road-h', 'road-x'].includes(terrainRef[cellId])) {
                             deposits.push({ cellId, quality: 0.5 + rand() * 0.5 }); // 0.5-1.0 quality
                         }
                     }
