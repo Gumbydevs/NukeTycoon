@@ -14,6 +14,9 @@ CREATE TABLE IF NOT EXISTS players (
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE players ADD COLUMN IF NOT EXISTS avatar TEXT DEFAULT '☢️';
+-- Password fields for password-based login (optional)
+ALTER TABLE players ADD COLUMN IF NOT EXISTS password_salt TEXT;
+ALTER TABLE players ADD COLUMN IF NOT EXISTS password_hash TEXT;
 
 -- ── Email login codes (one-time, 10-min expiry) ───────────────────────────────
 CREATE TABLE IF NOT EXISTS auth_codes (

@@ -1,4 +1,4 @@
-const { sendOTP, verifyOTP, verifyJWT, generateJWT } = require('../auth');
+const { sendOTP, verifyOTP, verifyJWT, generateJWT, signupWithPassword, loginWithPassword } = require('../auth');
 const db = require('../db');
 const { getActiveRun, calculateScores } = require('../gameLoop');
 
@@ -47,8 +47,11 @@ function registerHandlers(io, socket) {
                 if (typeof ack === 'function') ack({ ok: false, error: result.error });
                 return;
             }
-            socket.emit('auth:code_sent', { email: email.toLowerCase().trim() });
-            if (typeof ack === 'function') ack({ ok: true });
+            // Include dev OTP when provided by sendOTP (fallback case)
+            const payload = { email: email.toLowerCase().trim() };
+            if (result && result.code) payload.devCode = result.code;
+            socket.emit('auth:code_sent', payload);
+            if (typeof ack === 'function') ack({ ok: true, code: result?.code });
         } catch (err) {
             console.error('auth:request error:', err);
             const msg = 'Could not send code. Try again.';
@@ -87,6 +90,65 @@ function registerHandlers(io, socket) {
         } catch (err) {
             console.error('auth:verify error:', err);
             const msg = 'Verification failed. Try again.';
+            socket.emit('auth:error', { message: msg });
+            if (typeof ack === 'function') ack({ ok: false, error: msg });
+        }
+    });
+
+    // Password signup/login (alternative to email OTP)
+    socket.on('auth:signup_password', async ({ email, password, username }, ack) => {
+        try {
+            const res = await signupWithPassword(email, password, username);
+            if (!res.ok) {
+                socket.emit('auth:error', { message: res.error });
+                if (typeof ack === 'function') ack({ ok: false, error: res.error });
+                return;
+            }
+            socket.playerId = res.player.id;
+            socket.emit('auth:success', {
+                player: {
+                    id: res.player.id,
+                    username: res.player.username,
+                    email: res.player.email,
+                    avatar: res.player.avatar || DEFAULT_AVATAR,
+                    token_balance: parseInt(res.player.token_balance, 10),
+                },
+                jwt: res.token,
+                isNewPlayer: true,
+            });
+            if (typeof ack === 'function') ack({ ok: true });
+        } catch (err) {
+            console.error('auth:signup_password error:', err);
+            const msg = 'Signup failed. Try again.';
+            socket.emit('auth:error', { message: msg });
+            if (typeof ack === 'function') ack({ ok: false, error: msg });
+        }
+    });
+
+    socket.on('auth:login_password', async ({ email, password }, ack) => {
+        try {
+            const res = await loginWithPassword(email, password);
+            if (!res.ok) {
+                socket.emit('auth:error', { message: res.error });
+                if (typeof ack === 'function') ack({ ok: false, error: res.error });
+                return;
+            }
+            socket.playerId = res.player.id;
+            socket.emit('auth:success', {
+                player: {
+                    id: res.player.id,
+                    username: res.player.username,
+                    email: res.player.email,
+                    avatar: res.player.avatar || DEFAULT_AVATAR,
+                    token_balance: parseInt(res.player.token_balance, 10),
+                },
+                jwt: res.token,
+                isNewPlayer: !!res.isNewPlayer,
+            });
+            if (typeof ack === 'function') ack({ ok: true });
+        } catch (err) {
+            console.error('auth:login_password error:', err);
+            const msg = 'Login failed. Try again.';
             socket.emit('auth:error', { message: msg });
             if (typeof ack === 'function') ack({ ok: false, error: msg });
         }

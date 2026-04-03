@@ -56,6 +56,8 @@ function connectSocket() {
         document.getElementById('loginStep1').style.display = 'none';
         document.getElementById('loginStep2').style.display = 'block';
         document.getElementById('loginEmailDisplay').textContent = email;
+        const devHint = document.getElementById('loginDevHint');
+        if (devHint) { devHint.style.display = 'none'; devHint.textContent = ''; }
         document.getElementById('loginCode').focus();
     });
 
@@ -2218,11 +2220,76 @@ function requestLoginCode() {
         if (btn) { btn.disabled = false; btn.textContent = 'Send Code'; }
         if (!res || !res.ok) {
             if (errEl) errEl.textContent = res?.error || 'Could not send code. Try again.';
+        } else {
+            // If server returned a dev code in the ack, show it immediately
+            if (res.code) {
+                const devHint = document.getElementById('loginDevHint');
+                if (devHint) {
+                    devHint.textContent = 'DEV OTP: ' + res.code + ' (use this code to continue)';
+                    devHint.style.display = 'block';
+                }
+            }
         }
-        // If res.ok is true, server will emit 'auth:code_sent' to advance UI.
+        // Server will also emit 'auth:code_sent' to advance UI.
     });
     // Re-enable after a delay in case the ack is lost
     setTimeout(() => { if (btn) { btn.disabled = false; btn.textContent = 'Send Code'; } }, 8000);
+}
+
+function loginWithPassword() {
+    const emailEl = document.getElementById('loginEmail');
+    const pwEl = document.getElementById('loginPassword');
+    const errEl = document.getElementById('loginError');
+    const email = (emailEl?.value || '').trim();
+    const pw = (pwEl?.value || '');
+    if (!email || !pw) {
+        if (errEl) errEl.textContent = 'Enter email and password.';
+        return;
+    }
+    if (!socket?.connected) {
+        if (errEl) errEl.textContent = 'Not connected to server.';
+        return;
+    }
+    if (errEl) errEl.textContent = '';
+    const btn = document.getElementById('loginPasswordBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Signing in…'; }
+    socket.emit('auth:login_password', { email, password: pw }, (res) => {
+        if (btn) { btn.disabled = false; btn.textContent = 'Login'; }
+        if (!res || !res.ok) {
+            if (errEl) errEl.textContent = res?.error || 'Login failed. Try again.';
+        }
+        // server will emit auth:success on success
+    });
+    setTimeout(() => { if (btn) { btn.disabled = false; btn.textContent = 'Login'; } }, 8000);
+}
+
+function signupWithPassword() {
+    const emailEl = document.getElementById('loginEmail');
+    const pwEl = document.getElementById('loginPassword');
+    const usernameEl = document.getElementById('signupUsername');
+    const errEl = document.getElementById('loginError');
+    const email = (emailEl?.value || '').trim();
+    const pw = (pwEl?.value || '');
+    const username = (usernameEl?.value || '').trim();
+    if (!email || !pw) {
+        if (errEl) errEl.textContent = 'Enter email and password.';
+        return;
+    }
+    if (!socket?.connected) {
+        if (errEl) errEl.textContent = 'Not connected to server.';
+        return;
+    }
+    if (errEl) errEl.textContent = '';
+    const btn = document.getElementById('signupPasswordBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Creating…'; }
+    socket.emit('auth:signup_password', { email, password: pw, username }, (res) => {
+        if (btn) { btn.disabled = false; btn.textContent = 'Create Account'; }
+        if (!res || !res.ok) {
+            if (errEl) errEl.textContent = res?.error || 'Signup failed. Try again.';
+        }
+        // server will emit auth:success on success
+    });
+    setTimeout(() => { if (btn) { btn.disabled = false; btn.textContent = 'Create Account'; } }, 8000);
 }
 
 function verifyLoginCode() {
@@ -2256,6 +2323,12 @@ document.addEventListener('DOMContentLoaded', function() {
     const emailIn  = document.getElementById('loginEmail');
     if (sendBtn) sendBtn.addEventListener('click', requestLoginCode);
     if (emailIn)  emailIn.addEventListener('keyup', (e) => { if (e.key === 'Enter') requestLoginCode(); });
+    const loginPwBtn = document.getElementById('loginPasswordBtn');
+    const signupPwBtn = document.getElementById('signupPasswordBtn');
+    const pwInput = document.getElementById('loginPassword');
+    if (loginPwBtn) loginPwBtn.addEventListener('click', loginWithPassword);
+    if (signupPwBtn) signupPwBtn.addEventListener('click', signupWithPassword);
+    if (pwInput) pwInput.addEventListener('keyup', (e) => { if (e.key === 'Enter') loginWithPassword(); });
 
     // Wire login step 2
     const verifyBtn = document.getElementById('loginVerifyBtn');
