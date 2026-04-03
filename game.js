@@ -3466,8 +3466,13 @@ async function serverAdminRequest(path, options = {}) {
 
 function openServerAdmin() {
     const key = getAdminKey();
-    const query = key ? `?key=${encodeURIComponent(key)}` : '';
-    window.open(`${SERVER_URL}/admin${query}`, '_blank', 'noopener');
+    const isGitHubPages = /github\.io$/i.test(window.location.hostname);
+    const adminUrl = isGitHubPages
+        ? new URL('admin.html', window.location.href)
+        : new URL('/admin', SERVER_URL);
+
+    if (key) adminUrl.searchParams.set('key', key);
+    window.open(adminUrl.toString(), '_blank', 'noopener');
 }
 
 async function adminClearCellPrompt() {
