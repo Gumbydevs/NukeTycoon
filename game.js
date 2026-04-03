@@ -1463,6 +1463,7 @@ function buildBuilding(id, type) {
     if (_walletEl) showFloatingText('-' + cost.toLocaleString(), '#ff6b6b', _walletEl);
     // drain liquidity pool → pushes price up via bonding curve
     game.market.tokenPool = Math.max(1, game.market.tokenPool - cost / game.market.poolBurnRate);
+    const _constrMs = (buildingTypes[type].constructionTime || 0) * 10000;
     game.buildings.push({ 
         id, 
         type, 
@@ -1470,6 +1471,8 @@ function buildBuilding(id, type) {
         ownerId: getLocalPlayerId() || 'local',
         ownerAvatar: game.playerAvatar || DEFAULT_PLAYER_AVATAR,
         constructionTimeRemaining: buildingTypes[type].constructionTime,
+        constructionTimeRemainingMs: _constrMs,
+        constructionEndsAtMs: Date.now() + _constrMs,
         isUnderConstruction: true
     });
 
@@ -1845,36 +1848,21 @@ function renderBuilding(id, type, isPlayer, building) {
     const isUnderConstruction = !!(building && (building.isUnderConstruction || (building.constructionEndsAtMs && building.constructionEndsAtMs > Date.now())));
     
     if (isUnderConstruction && building) {
-        // Compute progress robustly from milliseconds so server/client timing
-        // granularity and unit conversions can't break the visual.
-        const totalMs = (Number(buildingTypes[type].constructionTime) || 0) * 10000; // unit -> ms (10s per unit)
-        const remainingMs = Number(building.constructionTimeRemainingMs ?? (Number(building.constructionTimeRemaining) * 10000)) || 0;
+        const totalMs = (Number(buildingTypes[type].constructionTime) || 0) * 10000;
+        const now = Date.now();
 
-        // progress: 0..1 (0 = not started, 1 = complete)
+        // Prefer wall-clock end timestamp (set on both server and local builds)
         let progress = 0;
-        if (totalMs > 0) {
-            progress = (totalMs - Math.max(0, remainingMs)) / totalMs;
-            progress = Math.max(0, Math.min(1, progress));
+        if (building.constructionEndsAtMs && totalMs > 0) {
+            const elapsed = now - (building.constructionEndsAtMs - totalMs);
+            progress = Math.max(0, Math.min(1, elapsed / totalMs));
+        } else if (totalMs > 0) {
+            const remaining = Number(building.constructionTimeRemaining) || 0;
+            const total = totalMs / 10000;
+            progress = Math.max(0, Math.min(1, 1 - (remaining / total)));
         }
 
-        // If complete, mark finished and render final building on next tick
-        if (progress >= 0.999) {
-            building.constructionTimeRemaining = 0;
-            building.constructionTimeRemainingMs = 0;
-            building.isUnderConstruction = false;
-            // render the completed building
-            const tint = isPlayer ? PLAYER_COLOR : ENEMY_COLOR;
-            if (USE_SVG_ICONS || type === 'storage') {
-                const svg = getIconSVG(type, tint);
-                cell.innerHTML = svg;
-            } else {
-                const emoji = buildingTypes[type].emoji || '';
-                cell.innerHTML = `<span class="icon-emoji" style="color:${tint};">${emoji}</span>`;
-            }
-            return;
-        }
-
-        const circumference = 2 * Math.PI * 45; // radius 45
+        const circumference = 2 * Math.PI * 45;
         const strokeDashoffset = circumference * (1 - progress);
 
         const tint = isPlayer ? PLAYER_COLOR : ENEMY_COLOR;
