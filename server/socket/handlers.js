@@ -33,33 +33,42 @@ function registerHandlers(io, socket) {
 
     // ── AUTH ─────────────────────────────────────────────────────────────────
 
-    socket.on('auth:request', async ({ email }) => {
+    socket.on('auth:request', async ({ email }, ack) => {
         if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-            socket.emit('auth:error', { message: 'Enter a valid email address.' });
+            const msg = 'Enter a valid email address.';
+            socket.emit('auth:error', { message: msg });
+            if (typeof ack === 'function') ack({ ok: false, error: msg });
             return;
         }
         try {
             const result = await sendOTP(email.toLowerCase().trim());
             if (!result.ok) {
                 socket.emit('auth:error', { message: result.error });
+                if (typeof ack === 'function') ack({ ok: false, error: result.error });
                 return;
             }
             socket.emit('auth:code_sent', { email: email.toLowerCase().trim() });
+            if (typeof ack === 'function') ack({ ok: true });
         } catch (err) {
             console.error('auth:request error:', err);
-            socket.emit('auth:error', { message: 'Could not send code. Try again.' });
+            const msg = 'Could not send code. Try again.';
+            socket.emit('auth:error', { message: msg });
+            if (typeof ack === 'function') ack({ ok: false, error: msg });
         }
     });
 
-    socket.on('auth:verify', async ({ email, code }) => {
+    socket.on('auth:verify', async ({ email, code }, ack) => {
         if (!email || !code) {
-            socket.emit('auth:error', { message: 'Email and code are required.' });
+            const msg = 'Email and code are required.';
+            socket.emit('auth:error', { message: msg });
+            if (typeof ack === 'function') ack({ ok: false, error: msg });
             return;
         }
         try {
             const result = await verifyOTP(email.toLowerCase().trim(), code.toString().trim());
             if (!result.ok) {
                 socket.emit('auth:error', { message: result.error });
+                if (typeof ack === 'function') ack({ ok: false, error: result.error });
                 return;
             }
             socket.playerId = result.player.id;
@@ -74,9 +83,12 @@ function registerHandlers(io, socket) {
                 jwt: result.token,
                 isNewPlayer: !!result.isNewPlayer,
             });
+            if (typeof ack === 'function') ack({ ok: true, isNewPlayer: !!result.isNewPlayer });
         } catch (err) {
             console.error('auth:verify error:', err);
-            socket.emit('auth:error', { message: 'Verification failed. Try again.' });
+            const msg = 'Verification failed. Try again.';
+            socket.emit('auth:error', { message: msg });
+            if (typeof ack === 'function') ack({ ok: false, error: msg });
         }
     });
 

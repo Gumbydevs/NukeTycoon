@@ -2214,8 +2214,14 @@ function requestLoginCode() {
     }
     const btn = document.getElementById('loginSendBtn');
     if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
-    socket.emit('auth:request', { email });
-    // Re-enable after a delay in case of error
+    socket.emit('auth:request', { email }, (res) => {
+        if (btn) { btn.disabled = false; btn.textContent = 'Send Code'; }
+        if (!res || !res.ok) {
+            if (errEl) errEl.textContent = res?.error || 'Could not send code. Try again.';
+        }
+        // If res.ok is true, server will emit 'auth:code_sent' to advance UI.
+    });
+    // Re-enable after a delay in case the ack is lost
     setTimeout(() => { if (btn) { btn.disabled = false; btn.textContent = 'Send Code'; } }, 8000);
 }
 
@@ -2230,7 +2236,14 @@ function verifyLoginCode() {
     if (errEl) errEl.textContent = '';
     const btn = document.getElementById('loginVerifyBtn');
     if (btn) { btn.disabled = true; btn.textContent = 'Verifying…'; }
-    socket.emit('auth:verify', { email, code });
+    socket.emit('auth:verify', { email, code }, (res) => {
+        if (btn) { btn.disabled = false; btn.textContent = 'Verify'; }
+        if (!res || !res.ok) {
+            if (errEl) errEl.textContent = res?.error || 'Verification failed. Try again.';
+        }
+        // On success the server emits 'auth:success' to complete login.
+    });
+    // Re-enable after a delay in case the ack is lost
     setTimeout(() => { if (btn) { btn.disabled = false; btn.textContent = 'Verify'; } }, 8000);
 }
 
