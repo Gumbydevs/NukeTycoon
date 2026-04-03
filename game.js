@@ -1565,9 +1565,13 @@ function initMenu() {
     // expose setMenuOpen globally so inline fallbacks can delegate to the same logic
     try { window.setMenuOpen = setMenuOpen; } catch (e) { /* ignore */ }
 
-    // Click is handled via onclick="toggleActionsMenu(event)" on the HTML button.
-    // setMenuOpen is exposed globally below so toggleActionsMenu can use it.
+    // Wire click + touchend to toggleActionsMenu
     if (actionsBtn) {
+        actionsBtn.addEventListener('click', (e) => { toggleActionsMenu(e); });
+        actionsBtn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            toggleActionsMenu(e);
+        }, { passive: false });
         try {
             actionsBtn.style.zIndex = '1000';
             actionsBtn.style.touchAction = 'manipulation';
