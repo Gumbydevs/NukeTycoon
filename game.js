@@ -356,6 +356,7 @@ const game = {
     playerEmail: '',
     playerAvatar: DEFAULT_PLAYER_AVATAR,
     pendingInitialProfileSetup: false,
+    botsEnabled: true,
     uraniumRaw: 0,      // mined by Mine buildings
     uraniumRefined: 0,  // converted by Processor buildings; consumed by Plants
     maxStorage: 5000,   // total cap shared across raw + refined
@@ -520,9 +521,12 @@ function initPlayerRegistry() {
             wallet: game.playerWallet, // synced from game.playerWallet
             paidBuyIn: false,
             score: 0
-        },
-        // ── AI bots ──────────────────────────────────────────────────────────
-        // BACKEND_STUB: replace with real remote players when backend is live.
+        }
+    ];
+
+    if (!game.botsEnabled) return;
+
+    game.players.push(
         {
             id: 'bot-phantom',
             name: 'PHANTOM_IX',
@@ -543,7 +547,7 @@ function initPlayerRegistry() {
             paidBuyIn: false,
             score: 0
         }
-    ];
+    );
 }
 
 function escapeHtml(value) {
@@ -716,15 +720,19 @@ function initGrid() {
  * Spawn random enemy buildings on the grid
  */
 function spawnEnemyBuildings() {
+    if (!game.botsEnabled) return;
+
+    const botPlayers = (game.players || []).filter(p => p.isBot);
+    if (botPlayers.length === 0) return;
+
     const types = Object.keys(buildingTypes);
     const maxAttempts = 200;
     for (let i = 0; i < 5; i++) {
         let attempts = 0;
         let randomId = null;
         let type = null;
-        const enemy = enemies[Math.floor(Math.random() * enemies.length)];
+        const enemy = botPlayers[Math.floor(Math.random() * botPlayers.length)] || enemies[Math.floor(Math.random() * enemies.length)];
 
-        // Pick a random non-road, unoccupied tile (give up after many attempts)
         while (attempts < maxAttempts) {
             attempts++;
             randomId = Math.floor(Math.random() * 400);
@@ -740,8 +748,15 @@ function spawnEnemyBuildings() {
             continue;
         }
 
-        game.enemyBuildings.push({ id: randomId, type, owner: enemy.name });
-        renderBuilding(randomId, type, false);
+        const building = {
+            id: randomId,
+            type,
+            owner: enemy.name,
+            ownerId: enemy.id,
+            ownerAvatar: enemy.avatar || DEFAULT_PLAYER_AVATAR,
+        };
+        game.enemyBuildings.push(building);
+        renderBuilding(randomId, type, false, building);
     }
 }
 
@@ -2208,6 +2223,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (profileNameInput) profileNameInput.addEventListener('keyup', (e) => { if (e.key === 'Enter') changeUsername(); });
     renderAvatarPicker('signupAvatarPicker', game.playerAvatar || DEFAULT_PLAYER_AVATAR);
     renderAvatarPicker('profileAvatarPicker', game.playerAvatar || DEFAULT_PLAYER_AVATAR);
+    syncBotToggleUI();
     if (backBtn)   backBtn.addEventListener('click', () => {
         document.getElementById('loginStep1').style.display = 'block';
         document.getElementById('loginStep2').style.display = 'none';
@@ -3001,9 +3017,8 @@ function onCellHover(id, e) {
         for (const en of game.enemyBuildings) if (distance(id, en.id) <= game.proximityRange) pen++;
         const label = displayNames[type] || type;
         const icon = (buildingTypes[type] && buildingTypes[type].emoji) ? buildingTypes[type].emoji + ' ' : '';
-        const ownerLine = `<div style="margin-top:2px;">Owner: <span style="display:inline-flex;align-items:center;gap:6px;color:#4CAF50;">${avatarBadge(game.playerAvatar)} ${escapeHtml(game.playerName || 'You')} <span style="font-size:10px;color:#aaa;">(You)</span></span></div>`;
-        content = `<div style="font-weight:700;">${icon}${label}</div>` +
-            ownerLine +
+        const ownerLabel = `<span style="display:inline-flex;align-items:center;gap:6px;color:#4CAF50;">${avatarBadge(game.playerAvatar)} ${escapeHtml(game.playerName || 'You')} <span style="font-size:10px;color:#aaa;">(You)</span></span>`;
+        content = `<div style="font-weight:700;">${icon}${label} — ${ownerLabel}</div>` +
             `<div>📐 Same-type neighbors: ${same} (${same>0? '+'+ (same*25) +'%': 'none'})</div>` +
             `<div>⚠️ Nearby enemies: ${pen}</div>`;
         
@@ -3377,10 +3392,74 @@ function addButtonTooltips() {
 /**
  * Dev controls
  */
+function syncBotToggleUI() {
+    const btn = document.getElementById('botToggleBtn');
+    if (!btn) return;
+    btn.textContent = `AI Bots: ${game.botsEnabled ? 'ON' : 'OFF'}`;
+    btn.style.borderColor = game.botsEnabled ? '#4CAF50' : '#ff6b6b';
+    btn.style.color = game.botsEnabled ? '#4CAF50' : '#ff6b6b';
+}
+
+function restoreEmptyCell(cellId) {
+    const cell = document.querySelector(`[data-id="${cellId}"]`);
+    if (!cell) return;
+    cell.innerHTML = '';
+    cell.className = 'cell';
+    const terrain = game.terrain?.[cellId] || 'grass';
+    cell.classList.add('terrain-' + terrain);
+    if ((game.deposits || []).some(d => d.cellId === cellId)) {
+        cell.classList.add('has-deposit');
+    }
+}
+
+function setAIBotsEnabled(enabled) {
+    const nextEnabled = !!enabled;
+    if (game.botsEnabled === nextEnabled) {
+        syncBotToggleUI();
+        return;
+    }
+
+    game.botsEnabled = nextEnabled;
+
+    if (!nextEnabled) {
+        if (game._botInterval) {
+            clearInterval(game._botInterval);
+            game._botInterval = null;
+        }
+
+        const botIds = new Set((game.players || []).filter(p => p.isBot).map(p => p.id));
+        const botNames = new Set((game.players || []).filter(p => p.isBot).map(p => p.name));
+
+        game.players = (game.players || []).filter(p => !p.isBot);
+
+        const removedBuildings = (game.enemyBuildings || []).filter(b => botIds.has(b.ownerId) || botNames.has(b.owner));
+        removedBuildings.forEach((b) => restoreEmptyCell(b.id));
+        game.enemyBuildings = (game.enemyBuildings || []).filter(b => !botIds.has(b.ownerId) && !botNames.has(b.owner));
+
+        addNotification('info', '🧪 AI bots disabled for testing. Bot buildings were removed.');
+    } else {
+        if (!socket?.connected || !_authJWT) {
+            initPlayerRegistry();
+            spawnEnemyBuildings();
+        }
+        startBotAI();
+        addNotification('info', '🤖 AI bots enabled.');
+    }
+
+    syncBotToggleUI();
+    calculateProximity();
+    updateUI();
+}
+
+function toggleAIBots() {
+    setAIBotsEnabled(!game.botsEnabled);
+}
+
 function toggleDevPanel() {
     const panel = document.getElementById('devPanel');
     if (!panel) return;
     panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    syncBotToggleUI();
 }
 
 function advanceHours(n) {
@@ -3749,17 +3828,20 @@ function showDayTransition(day) {
  * Start the bot AI interval. Called once per run from startSimLoops().
  */
 function startBotAI() {
+    if (!game.botsEnabled) return;
+    if (!(game.players || []).some(p => p.isBot)) return;
     if (game._botInterval) return;
-    // Bots act every ~30 seconds; fire once after 8s so the map feels alive early
     game._botInterval = setInterval(tickBotAI, 30000);
-    setTimeout(tickBotAI, 8000);
+    setTimeout(() => {
+        if (game.botsEnabled) tickBotAI();
+    }, 8000);
 }
 
 /**
  * One AI tick: each bot either builds a new building or sabotages the player.
  */
 function tickBotAI() {
-    if (game.runEnded) return;
+    if (game.runEnded || !game.botsEnabled) return;
     game.players.filter(p => p.isBot).forEach(bot => {
         // 70% build, 30% sabotage (only if player has completed buildings)
         const completedPlayerBuildings = game.buildings.filter(b => !b.isUnderConstruction);
@@ -3789,8 +3871,9 @@ function botBuildRandom(bot) {
                          game.buildings.find(b => b.id === cellId);
         if (!blocked && !occupied) {
             bot.wallet -= cost;
-            game.enemyBuildings.push({ id: cellId, type, owner: bot.name });
-            renderBuilding(cellId, type, false);
+            const building = { id: cellId, type, owner: bot.name, ownerId: bot.id, ownerAvatar: bot.avatar || DEFAULT_PLAYER_AVATAR };
+            game.enemyBuildings.push(building);
+            renderBuilding(cellId, type, false, building);
             return;
         }
     }

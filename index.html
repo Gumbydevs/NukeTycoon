@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NUKWAR</title>
-    <link rel="stylesheet" href="styles/main.css?v=20260403b">
+    <link rel="stylesheet" href="styles/main.css?v=20260403c">
 </head>
 <body>
     <div id="loginModal" style="position:fixed; left:0; top:0; right:0; bottom:0; background:rgba(0,0,0,0.85); z-index:999; display:flex; align-items:center; justify-content:center;">
@@ -176,7 +176,7 @@
             <input id="advanceInput" type="number" value="1" style="width:64px; padding:4px; background:#111; border:1px solid #333; color:#fff;" />
             <button class="btn" onclick="advanceHours(Number(document.getElementById('advanceInput').value))">Advance Hours</button>
         </div>
-        <div style="display:flex; gap:8px; align-items:center;">
+        <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
             <label style="color:#888;">Speed:</label>
             <select id="speedSelect" onchange="setSimSpeed(Number(this.value))" style="background:#111; border:1px solid #333; color:#fff; padding:4px;">
                 <option value="0.0166667" selected>Real time (1 day = 24 hrs)</option>
@@ -185,6 +185,10 @@
                 <option value="60">60 min/sec</option>
                 <option value="1440">1 day/sec</option>
             </select>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+            <label style="color:#888;">Bots:</label>
+            <button class="btn" id="botToggleBtn" onclick="toggleAIBots()">AI Bots: ON</button>
         </div>
     </div>
     <div id="tooltip" style="display:none; position:fixed; z-index:9500;
@@ -327,6 +331,6 @@
 
     <!-- Socket.io client — must load before game.js -->
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-    <script src="game.js?v=20260403b"></script>
+    <script src="game.js?v=20260403c"></script>
 </body>
 </html>
