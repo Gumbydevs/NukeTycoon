@@ -153,22 +153,45 @@
         </div>
     </div>
 
-    <div class="legend">
-        <div class="legend-item">
-            <div class="legend-icon m"><span class="icon-emoji">⛏️</span></div>
-            <span class="legend-text">Mine</span>
+    <div class="legend" id="legendPanel" aria-hidden="true">
+        <div class="legend-top">
+            <button class="btn legend-help-btn" id="openHelpBtn" type="button">Game help</button>
+            <button class="btn legend-close" id="closeLegendBtn" type="button" aria-label="Close legend">✕</button>
         </div>
-        <div class="legend-item">
-            <div class="legend-icon p"><span class="icon-emoji">🏭</span></div>
-            <span class="legend-text">Plant</span>
+        <div class="legend-body">
+            <div class="legend-item">
+                <div class="legend-icon m"><span class="icon-emoji">⛏️</span></div>
+                <span class="legend-text">Mine</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-icon p"><span class="icon-emoji">🏭</span></div>
+                <span class="legend-text">Plant</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-icon s"><svg viewBox="0 0 24 24" width="16" height="16" xmlns="http://www.w3.org/2000/svg"><ellipse cx="12" cy="4.5" rx="6" ry="2" fill="#b08b4f"/><rect x="6" y="4.5" width="12" height="13" rx="2" ry="2" fill="#b08b4f"/></svg></div>
+                <span class="legend-text">Storage</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-icon r"><span class="icon-emoji">☢️</span></div>
+                <span class="legend-text">Reactor</span>
+            </div>
         </div>
-        <div class="legend-item">
-            <div class="legend-icon s"><svg viewBox="0 0 24 24" width="16" height="16" xmlns="http://www.w3.org/2000/svg"><ellipse cx="12" cy="4.5" rx="6" ry="2" fill="#b08b4f"/><rect x="6" y="4.5" width="12" height="13" rx="2" ry="2" fill="#b08b4f"/></svg></div>
-            <span class="legend-text">Storage</span>
-        </div>
-        <div class="legend-item">
-            <div class="legend-icon r"><span class="icon-emoji">☢️</span></div>
-            <span class="legend-text">Reactor</span>
+    </div>
+
+    <!-- Square toggle button shown when legend is collapsed -->
+    <button id="legendToggle" class="legend-toggle" aria-expanded="false" aria-controls="legendPanel" title="Help">?</button>
+
+    <!-- Help modal: two column layout, left tabs, right content -->
+    <div id="helpModal" class="help-modal" role="dialog" aria-modal="true" aria-hidden="true">
+        <div class="help-panel">
+            <div class="help-header">
+                <div class="help-title">Game help</div>
+                <button class="btn help-close" id="helpCloseBtn" aria-label="Close help">✕</button>
+            </div>
+            <div class="help-body">
+                <nav class="help-tabs" id="helpTabs" role="tablist"></nav>
+                <section class="help-content" id="helpContent" tabindex="0" aria-live="polite"></section>
+            </div>
         </div>
     </div>
 

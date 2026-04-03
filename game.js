@@ -1297,6 +1297,156 @@ function initMenu() {
     });
 }
 
+// ── Help UI: legend toggle, help modal, tabs ─────────────────────────────
+const HELP_CONTENT = [
+    { id: 'overview', title: 'Overview', html: `
+        <h3>Overview</h3>
+        <p>NUKWAR is a strategy game where players build and manage facilities on a shared map. Place mines to extract raw ore. Use processors to refine raw ore into refined material. Build reactors to convert refined material into power and income. Store material in storage to avoid losing it when production spikes.</p>
+        <p>Each run consists of several rounds. Players pay an entry fee to join a run. Tokens fund the prize pool. Manage your resources and expand your infrastructure to earn the top score.</p>
+    `},
+    { id: 'buildings', title: 'Buildings', html: `
+        <h3>Buildings</h3>
+        <p>Mine: extracts raw ore from terrain. Place on deposits for higher yield.</p>
+        <p>Plant: consumes refined material to generate power and income. Plants provide steady revenue when active.</p>
+        <p>Processor: converts raw ore into refined material used by plants.</p>
+        <p>Storage: holds raw or refined material to increase your cap. Higher storage reduces waste.</p>
+        <p>Silo: a high cost building with special effects. Use with care.</p>
+    `},
+    { id: 'resources', title: 'Resources', html: `
+        <h3>Resources</h3>
+        <p>Raw ore: mined from the map. Refined material: produced by processors from raw ore. Tokens: the in game currency used for buying buildings and paying the entry fee.</p>
+        <p>Keep an eye on storage. If your storage is full, production can be lost.</p>
+    `},
+    { id: 'economy', title: 'Economy', html: `
+        <h3>Economy</h3>
+        <p>Entry fees seed the prize pool. A fraction of in game spends also funds the prize pool. The market price is influenced by a simple liquidity pool model. Large token drains increase the price.</p>
+        <p>Watch your wallet and the market price to plan buys and sells.</p>
+    `},
+    { id: 'rounds', title: 'Rounds', html: `
+        <h3>Rounds and Runs</h3>
+        <p>A run is a series of rounds. Each round represents one simulated day. Rounds advance automatically. Plan construction and resource flows across the run to maximize your final score.</p>
+    `},
+    { id: 'controls', title: 'Controls', html: `
+        <h3>Controls</h3>
+        <p>Click a cell to place or select a building. Use the action menu to pick building types. On small screens use the mobile menu. Press Escape to close modals or cancel actions.</p>
+    `},
+    { id: 'multiplayer', title: 'Multiplayer', html: `
+        <h3>Multiplayer</h3>
+        <p>Players compete on the same shared map. Buildings placed by others appear as enemy buildings. Leaderboard ranks players by buildings and wallet size. Network state is synced from the server for fairness.</p>
+    `},
+    { id: 'tips', title: 'Tips', html: `
+        <h3>Tips</h3>
+        <ul>
+            <li>Place mines on or near deposits for better yield.</li>
+            <li>Balance processors and plants to avoid bottlenecks.</li>
+            <li>Use storage to smooth production spikes.</li>
+            <li>Watch the market and plan purchases when price is low.</li>
+        </ul>
+    `}
+];
+
+function initHelpUI() {
+    if (initHelpUI._done) return;
+    initHelpUI._done = true;
+
+    const legend = document.getElementById('legendPanel');
+    const toggle = document.getElementById('legendToggle');
+    const openHelpBtn = document.getElementById('openHelpBtn');
+    const closeLegendBtn = document.getElementById('closeLegendBtn');
+    const helpModal = document.getElementById('helpModal');
+    const helpCloseBtn = document.getElementById('helpCloseBtn');
+    const tabsContainer = document.getElementById('helpTabs');
+    const contentEl = document.getElementById('helpContent');
+
+    function showLegend() {
+        if (!legend) return;
+        legend.classList.add('legend--open');
+        legend.setAttribute('aria-hidden', 'false');
+        if (toggle) toggle.setAttribute('aria-expanded', 'true');
+    }
+    function hideLegend() {
+        if (!legend) return;
+        legend.classList.remove('legend--open');
+        legend.setAttribute('aria-hidden', 'true');
+        if (toggle) toggle.setAttribute('aria-expanded', 'false');
+    }
+
+    if (toggle) {
+        toggle.addEventListener('click', () => {
+            showLegend();
+            // move focus into the legend for keyboard users
+            const btn = document.getElementById('openHelpBtn');
+            if (btn) btn.focus();
+        });
+    }
+
+    if (closeLegendBtn) {
+        closeLegendBtn.addEventListener('click', () => { hideLegend(); if (toggle) toggle.focus(); });
+    }
+
+    // Build tabs
+    if (tabsContainer && contentEl) {
+        tabsContainer.innerHTML = '';
+        HELP_CONTENT.forEach((item, idx) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = idx === 0 ? 'active' : '';
+            b.textContent = item.title;
+            b.dataset.helpId = item.id;
+            b.addEventListener('click', () => setActiveTab(item.id));
+            tabsContainer.appendChild(b);
+            if (idx === 0) contentEl.innerHTML = item.html;
+        });
+    }
+
+    function setActiveTab(id) {
+        const item = HELP_CONTENT.find(x => x.id === id);
+        if (!item) return;
+        // update active state
+        tabsContainer.querySelectorAll('button').forEach((btn) => btn.classList.toggle('active', btn.dataset.helpId === id));
+        contentEl.innerHTML = item.html;
+        contentEl.focus();
+    }
+
+    // Open help modal
+    if (openHelpBtn) openHelpBtn.addEventListener('click', () => {
+        if (!helpModal) return;
+        helpModal.classList.add('show');
+        helpModal.setAttribute('aria-hidden', 'false');
+        // focus the content area
+        const first = document.getElementById('helpContent');
+        if (first) first.focus();
+    });
+
+    function closeHelp() {
+        if (!helpModal) return;
+        helpModal.classList.remove('show');
+        helpModal.setAttribute('aria-hidden', 'true');
+        // return focus to legend or toggle
+        if (openHelpBtn) openHelpBtn.focus();
+    }
+
+    if (helpCloseBtn) helpCloseBtn.addEventListener('click', closeHelp);
+    if (helpModal) helpModal.addEventListener('click', (e) => {
+        if (e.target === helpModal) closeHelp();
+    });
+
+    // keyboard handlers
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            if (helpModal && helpModal.classList.contains('show')) { closeHelp(); }
+            else if (legend && legend.classList.contains('legend--open')) { hideLegend(); }
+        }
+    });
+}
+
+// Initialize help UI after DOM ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initHelpUI);
+} else {
+    initHelpUI();
+}
+
 // Ensure initMenu is called when DOM is ready so the hamburger is wired early
 window.addEventListener('DOMContentLoaded', () => {
     try {
