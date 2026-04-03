@@ -765,7 +765,6 @@ body.mobile-menu-open .dropdown { display: none !important; }
 .cell.in-fallout {
     background: linear-gradient(180deg, rgba(255, 120, 60, 0.06) 0%, rgba(255, 90, 40, 0.03) 100%);
     animation: falloutGlow 2.8s ease-in-out infinite;
-    border-color: rgba(255, 140, 80, 0.22);
     position: relative;
 }
 
