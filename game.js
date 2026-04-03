@@ -134,6 +134,13 @@ function connectSocket() {
             isBot:   false,
             wallet:  parseInt(p.token_balance, 10) || 0,
             score:   0,
+            // include server join timestamp when available
+            joinedAt: p.joined_at || null,
+            // server may include building counts in the scores payload; default to 0
+            total_buildings: 0,
+            plant_count: 0,
+            mine_count: 0,
+            processor_count: 0,
         }));
         applyServerScores(scores);
         syncLocalPlayerEntry();
@@ -987,6 +994,11 @@ function applyServerScores(scores) {
         player.isBot = false;
         if (Number.isFinite(Number(s.token_balance))) player.wallet = parseInt(s.token_balance, 10);
         if (Number.isFinite(Number(s.score))) player.score = Number(s.score);
+        // copy counts if server provided them
+        if (Number.isFinite(Number(s.total_buildings))) player.total_buildings = parseInt(s.total_buildings, 10);
+        if (Number.isFinite(Number(s.plant_count))) player.plant_count = parseInt(s.plant_count, 10);
+        if (Number.isFinite(Number(s.mine_count))) player.mine_count = parseInt(s.mine_count, 10);
+        if (Number.isFinite(Number(s.processor_count))) player.processor_count = parseInt(s.processor_count, 10);
     });
 
     const me = syncLocalPlayerEntry();
@@ -1107,10 +1119,26 @@ function renderLiveSidebar() {
             const score = formatNumber(Math.floor(p.score || 0));
             const wallet = formatNumber(p.wallet || 0);
             const highlight = p.isLocal ? 'background:linear-gradient(90deg, rgba(255,184,77,0.04), transparent); border-color: rgba(255,184,77,0.06);' : '';
+            const buildings = p.total_buildings || 0;
+            const timeLabel = (() => {
+                try {
+                    if (!p.joinedAt) return '-';
+                    const joinedMs = new Date(p.joinedAt).getTime();
+                    if (!Number.isFinite(joinedMs)) return '-';
+                    const diff = Math.max(0, serverNow() - joinedMs);
+                    const seconds = Math.floor(diff / 1000);
+                    if (seconds < 60) return `${seconds}s`;
+                    if (seconds < 3600) return `${Math.floor(seconds/60)}m`;
+                    if (seconds < 86400) return `${Math.floor(seconds/3600)}h`;
+                    return `${Math.floor(seconds/86400)}d`;
+                } catch (e) { return '-'; }
+            })();
+
             return `<div class="leaderboard-item" style="${highlight}">
-                        <div class="left"><div class="avatar">${avatar}</div><div class="name">${name}</div></div>
-                        <div style="display:flex;flex-direction:column;align-items:flex-end;min-width:72px;">
+                        <div class="left"><div style="width:28px;text-align:center;font-weight:700;color:#ffb84d;">${idx+1}</div><div class="avatar">${avatar}</div><div class="name">${name}</div></div>
+                        <div style="display:flex;flex-direction:column;align-items:flex-end;min-width:96px;">
                             <div class="score">${score}</div>
+                            <div style="font-size:11px;color:#888;margin-top:4px;">${buildings} b · ${timeLabel}</div>
                             <div style="font-size:11px;color:#888;margin-top:2px;">${wallet} tok</div>
                         </div>
                     </div>`;

@@ -753,7 +753,7 @@ body.mobile-menu-open .dropdown { display: none !important; }
 #liveSidebar {
     position: fixed;
     left: 10px;
-    top: 72px; /* sits below the stats bar */
+    top: 110px; /* lowered to sit below the stats bar */
     z-index: 180;
     display: flex;
     align-items: flex-start;
