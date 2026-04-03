@@ -99,16 +99,13 @@ function connectSocket() {
     });
 
     // ── Run events ──────────────────────────────────────────────────────
-    socket.on('run:state', ({ run, buildings, players, scores, yourWallet, isNewJoiner }) => {
+    socket.on('run:state', ({ run, buildings, players, scores, playerState, falloutZones, nuclearThreats, yourWallet, isNewJoiner }) => {
         // Set authoritative run state from server
-        game.playerWallet = yourWallet;
-        game.time.day     = run.current_day;
-        game.round        = run.current_day;
-        game.runLength    = run.run_length;
-        game.prizePool    = parseInt(run.prize_pool, 10) || 0;
+        game._serverAuthoritative = true;
         game._serverRunId = run.id;
         game._serverFinalScores = null;
         game._serverPrizeAwards = null;
+        applyAuthoritativeServerState({ run, playerState, falloutZones, nuclearThreats, wallet: yourWallet });
 
         // Replace local bot registry with real player list from server
         game.players = players.map(p => ({
@@ -129,22 +126,22 @@ function connectSocket() {
         game.enemyBuildings = [];
         buildings.forEach(b => {
             if (b.player_id === getLocalPlayerId()) {
-                const bObj = {
+                const bObj = applyServerBuildingTiming({
                     id: b.cell_id,
                     type: b.type,
                     owner: game.playerName,
                     ownerId: b.player_id,
                     ownerAvatar: game.playerAvatar,
-                };
+                }, b);
                 game.buildings.push(bObj);
                 renderBuilding(b.cell_id, b.type, true, bObj);
             } else {
-                const bObj = {
+                const bObj = applyServerBuildingTiming({
                     id: b.cell_id,
                     type: b.type,
                     owner: b.owner_name,
                     ownerId: b.player_id,
-                };
+                }, b);
                 game.enemyBuildings.push(bObj);
                 renderBuilding(b.cell_id, b.type, false, bObj);
             }
@@ -185,19 +182,28 @@ function connectSocket() {
         if (errEl) errEl.textContent = message;
     });
 
-    socket.on('run:day_advanced', ({ day, runLength, prizePool, scores }) => {
+    socket.on('run:day_advanced', ({ day, runLength, prizePool, nextDayAt, scores }) => {
         if (day > game.time.day) {
             game.time.day   = day;
             game.time.hour  = 0;
             game.time.minute = 0;
             onDayAdvance();
         }
+        if (nextDayAt) game._nextDayAt = new Date(nextDayAt).getTime();
         if (Number.isFinite(Number(prizePool))) game.prizePool = Number(prizePool);
         applyServerScores(scores);
     });
 
-    socket.on('run:economy_update', ({ prizePool, scores }) => {
+    socket.on('run:tick', ({ run, playerState, yourWallet, scores, falloutZones, nuclearThreats }) => {
+        applyAuthoritativeServerState({ run, playerState, falloutZones, nuclearThreats, wallet: yourWallet });
+        applyServerScores(scores);
+        updateUI();
+        updateFalloutVisualization();
+    });
+
+    socket.on('run:economy_update', ({ prizePool, scores, nuclearThreats }) => {
         if (Number.isFinite(Number(prizePool))) game.prizePool = Number(prizePool);
+        if (Array.isArray(nuclearThreats)) game.nuclearThreats = [...new Set(nuclearThreats.filter(Boolean))];
         applyServerScores(scores);
         updateUI();
     });
@@ -230,7 +236,7 @@ function connectSocket() {
         if (isMyBuilding) {
             // Server confirmed our placement — render it locally now
             if (!game.buildings.find(b => b.id === building.cell_id)) {
-                const bObj = {
+                const bObj = applyServerBuildingTiming({
                     id: building.cell_id,
                     type: building.type,
                     owner: game.playerName,
@@ -238,7 +244,7 @@ function connectSocket() {
                     ownerAvatar: game.playerAvatar,
                     constructionTimeRemaining: buildingTypes[building.type]?.constructionTime || 0,
                     isUnderConstruction: (buildingTypes[building.type]?.constructionTime || 0) > 0
-                };
+                }, building);
                 game.buildings.push(bObj);
                 renderBuilding(building.cell_id, building.type, true, bObj);
                 calculateProximity();
@@ -251,12 +257,12 @@ function connectSocket() {
         }
         // Another player placed a building — render it as an enemy building
         if (!game.enemyBuildings.find(b => b.id === building.cell_id)) {
-            const bObj = {
+            const bObj = applyServerBuildingTiming({
                 id: building.cell_id,
                 type: building.type,
                 owner: ownerName,
                 ownerId: building.player_id || placedBy,
-            };
+            }, building);
             game.enemyBuildings.push(bObj);
             renderBuilding(building.cell_id, building.type, false, bObj);
         }
@@ -380,6 +386,10 @@ function _trackLocalIncome(amount) {
     _incomeSinceLastSync += amount;
 }
 setInterval(() => {
+    if (game._serverAuthoritative) {
+        _incomeSinceLastSync = 0;
+        return;
+    }
     if (socket?.connected && _authJWT && _incomeSinceLastSync > 0) {
         socket.emit('player:income_sync', { jwt: _authJWT, income: Math.floor(_incomeSinceLastSync) });
         _incomeSinceLastSync = 0;
@@ -676,6 +686,75 @@ function resolveOwner(ownerRef) {
     const p = (game.players || []).find(pl => pl.id === ownerRef || pl.name === ownerRef);
     if (p) return { ...p, avatar: p.avatar || DEFAULT_PLAYER_AVATAR };
     return { name: ownerRef || 'Unknown', avatar: DEFAULT_PLAYER_AVATAR, isBot: true, isLocal: false, id: null };
+}
+
+function applyServerBuildingTiming(buildingRef, serverRow) {
+    if (!buildingRef) return buildingRef;
+
+    const endsAtMs = serverRow?.construction_ends_at ? new Date(serverRow.construction_ends_at).getTime() : null;
+    const placedAtMs = serverRow?.placed_at ? new Date(serverRow.placed_at).getTime() : null;
+    const fallbackTotalMs = (buildingTypes[buildingRef.type]?.constructionTime || 1) * 10000;
+
+    buildingRef.constructionEndsAtMs = endsAtMs;
+    if (endsAtMs) {
+        const totalMs = Math.max(1000, (placedAtMs && endsAtMs > placedAtMs) ? (endsAtMs - placedAtMs) : fallbackTotalMs);
+        const remainingMs = Math.max(0, endsAtMs - Date.now());
+        buildingRef.constructionStartedAtMs = placedAtMs || (endsAtMs - totalMs);
+        buildingRef.constructionTotalMs = totalMs;
+        buildingRef.constructionTimeRemainingMs = remainingMs;
+        buildingRef.constructionTimeRemaining = remainingMs / 10000;
+        buildingRef.isUnderConstruction = remainingMs > 0;
+    }
+    return buildingRef;
+}
+
+function applyAuthoritativeServerState({ run, playerState, falloutZones, nuclearThreats, wallet } = {}) {
+    game._serverAuthoritative = true;
+
+    if (Number.isFinite(Number(wallet))) {
+        game.playerWallet = Number(wallet);
+    }
+
+    if (run) {
+        if (Number.isFinite(Number(run.current_day))) {
+            game.time.day = Number(run.current_day);
+            game.round = Number(run.current_day);
+        }
+        if (Number.isFinite(Number(run.run_length))) game.runLength = Number(run.run_length);
+        if (Number.isFinite(Number(run.prize_pool))) game.prizePool = Number(run.prize_pool);
+        if (Number.isFinite(Number(run.tokens_issued))) game.tokensIssued = parseInt(run.tokens_issued, 10) || 0;
+        if (Number.isFinite(Number(run.tokens_burned))) game.tokensBurned = parseInt(run.tokens_burned, 10) || 0;
+        if (Number.isFinite(Number(run.total_token_supply))) game.totalTokenSupply = parseInt(run.total_token_supply, 10) || game.totalTokenSupply;
+        if (Number.isFinite(Number(run.market_price))) game.market.price = Number(run.market_price);
+        if (Number.isFinite(Number(run.market_prev_price))) game.market.prevPrice = Number(run.market_prev_price);
+        if (Number.isFinite(Number(run.market_token_pool))) game.market.tokenPool = Number(run.market_token_pool);
+        if (Number.isFinite(Number(run.market_token_pool_initial))) game.market.tokenPoolInitial = Number(run.market_token_pool_initial);
+        if (run.next_day_at) game._nextDayAt = new Date(run.next_day_at).getTime();
+        if (Number.isFinite(Number(run.day_duration_ms))) game._serverDayDurationMs = parseInt(run.day_duration_ms, 10);
+    }
+
+    if (playerState) {
+        game.uraniumRaw = Number(playerState.uranium_raw || 0);
+        game.uraniumRefined = Number(playerState.uranium_refined || 0);
+        game.maxStorage = Number(playerState.max_storage || 5000);
+        game.dailyProduced = Number(playerState.daily_produced || 0);
+        game.dailyIncome = parseInt(playerState.daily_income, 10) || 0;
+        game.lastIncome = parseInt(playerState.last_income, 10) || 0;
+        game.dayStrikes = parseInt(playerState.strikes_used_today, 10) || 0;
+    }
+
+    if (Array.isArray(falloutZones)) {
+        game.falloutZones = falloutZones.map((zone) => ({
+            id: zone.center_cell_id ?? zone.id,
+            radius: Number(zone.radius || 0),
+            endTime: zone.expires_at ? new Date(zone.expires_at).getTime() : (zone.endTime || 0),
+            multiplier: Number(zone.multiplier ?? 0.5),
+        }));
+    }
+
+    if (Array.isArray(nuclearThreats)) {
+        game.nuclearThreats = [...new Set(nuclearThreats.filter(Boolean))];
+    }
 }
 
 function syncLocalPlayerEntry() {
@@ -1754,11 +1833,17 @@ function renderBuilding(id, type, isPlayer, building) {
     cell.className = 'cell owned ' + type + (isPlayer ? ' owned-player' : ' owned-enemy');
 
     // Check if building is under construction
-    const isUnderConstruction = building && building.isUnderConstruction;
+    const isUnderConstruction = !!(building && (building.isUnderConstruction || (building.constructionEndsAtMs && building.constructionEndsAtMs > Date.now())));
     
     if (isUnderConstruction && building) {
         // Render progress circle
-        const progress = 1 - (building.constructionTimeRemaining / buildingTypes[type].constructionTime);
+        const fallbackTotal = (buildingTypes[type]?.constructionTime || 1) * 10000;
+        const totalMs = Number(building.constructionTotalMs || fallbackTotal);
+        const remainingMs = Number(
+            building.constructionTimeRemainingMs ??
+            ((building.constructionEndsAtMs ? Math.max(0, building.constructionEndsAtMs - Date.now()) : 0))
+        );
+        const progress = Math.max(0, Math.min(1, 1 - (remainingMs / Math.max(1, totalMs))));
         const circumference = 2 * Math.PI * 45; // 45 = radius
         const strokeDashoffset = circumference * (1 - progress);
         
@@ -2617,29 +2702,47 @@ function updateFalloutVisualization() {
  */
 function productionTick() {
     // ── Handle construction timers ────────────────────────────────────────────
-    game.buildings.forEach(b => {
-        if (b.isUnderConstruction && b.constructionTimeRemaining > 0) {
-            b.constructionTimeRemaining -= 0.1; // 0.1 per tick (each tick is 1 second)
-            
-            // Construction complete
-            if (b.constructionTimeRemaining <= 0) {
-                b.constructionTimeRemaining = 0;
-                b.isUnderConstruction = false;
-                // Re-render to show completed building
-                renderBuilding(b.id, b.type, true, b);
-                // Brief pulse to signal completion
-                const _c = document.querySelector('[data-id="' + b.id + '"]');
-                if (_c) {
-                    _c.classList.add('build-complete');
-                    setTimeout(() => _c.classList.remove('build-complete'), 900);
-                }
-                addNotification('success', `✅ ${displayNames[b.type] || b.type} construction complete!`);
-            } else {
-                // Update progress display
-                renderBuilding(b.id, b.type, true, b);
+    const now = Date.now();
+    const updateConstructionTimers = (buildings, isPlayerOwned) => {
+        (buildings || []).forEach((b) => {
+            if (!b.isUnderConstruction) return;
+
+            if (b.constructionEndsAtMs) {
+                b.constructionTimeRemainingMs = Math.max(0, b.constructionEndsAtMs - now);
+                b.constructionTimeRemaining = b.constructionTimeRemainingMs / 10000;
+            } else if (b.constructionTimeRemaining > 0) {
+                b.constructionTimeRemaining = Math.max(0, b.constructionTimeRemaining - 0.1);
+                b.constructionTimeRemainingMs = b.constructionTimeRemaining * 10000;
             }
-        }
-    });
+
+            if (b.constructionTimeRemaining <= 0 || (b.constructionEndsAtMs && b.constructionEndsAtMs <= now)) {
+                b.constructionTimeRemaining = 0;
+                b.constructionTimeRemainingMs = 0;
+                b.isUnderConstruction = false;
+                renderBuilding(b.id, b.type, isPlayerOwned, b);
+
+                if (isPlayerOwned) {
+                    const _c = document.querySelector('[data-id="' + b.id + '"]');
+                    if (_c) {
+                        _c.classList.add('build-complete');
+                        setTimeout(() => _c.classList.remove('build-complete'), 900);
+                    }
+                    addNotification('success', `✅ ${displayNames[b.type] || b.type} construction complete!`);
+                }
+            } else {
+                renderBuilding(b.id, b.type, isPlayerOwned, b);
+            }
+        });
+    };
+
+    updateConstructionTimers(game.buildings, true);
+    updateConstructionTimers(game.enemyBuildings, false);
+
+    if (game._serverAuthoritative) {
+        updateUI();
+        updateFalloutVisualization();
+        return;
+    }
     
     // Count buildings (only completed ones produce resources)
     let totalMines = 0;
@@ -2795,6 +2898,16 @@ function tickMarket() {
  * Clock tick: advances simulated clock and triggers hourly/daily events.
  */
 function clockTick() {
+    if (game._serverAuthoritative && game._nextDayAt && game._serverDayDurationMs) {
+        const durationMs = Math.max(1000, Number(game._serverDayDurationMs) || 86400000);
+        const elapsedMs = Math.max(0, Math.min(durationMs, durationMs - Math.max(0, game._nextDayAt - Date.now())));
+        const totalMinutes = (elapsedMs / durationMs) * 1440;
+        game.time.hour = Math.floor(totalMinutes / 60) % 24;
+        game.time.minute = totalMinutes % 60;
+        updateUI();
+        return;
+    }
+
     // use elapsed real time to advance simulated minutes so real-time mapping is accurate
     const now = Date.now();
     if (!game._lastClockTS) game._lastClockTS = now;

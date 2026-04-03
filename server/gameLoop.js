@@ -3,12 +3,48 @@ const db = require('./db');
 const DAY_DURATION_MS = parseInt(process.env.DAY_DURATION_MS || '86400000', 10);
 const RUN_LENGTH = 8;
 const BUY_IN = 5000;
+const GRID_COLS = 20;
+const GRID_ROWS = 20;
+const PROXIMITY_RANGE = 2;
+const TOTAL_TOKEN_SUPPLY = 1000000000;
+const MARKET_BASE_PRICE = 1;
+const MARKET_TOKEN_POOL_INITIAL = 1000;
+const MARKET_POOL_BURN_RATE = 50;
+const MARKET_VOLATILITY = 0.03;
+const MARKET_PER_SECOND_VOL = MARKET_VOLATILITY / 60;
+const MARKET_BASE_DEMAND = 1000;
+const MARKET_DRIFT_FACTOR = 0.0002;
+const BUILDING_RULES = {
+    mine: { cost: 800, constructionMs: 10000 },
+    processor: { cost: 1200, constructionMs: 15000 },
+    storage: { cost: 1000, constructionMs: 20000, storageBonus: 1000 },
+    plant: { cost: 1000, constructionMs: 22000, basePower: 100 },
+    silo: { cost: 6000, constructionMs: 35000, isWeapon: true },
+};
+
+function parseRunRow(row) {
+    if (!row) return null;
+    return {
+        ...row,
+        prize_pool: parseInt(row.prize_pool, 10) || 0,
+        current_day: parseInt(row.current_day, 10) || 1,
+        run_length: parseInt(row.run_length, 10) || RUN_LENGTH,
+        market_price: Number(row.market_price ?? MARKET_BASE_PRICE),
+        market_prev_price: Number(row.market_prev_price ?? row.market_price ?? MARKET_BASE_PRICE),
+        market_token_pool: Number(row.market_token_pool ?? MARKET_TOKEN_POOL_INITIAL),
+        market_token_pool_initial: Number(row.market_token_pool_initial ?? MARKET_TOKEN_POOL_INITIAL),
+        tokens_issued: parseInt(row.tokens_issued, 10) || 0,
+        tokens_burned: parseInt(row.tokens_burned, 10) || 0,
+        total_token_supply: parseInt(row.total_token_supply, 10) || TOTAL_TOKEN_SUPPLY,
+        day_duration_ms: parseInt(row.day_duration_ms, 10) || DAY_DURATION_MS,
+    };
+}
 
 async function getActiveRun() {
     const result = await db.query(
         "SELECT * FROM runs WHERE status = 'active' ORDER BY created_at DESC LIMIT 1"
     );
-    return result.rows[0] || null;
+    return parseRunRow(result.rows[0]);
 }
 
 async function createNewRun() {
@@ -17,17 +53,223 @@ async function createNewRun() {
     const nextDayAt = new Date(Date.now() + DAY_DURATION_MS);
 
     const result = await db.query(
-        `INSERT INTO runs (run_number, current_day, run_length, prize_pool, next_day_at, status)
-         VALUES ($1, 1, $2, 0, $3, 'active') RETURNING *`,
-        [runNumber, RUN_LENGTH, nextDayAt]
+        `INSERT INTO runs (
+            run_number,
+            current_day,
+            run_length,
+            prize_pool,
+            market_price,
+            market_prev_price,
+            market_token_pool,
+            market_token_pool_initial,
+            tokens_issued,
+            tokens_burned,
+            total_token_supply,
+            day_duration_ms,
+            next_day_at,
+            status
+        )
+         VALUES ($1, 1, $2, 0, $3, $3, $4, $4, 0, 0, $5, $6, $7, 'active')
+         RETURNING *`,
+        [runNumber, RUN_LENGTH, MARKET_BASE_PRICE, MARKET_TOKEN_POOL_INITIAL, TOTAL_TOKEN_SUPPLY, DAY_DURATION_MS, nextDayAt]
     );
     console.log(`🔥 New run #${runNumber} started (day duration: ${DAY_DURATION_MS}ms)`);
-    return result.rows[0];
+    return parseRunRow(result.rows[0]);
+}
+
+function hashSeed(input) {
+    const text = String(input || 'seed');
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < text.length; i++) {
+        h ^= text.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+}
+
+function createSeededRandom(label, runId) {
+    let seed = hashSeed(`${label}:${runId || 'offline'}:${RUN_LENGTH}`);
+    return function seededRandom() {
+        seed += 0x6D2B79F5;
+        let t = seed;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+function generateTerrainForRun(runId, width = GRID_COLS, height = GRID_ROWS) {
+    const rand = createSeededRandom(`terrain:${width}x${height}`, runId);
+    const out = new Array(width * height).fill('grass');
+    const centerX = Math.floor(width / 2);
+
+    for (let y = 0; y < height; y++) {
+        out[y * width + centerX] = 'road';
+    }
+
+    const branchRows = [];
+    while (branchRows.length < 2) {
+        const row = 2 + Math.floor(rand() * (height - 4));
+        if (!branchRows.includes(row)) branchRows.push(row);
+    }
+
+    branchRows.forEach((row) => {
+        const len = 3 + Math.floor(rand() * 5);
+        out[row * width + centerX] = 'road-x';
+        for (let dx = 1; dx <= len; dx++) {
+            if (centerX - dx >= 0) out[row * width + (centerX - dx)] = 'road-h';
+            if (centerX + dx < width) out[row * width + (centerX + dx)] = 'road-h';
+        }
+    });
+
+    for (let i = 0; i < width * height * 0.08; i++) {
+        const cx = Math.floor(rand() * width);
+        const cy = Math.floor(rand() * height);
+        const radius = 1 + Math.floor(rand() * 2);
+        for (let dy = -radius; dy <= radius; dy++) {
+            for (let dx = -radius; dx <= radius; dx++) {
+                const x = cx + dx;
+                const y = cy + dy;
+                if (x >= 0 && x < width && y >= 0 && y < height) {
+                    const idx = y * width + x;
+                    if (!['road', 'road-h', 'road-x'].includes(out[idx]) && rand() > 0.25) {
+                        out[idx] = 'dirt';
+                    }
+                }
+            }
+        }
+    }
+
+    return out;
+}
+
+function generateDepositsForRun(runId, terrain, width = GRID_COLS, height = GRID_ROWS) {
+    const rand = createSeededRandom(`deposits:${width}x${height}`, runId);
+    const deposits = [];
+    const numDeposits = 5 + Math.floor(rand() * 4);
+
+    for (let d = 0; d < numDeposits; d++) {
+        const cx = 2 + Math.floor(rand() * (width - 4));
+        const cy = 2 + Math.floor(rand() * (height - 4));
+        const depositRadius = 1 + Math.floor(rand() * 2);
+
+        for (let dy = -depositRadius; dy <= depositRadius; dy++) {
+            for (let dx = -depositRadius; dx <= depositRadius; dx++) {
+                if (rand() > 0.25) {
+                    const x = cx + dx;
+                    const y = cy + dy;
+                    if (x >= 0 && x < width && y >= 0 && y < height) {
+                        const cellId = y * width + x;
+                        if (!['road', 'road-h', 'road-x'].includes(terrain[cellId])) {
+                            deposits.push({ cellId, quality: 0.5 + rand() * 0.5 });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return deposits;
+}
+
+function getCoords(id) {
+    return { x: id % GRID_COLS, y: Math.floor(id / GRID_COLS) };
+}
+
+function cellDistance(a, b) {
+    const c1 = getCoords(a);
+    const c2 = getCoords(b);
+    return Math.max(Math.abs(c1.x - c2.x), Math.abs(c1.y - c2.y));
+}
+
+function getDepositBonus(cellId, deposits) {
+    if (!Array.isArray(deposits) || deposits.length === 0) return 0.1;
+    const coords = getCoords(cellId);
+    let minDist = Infinity;
+
+    deposits.forEach((deposit) => {
+        const depCoords = getCoords(deposit.cellId);
+        const dist = Math.max(Math.abs(coords.x - depCoords.x), Math.abs(coords.y - depCoords.y));
+        if (dist < minDist) minDist = dist;
+    });
+
+    if (minDist === 0) return 1.5;
+    if (minDist === 1) return 1.25;
+    if (minDist === 2) return 0.7;
+    return 0.1;
+}
+
+function cellHasRoadNeighbor(cellId, terrain) {
+    if (!Array.isArray(terrain)) return false;
+    const { x, y } = getCoords(cellId);
+
+    for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx < 0 || nx >= GRID_COLS || ny < 0 || ny >= GRID_ROWS) continue;
+            const tile = terrain[ny * GRID_COLS + nx];
+            if (tile === 'road' || tile === 'road-h' || tile === 'road-x') return true;
+        }
+    }
+
+    return false;
+}
+
+function isBuildingComplete(building, now = Date.now()) {
+    if (!building?.construction_ends_at) return true;
+    return new Date(building.construction_ends_at).getTime() <= now;
+}
+
+function getFalloutMultiplier(cellId, zones, now = Date.now()) {
+    let multiplier = 1;
+    (zones || []).forEach((zone) => {
+        const expires = new Date(zone.expires_at).getTime();
+        if (expires > now && cellDistance(cellId, zone.center_cell_id) <= Number(zone.radius || 0)) {
+            multiplier *= Number(zone.multiplier ?? 0.5);
+        }
+    });
+    return multiplier;
+}
+
+function getBuildingOutputMultiplier(building, zones, now = Date.now()) {
+    let multiplier = getFalloutMultiplier(building.cell_id, zones, now);
+    if (building?.disabled_until && new Date(building.disabled_until).getTime() > now) {
+        multiplier *= 0.5;
+    }
+    return multiplier;
+}
+
+function calculatePlantPower(plant, playerBuildings, enemyBuildings, terrain, now = Date.now()) {
+    const nearbyEnemies = (enemyBuildings || []).filter((enemy) => isBuildingComplete(enemy, now) && cellDistance(plant.cell_id, enemy.cell_id) <= PROXIMITY_RANGE).length;
+    const samePlants = (playerBuildings || []).filter((other) => other.id !== plant.id && other.type === 'plant' && isBuildingComplete(other, now) && cellDistance(plant.cell_id, other.cell_id) <= PROXIMITY_RANGE).length;
+    const base = 100 - (nearbyEnemies * 20);
+    const jitter = Math.sin((now / 1000) + Number(plant.cell_id || 0)) * 2;
+    const roadMult = cellHasRoadNeighbor(plant.cell_id, terrain) ? 1.4 : 1;
+    const plantProxMult = 1 + (Math.min(samePlants, 3) * 0.25);
+    return Math.max(0, base + jitter) * roadMult * plantProxMult;
+}
+
+async function ensureRunPlayerState(runId, playerId) {
+    if (!runId || !playerId) return;
+    await db.query(
+        `INSERT INTO run_player_state (run_id, player_id)
+         VALUES ($1, $2)
+         ON CONFLICT (run_id, player_id) DO NOTHING`,
+        [runId, playerId]
+    );
+}
+
+async function ensureRunPlayerStates(runId) {
+    if (!runId) return;
+    const result = await db.query('SELECT player_id FROM run_players WHERE run_id = $1', [runId]);
+    await Promise.all(result.rows.map((row) => ensureRunPlayerState(runId, row.player_id)));
 }
 
 async function calculateScores(runId) {
-    const result = await db.query(`
-        SELECT
+    const result = await db.query(
+        `SELECT
             rp.player_id,
             p.username,
             p.token_balance,
@@ -41,25 +283,284 @@ async function calculateScores(runId) {
             ON b.run_id = rp.run_id
             AND b.player_id = rp.player_id
             AND b.is_active = TRUE
+            AND (b.construction_ends_at IS NULL OR b.construction_ends_at <= NOW())
         WHERE rp.run_id = $1
         GROUP BY rp.player_id, p.username, p.token_balance
         ORDER BY (
             COUNT(CASE WHEN b.type = 'plant' THEN 1 END) * 100 +
             COUNT(CASE WHEN b.type = 'mine'  THEN 1 END) * 50  +
-            p.token_balance / 1000
-        ) DESC
-    `, [runId]);
+            FLOOR(p.token_balance / 1000.0)
+        ) DESC,
+        p.username ASC`,
+        [runId]
+    );
 
-    return result.rows.map(r => ({
-        player_id:       r.player_id,
-        username:        r.username,
-        token_balance:   parseInt(r.token_balance, 10),
-        plant_count:     r.plant_count,
-        mine_count:      r.mine_count,
-        processor_count: r.processor_count,
-        total_buildings: r.total_buildings,
-        score: r.plant_count * 100 + r.mine_count * 50 + Math.floor(parseInt(r.token_balance, 10) / 1000),
+    return result.rows.map((r) => ({
+        player_id: r.player_id,
+        username: r.username,
+        token_balance: parseInt(r.token_balance, 10) || 0,
+        plant_count: parseInt(r.plant_count, 10) || 0,
+        mine_count: parseInt(r.mine_count, 10) || 0,
+        processor_count: parseInt(r.processor_count, 10) || 0,
+        total_buildings: parseInt(r.total_buildings, 10) || 0,
+        score: ((parseInt(r.plant_count, 10) || 0) * 100) + ((parseInt(r.mine_count, 10) || 0) * 50) + Math.floor((parseInt(r.token_balance, 10) || 0) / 1000),
     }));
+}
+
+async function getRunSnapshot(runId) {
+    if (!runId) return null;
+    await ensureRunPlayerStates(runId);
+
+    const [runResult, playersResult, buildingsResult, playerStatesResult, falloutResult, scores] = await Promise.all([
+        db.query('SELECT * FROM runs WHERE id = $1 LIMIT 1', [runId]),
+        db.query(
+            `SELECT
+                p.id,
+                p.username,
+                p.avatar,
+                p.token_balance,
+                rp.joined_at,
+                COALESCE(rps.score, 0) AS score,
+                COALESCE(rps.used_nuke, FALSE) AS used_nuke
+             FROM run_players rp
+             JOIN players p ON p.id = rp.player_id
+             LEFT JOIN run_player_state rps ON rps.run_id = rp.run_id AND rps.player_id = rp.player_id
+             WHERE rp.run_id = $1
+             ORDER BY rp.joined_at ASC`,
+            [runId]
+        ),
+        db.query(
+            `SELECT b.*, p.username AS owner_name
+             FROM buildings b
+             JOIN players p ON p.id = b.player_id
+             WHERE b.run_id = $1 AND b.is_active = TRUE
+             ORDER BY b.placed_at ASC`,
+            [runId]
+        ),
+        db.query('SELECT * FROM run_player_state WHERE run_id = $1 ORDER BY updated_at ASC', [runId]),
+        db.query(
+            `SELECT id, center_cell_id, radius, multiplier, expires_at, created_by
+             FROM fallout_zones
+             WHERE run_id = $1 AND expires_at > NOW()
+             ORDER BY expires_at ASC`,
+            [runId]
+        ),
+        calculateScores(runId),
+    ]);
+
+    const run = parseRunRow(runResult.rows[0]);
+    if (!run) return null;
+
+    const playerStates = playerStatesResult.rows.map((row) => ({
+        ...row,
+        uranium_raw: Number(row.uranium_raw || 0),
+        uranium_refined: Number(row.uranium_refined || 0),
+        max_storage: Number(row.max_storage || 5000),
+        daily_produced: Number(row.daily_produced || 0),
+        daily_income: parseInt(row.daily_income, 10) || 0,
+        last_income: parseInt(row.last_income, 10) || 0,
+        score: Number(row.score || 0),
+        strikes_used_today: parseInt(row.strikes_used_today, 10) || 0,
+        used_nuke: !!row.used_nuke,
+    }));
+
+    const playerNameById = new Map(playersResult.rows.map((player) => [player.id, player.username]));
+    const nuclearThreats = playerStates.filter((state) => state.used_nuke).map((state) => playerNameById.get(state.player_id)).filter(Boolean);
+
+    return {
+        run,
+        players: playersResult.rows.map((row) => ({
+            ...row,
+            token_balance: parseInt(row.token_balance, 10) || 0,
+            score: Number(row.score || 0),
+            used_nuke: !!row.used_nuke,
+        })),
+        buildings: buildingsResult.rows,
+        playerStates,
+        falloutZones: falloutResult.rows,
+        scores,
+        nuclearThreats,
+    };
+}
+
+async function emitRunSnapshot(io, runId, eventName = 'run:tick') {
+    const snapshot = await getRunSnapshot(runId);
+    if (!snapshot?.run) return null;
+
+    const sockets = await io.in(`run:${runId}`).fetchSockets();
+    const stateByPlayer = new Map(snapshot.playerStates.map((state) => [state.player_id, state]));
+    const playerById = new Map(snapshot.players.map((player) => [player.id, player]));
+
+    sockets.forEach((roomSocket) => {
+        roomSocket.emit(eventName, {
+            run: snapshot.run,
+            scores: snapshot.scores,
+            playerState: stateByPlayer.get(roomSocket.playerId) || null,
+            yourWallet: parseInt(playerById.get(roomSocket.playerId)?.token_balance, 10) || 0,
+            falloutZones: snapshot.falloutZones,
+            nuclearThreats: snapshot.nuclearThreats,
+        });
+    });
+
+    return snapshot;
+}
+
+async function processRunEconomy(io, run) {
+    if (!run?.id || run.status !== 'active') return;
+    await ensureRunPlayerStates(run.id);
+
+    const [runResult, playersResult, statesResult, buildingsResult, falloutResult] = await Promise.all([
+        db.query('SELECT * FROM runs WHERE id = $1 LIMIT 1', [run.id]),
+        db.query(
+            `SELECT p.id, p.username, p.token_balance
+             FROM run_players rp
+             JOIN players p ON p.id = rp.player_id
+             WHERE rp.run_id = $1`,
+            [run.id]
+        ),
+        db.query('SELECT * FROM run_player_state WHERE run_id = $1', [run.id]),
+        db.query('SELECT * FROM buildings WHERE run_id = $1 AND is_active = TRUE', [run.id]),
+        db.query('SELECT * FROM fallout_zones WHERE run_id = $1 AND expires_at > NOW()', [run.id]),
+    ]);
+
+    const liveRun = parseRunRow(runResult.rows[0]);
+    if (!liveRun) return;
+
+    const now = Date.now();
+    const terrain = generateTerrainForRun(run.id);
+    const deposits = generateDepositsForRun(run.id, terrain);
+    const playersById = new Map(playersResult.rows.map((player) => [player.id, player]));
+    const buildings = buildingsResult.rows;
+    const activeFallout = falloutResult.rows;
+
+    let totalIncome = 0;
+    let aggregatePower = 0;
+
+    const client = await db.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query('DELETE FROM fallout_zones WHERE run_id = $1 AND expires_at <= NOW()', [run.id]);
+
+        for (const state of statesResult.rows) {
+            const player = playersById.get(state.player_id);
+            if (!player) continue;
+
+            const allPlayerBuildings = buildings.filter((building) => building.player_id === state.player_id && building.is_active);
+            const completedBuildings = allPlayerBuildings.filter((building) => isBuildingComplete(building, now));
+            const enemyBuildings = buildings.filter((building) => building.player_id !== state.player_id && building.is_active && isBuildingComplete(building, now));
+
+            const storageCount = completedBuildings.filter((building) => building.type === 'storage').length;
+            const maxStorage = 5000 + (storageCount * (BUILDING_RULES.storage.storageBonus || 1000));
+
+            let uraniumRaw = Number(state.uranium_raw || 0);
+            let uraniumRefined = Number(state.uranium_refined || 0);
+            let dailyProduced = Number(state.daily_produced || 0);
+            let dailyIncome = parseInt(state.daily_income, 10) || 0;
+
+            const activeMines = completedBuildings.filter((building) => building.type === 'mine');
+            let produced = 0;
+            activeMines.forEach((mine) => {
+                let amount = 0.225;
+                amount *= getDepositBonus(mine.cell_id, deposits);
+                const sameMines = activeMines.filter((other) => other.id !== mine.id && cellDistance(mine.cell_id, other.cell_id) <= PROXIMITY_RANGE).length;
+                amount *= (1 + (Math.min(sameMines, 3) * 0.25));
+                amount *= getBuildingOutputMultiplier(mine, activeFallout, now);
+                produced += amount;
+            });
+
+            const totalStored = uraniumRaw + uraniumRefined;
+            const rawHeadroom = Math.max(0, maxStorage - totalStored);
+            const actualProduced = Math.min(rawHeadroom, produced);
+            uraniumRaw += actualProduced;
+            dailyProduced += actualProduced;
+
+            const processors = completedBuildings.filter((building) => building.type === 'processor');
+            let converted = 0;
+            processors.forEach((processor) => {
+                converted += 0.15 * getBuildingOutputMultiplier(processor, activeFallout, now);
+            });
+            const actualConverted = Math.min(uraniumRaw, converted);
+            uraniumRaw -= actualConverted;
+            uraniumRefined += actualConverted;
+
+            const plants = completedBuildings.filter((building) => building.type === 'plant');
+            let totalPower = 0;
+            plants.forEach((plant) => {
+                totalPower += calculatePlantPower(plant, completedBuildings, enemyBuildings, terrain, now) * getBuildingOutputMultiplier(plant, activeFallout, now);
+            });
+            aggregatePower += totalPower;
+
+            const requiredFuel = plants.length * 0.06;
+            let fuelConsumed = 0;
+            let income = 0;
+            if (requiredFuel > 0 && uraniumRefined > 0) {
+                fuelConsumed = Math.min(requiredFuel, uraniumRefined);
+                uraniumRefined -= fuelConsumed;
+                const powerFraction = requiredFuel > 0 ? (fuelConsumed / requiredFuel) : 0;
+                income = Math.floor(totalPower * powerFraction * 2);
+            }
+
+            const nextBalance = (parseInt(player.token_balance, 10) || 0) + income;
+            dailyIncome += income;
+            totalIncome += income;
+            const score = (plants.length * 100) + (activeMines.length * 50) + Math.floor(nextBalance / 1000);
+
+            await client.query(
+                'UPDATE players SET token_balance = $1 WHERE id = $2',
+                [nextBalance, state.player_id]
+            );
+
+            await client.query(
+                `UPDATE run_player_state
+                 SET uranium_raw = $1,
+                     uranium_refined = $2,
+                     max_storage = $3,
+                     daily_produced = $4,
+                     daily_income = $5,
+                     last_income = $6,
+                     score = $7,
+                     updated_at = NOW()
+                 WHERE run_id = $8 AND player_id = $9`,
+                [uraniumRaw, uraniumRefined, maxStorage, dailyProduced, dailyIncome, income, score, run.id, state.player_id]
+            );
+        }
+
+        const previousPrice = Number(liveRun.market_price || MARKET_BASE_PRICE);
+        const nextTokenPool = Math.max(1, Number(liveRun.market_token_pool || MARKET_TOKEN_POOL_INITIAL) - (totalIncome / MARKET_POOL_BURN_RATE));
+        const nextTokensIssued = (parseInt(liveRun.tokens_issued, 10) || 0) + totalIncome;
+        const poolFactor = Number(liveRun.market_token_pool_initial || MARKET_TOKEN_POOL_INITIAL) / nextTokenPool;
+        const issueFactor = 1 + (nextTokensIssued / Number(liveRun.total_token_supply || TOTAL_TOKEN_SUPPLY)) * 1000;
+        const bondingPrice = MARKET_BASE_PRICE * poolFactor * issueFactor;
+        const diurnal = Math.sin(((Date.now() % DAY_DURATION_MS) / DAY_DURATION_MS) * Math.PI * 2) * 0.2;
+        const demand = Math.max(10, MARKET_BASE_DEMAND * (1 + diurnal));
+        const supplyDemandDelta = (demand - aggregatePower) / demand;
+        const drift = supplyDemandDelta * MARKET_DRIFT_FACTOR * previousPrice;
+        const u = Math.random() || 0.5;
+        const v = Math.random() || 0.5;
+        const z = Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+        const noise = z * MARKET_PER_SECOND_VOL * previousPrice;
+        const reversion = (bondingPrice - previousPrice) * 0.04;
+        const nextPrice = Math.max(0.01, +(previousPrice + reversion + noise + drift).toFixed(6));
+
+        await client.query(
+            `UPDATE runs
+             SET market_prev_price = $1,
+                 market_price = $2,
+                 market_token_pool = $3,
+                 tokens_issued = $4
+             WHERE id = $5`,
+            [previousPrice, nextPrice, nextTokenPool, nextTokensIssued, run.id]
+        );
+
+        await client.query('COMMIT');
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+
+    await emitRunSnapshot(io, run.id, 'run:tick');
 }
 
 async function endRun(io, run) {
@@ -67,16 +568,14 @@ async function endRun(io, run) {
     const shares = [0.50, 0.30, 0.20];
     const payouts = [];
 
-    // Mark run ended first so no more day advances fire
     await db.query(
         "UPDATE runs SET status = 'ended', ended_at = NOW() WHERE id = $1",
         [run.id]
     );
 
-    // Award top 3 players
     for (let i = 0; i < Math.min(3, scores.length); i++) {
         const p = scores[i];
-        const award = Math.floor(run.prize_pool * shares[i]);
+        const award = Math.floor((parseInt(run.prize_pool, 10) || 0) * shares[i]);
         if (award > 0) {
             await db.query(
                 'UPDATE players SET token_balance = token_balance + $1 WHERE id = $2',
@@ -99,13 +598,11 @@ async function endRun(io, run) {
         payouts,
     });
 
-    // Start next run after a short pause
     setTimeout(async () => {
         try {
             const newRun = await createNewRun();
-            // Broadcast to everyone (including those not in a room yet)
             io.emit('run:new', {
-                runId:     newRun.id,
+                runId: newRun.id,
                 runNumber: newRun.run_number,
             });
         } catch (err) {
@@ -124,24 +621,49 @@ async function advanceDay(io, run) {
 
     const nextDayAt = new Date(Date.now() + DAY_DURATION_MS);
     await db.query(
-        'UPDATE runs SET current_day = $1, next_day_at = $2 WHERE id = $3',
+        `UPDATE runs
+         SET current_day = $1,
+             next_day_at = $2
+         WHERE id = $3`,
         [newDay, nextDayAt, run.id]
+    );
+
+    await db.query(
+        `UPDATE run_player_state
+         SET daily_produced = 0,
+             daily_income = 0,
+             last_income = 0,
+             strikes_used_today = 0,
+             updated_at = NOW()
+         WHERE run_id = $1`,
+        [run.id]
     );
 
     const scores = await calculateScores(run.id);
     io.to(`run:${run.id}`).emit('run:day_advanced', {
-        day:       newDay,
+        day: newDay,
         runLength: run.run_length,
         nextDayAt: nextDayAt.toISOString(),
         prizePool: parseInt(run.prize_pool, 10) || 0,
         scores,
     });
 
+    await emitRunSnapshot(io, run.id, 'run:tick');
     console.log(`📅 Run #${run.run_number} → day ${newDay} (next: ${nextDayAt.toISOString()})`);
 }
 
 function setupGameLoop(io) {
-    // Check every 30 seconds whether a day needs to be advanced
+    setInterval(async () => {
+        try {
+            const run = await getActiveRun();
+            if (run) {
+                await processRunEconomy(io, run);
+            }
+        } catch (err) {
+            console.error('Economy tick error:', err);
+        }
+    }, 1000);
+
     setInterval(async () => {
         try {
             const run = await getActiveRun();
@@ -158,7 +680,6 @@ function setupGameLoop(io) {
         }
     }, 30 * 1000);
 
-    // Boot: ensure an active run exists
     setTimeout(async () => {
         try {
             const run = await getActiveRun();
@@ -174,4 +695,15 @@ function setupGameLoop(io) {
     }, 2000);
 }
 
-module.exports = { setupGameLoop, getActiveRun, createNewRun, calculateScores };
+module.exports = {
+    setupGameLoop,
+    getActiveRun,
+    createNewRun,
+    calculateScores,
+    ensureRunPlayerState,
+    getRunSnapshot,
+    emitRunSnapshot,
+    BUILDING_RULES,
+    DAY_DURATION_MS,
+    BUY_IN,
+};

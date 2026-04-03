@@ -1,13 +1,14 @@
 const { sendOTP, verifyOTP, verifyJWT, generateJWT, signupWithPassword, loginWithPassword } = require('../auth');
 const db = require('../db');
-const { getActiveRun, calculateScores } = require('../gameLoop');
+const { getActiveRun, getRunSnapshot, ensureRunPlayerState, BUILDING_RULES, BUY_IN } = require('../gameLoop');
 
-const BUY_IN = 5000;
 const DEFAULT_AVATAR = '☢️';
 const VALID_AVATARS = new Set(['☢️', '🧑‍🚀', '👩‍🔬', '👨‍🔬', '🤖', '🦊', '🐺', '🐉']);
 const normalizeAvatar = (avatar) => VALID_AVATARS.has(avatar) ? avatar : DEFAULT_AVATAR;
-const BUILDING_COSTS = { mine: 800, processor: 1200, storage: 1000, plant: 1000, silo: 6000 };
+const BUILDING_COSTS = Object.fromEntries(Object.entries(BUILDING_RULES).map(([type, meta]) => [type, meta.cost]));
 const VALID_TYPES = Object.keys(BUILDING_COSTS);
+const STRIKE_LIMIT_PER_DAY = 1;
+const MARKET_POOL_BURN_RATE = 50;
 
 // Manhattan distance on a 20-column grid
 function gridDist(a, b) {
@@ -32,20 +33,30 @@ async function requireAuth(socket, jwt, cb) {
 async function emitRunEconomy(io, runId) {
     if (!runId) return;
 
-    const [runResult, scores] = await Promise.all([
-        db.query('SELECT id, current_day, run_length, prize_pool FROM runs WHERE id = $1', [runId]),
-        calculateScores(runId),
-    ]);
-
-    const run = runResult.rows[0];
-    if (!run) return;
+    const snapshot = await getRunSnapshot(runId);
+    if (!snapshot?.run) return;
 
     io.to(`run:${runId}`).emit('run:economy_update', {
-        runId: run.id,
-        day: run.current_day,
-        runLength: run.run_length,
-        prizePool: parseInt(run.prize_pool, 10) || 0,
-        scores,
+        runId: snapshot.run.id,
+        day: snapshot.run.current_day,
+        runLength: snapshot.run.run_length,
+        prizePool: parseInt(snapshot.run.prize_pool, 10) || 0,
+        scores: snapshot.scores,
+        nuclearThreats: snapshot.nuclearThreats,
+    });
+
+    const stateByPlayer = new Map(snapshot.playerStates.map((state) => [state.player_id, state]));
+    const playerById = new Map(snapshot.players.map((player) => [player.id, player]));
+    const sockets = await io.in(`run:${runId}`).fetchSockets();
+    sockets.forEach((roomSocket) => {
+        roomSocket.emit('run:tick', {
+            run: snapshot.run,
+            scores: snapshot.scores,
+            playerState: stateByPlayer.get(roomSocket.playerId) || null,
+            yourWallet: parseInt(playerById.get(roomSocket.playerId)?.token_balance, 10) || 0,
+            falloutZones: snapshot.falloutZones,
+            nuclearThreats: snapshot.nuclearThreats,
+        });
     });
 }
 
@@ -234,43 +245,33 @@ function registerHandlers(io, socket) {
                 );
                 // 80% of buy-in seeds prize pool
                 await db.query(
-                    'UPDATE runs SET prize_pool = prize_pool + $1 WHERE id = $2',
-                    [Math.floor(BUY_IN * 0.8), run.id]
+                    `UPDATE runs
+                     SET prize_pool = prize_pool + $1,
+                         market_token_pool = GREATEST(1, market_token_pool - $2)
+                     WHERE id = $3`,
+                    [Math.floor(BUY_IN * 0.8), Math.floor(BUY_IN * 0.2) / MARKET_POOL_BURN_RATE, run.id]
                 );
                 isNewJoiner = true;
             }
 
             socket.join(`run:${run.id}`);
-            socket.runId   = run.id;
+            socket.runId = run.id;
             socket.playerId = player.id;
+            await ensureRunPlayerState(run.id, player.id);
 
-            // Fetch everything the client needs to rebuild its state
-            const [buildingsResult, playersResult, updatedPlayer, freshRun, scores] = await Promise.all([
-                db.query(
-                    `SELECT b.*, p.username AS owner_name
-                     FROM buildings b
-                     JOIN players p ON p.id = b.player_id
-                     WHERE b.run_id = $1 AND b.is_active = TRUE`,
-                    [run.id]
-                ),
-                db.query(
-                    `SELECT p.id, p.username, p.avatar, p.token_balance, rp.joined_at
-                     FROM run_players rp
-                     JOIN players p ON p.id = rp.player_id
-                     WHERE rp.run_id = $1`,
-                    [run.id]
-                ),
-                db.query('SELECT token_balance FROM players WHERE id = $1', [player.id]),
-                db.query('SELECT * FROM runs WHERE id = $1', [run.id]),
-                calculateScores(run.id),
-            ]);
+            const snapshot = await getRunSnapshot(run.id);
+            const meState = (snapshot?.playerStates || []).find((row) => row.player_id === player.id) || null;
+            const mePlayer = (snapshot?.players || []).find((row) => row.id === player.id);
 
             socket.emit('run:state', {
-                run:         freshRun.rows[0],
-                buildings:   buildingsResult.rows,
-                players:     playersResult.rows,
-                scores,
-                yourWallet:  parseInt(updatedPlayer.rows[0].token_balance, 10),
+                run: snapshot?.run,
+                buildings: snapshot?.buildings || [],
+                players: snapshot?.players || [],
+                scores: snapshot?.scores || [],
+                playerState: meState,
+                falloutZones: snapshot?.falloutZones || [],
+                nuclearThreats: snapshot?.nuclearThreats || [],
+                yourWallet: parseInt(mePlayer?.token_balance ?? player.token_balance, 10) || 0,
                 isNewJoiner,
             });
 
@@ -280,7 +281,7 @@ function registerHandlers(io, socket) {
                         id: player.id,
                         username: player.username,
                         avatar: player.avatar || DEFAULT_AVATAR,
-                        token_balance: parseInt(updatedPlayer.rows[0].token_balance, 10),
+                        token_balance: parseInt(mePlayer?.token_balance ?? player.token_balance, 10) || 0,
                     },
                 });
                 await emitRunEconomy(io, run.id);
@@ -339,31 +340,41 @@ function registerHandlers(io, socket) {
             if (type === 'silo') {
                 const reactors = await db.query(
                     `SELECT id FROM buildings
-                     WHERE run_id = $1 AND player_id = $2 AND type = 'plant' AND is_active = TRUE`,
+                     WHERE run_id = $1
+                       AND player_id = $2
+                       AND type = 'plant'
+                       AND is_active = TRUE
+                       AND (construction_ends_at IS NULL OR construction_ends_at <= NOW())`,
                     [run.id, player.id]
                 );
                 if (reactors.rows.length === 0) {
-                    socket.emit('building:place_error', { message: 'Build a Reactor first before placing a Silo.' });
+                    socket.emit('building:place_error', { message: 'Build a completed Reactor first before placing a Silo.' });
                     return;
                 }
             }
 
             // All clear — deduct and place
+            await ensureRunPlayerState(run.id, player.id);
             await db.query(
                 'UPDATE players SET token_balance = token_balance - $1 WHERE id = $2',
                 [cost, player.id]
             );
+            const constructionEndsAt = new Date(Date.now() + (BUILDING_RULES[type]?.constructionMs || 0));
             const buildResult = await db.query(
-                'INSERT INTO buildings (run_id, player_id, type, cell_id) VALUES ($1, $2, $3, $4) RETURNING *',
-                [run.id, player.id, type, cellId]
+                `INSERT INTO buildings (run_id, player_id, type, cell_id, construction_ends_at)
+                 VALUES ($1, $2, $3, $4, $5)
+                 RETURNING *`,
+                [run.id, player.id, type, cellId, constructionEndsAt]
             );
             const prizeContribution = Math.floor(cost * 0.10);
-            if (prizeContribution > 0) {
-                await db.query(
-                    'UPDATE runs SET prize_pool = prize_pool + $1 WHERE id = $2',
-                    [prizeContribution, run.id]
-                );
-            }
+            await db.query(
+                `UPDATE runs
+                 SET prize_pool = prize_pool + $1,
+                     tokens_burned = tokens_burned + $2,
+                     market_token_pool = GREATEST(1, market_token_pool - $3)
+                 WHERE id = $4`,
+                [prizeContribution, cost, cost / MARKET_POOL_BURN_RATE, run.id]
+            );
             const newWallet = parseInt(player.token_balance, 10) - cost;
 
             // Broadcast the new building to everyone in the run
@@ -435,6 +446,35 @@ function registerHandlers(io, socket) {
                 return;
             }
 
+            await ensureRunPlayerState(run.id, player.id);
+            const stateResult = await db.query(
+                'SELECT strikes_used_today FROM run_player_state WHERE run_id = $1 AND player_id = $2',
+                [run.id, player.id]
+            );
+            const strikesUsedToday = parseInt(stateResult.rows[0]?.strikes_used_today, 10) || 0;
+
+            if (attackType === 'nuke') {
+                if (strikesUsedToday >= STRIKE_LIMIT_PER_DAY) {
+                    socket.emit('error', { message: 'Only 1 nuclear strike is allowed per day.' });
+                    return;
+                }
+
+                const siloReady = await db.query(
+                    `SELECT id FROM buildings
+                     WHERE run_id = $1
+                       AND player_id = $2
+                       AND type = 'silo'
+                       AND is_active = TRUE
+                       AND (construction_ends_at IS NULL OR construction_ends_at <= NOW())
+                     LIMIT 1`,
+                    [run.id, player.id]
+                );
+                if (siloReady.rows.length === 0) {
+                    socket.emit('error', { message: 'A completed Silo is required before launching a nuke.' });
+                    return;
+                }
+            }
+
             // Deduct cost
             await db.query(
                 'UPDATE players SET token_balance = token_balance - $1 WHERE id = $2',
@@ -442,12 +482,14 @@ function registerHandlers(io, socket) {
             );
 
             const prizeContribution = Math.floor(cost * 0.10);
-            if (prizeContribution > 0) {
-                await db.query(
-                    'UPDATE runs SET prize_pool = prize_pool + $1 WHERE id = $2',
-                    [prizeContribution, run.id]
-                );
-            }
+            await db.query(
+                `UPDATE runs
+                 SET prize_pool = prize_pool + $1,
+                     tokens_burned = tokens_burned + $2,
+                     market_token_pool = GREATEST(1, market_token_pool - $3)
+                 WHERE id = $4`,
+                [prizeContribution, cost, cost / MARKET_POOL_BURN_RATE, run.id]
+            );
 
             // Log event
             await db.query(
@@ -471,8 +513,50 @@ function registerHandlers(io, socket) {
                 payload.disableUntil = disableUntil.toISOString();
 
             } else if (attackType === 'steal') {
-                // Uranium steal is a client-side resource: just report the amount
-                payload.stolenAmount = Math.floor(25 + Math.random() * 50);
+                await ensureRunPlayerState(run.id, target.player_id);
+                const [attackerStateResult, targetStateResult] = await Promise.all([
+                    db.query(
+                        'SELECT uranium_raw, uranium_refined, max_storage FROM run_player_state WHERE run_id = $1 AND player_id = $2',
+                        [run.id, player.id]
+                    ),
+                    db.query(
+                        'SELECT uranium_raw, uranium_refined, max_storage FROM run_player_state WHERE run_id = $1 AND player_id = $2',
+                        [run.id, target.player_id]
+                    ),
+                ]);
+
+                const attackerState = attackerStateResult.rows[0] || { uranium_raw: 0, uranium_refined: 0, max_storage: 5000 };
+                const targetState = targetStateResult.rows[0] || { uranium_raw: 0, uranium_refined: 0, max_storage: 5000 };
+                const requested = Math.floor(25 + Math.random() * 50);
+                const attackerStored = Number(attackerState.uranium_raw || 0) + Number(attackerState.uranium_refined || 0);
+                const attackerHeadroom = Math.max(0, Number(attackerState.max_storage || 5000) - attackerStored);
+                const targetAvailable = Number(targetState.uranium_raw || 0) + Number(targetState.uranium_refined || 0);
+                const stolenAmount = Math.max(0, Math.min(requested, attackerHeadroom, targetAvailable));
+
+                let remaining = stolenAmount;
+                const targetRaw = Number(targetState.uranium_raw || 0);
+                const targetRefined = Number(targetState.uranium_refined || 0);
+                const rawTaken = Math.min(targetRaw, remaining);
+                remaining -= rawTaken;
+                const refinedTaken = Math.min(targetRefined, remaining);
+
+                await db.query(
+                    `UPDATE run_player_state
+                     SET uranium_raw = $1,
+                         uranium_refined = $2,
+                         updated_at = NOW()
+                     WHERE run_id = $3 AND player_id = $4`,
+                    [targetRaw - rawTaken, targetRefined - refinedTaken, run.id, target.player_id]
+                );
+                await db.query(
+                    `UPDATE run_player_state
+                     SET uranium_raw = uranium_raw + $1,
+                         updated_at = NOW()
+                     WHERE run_id = $2 AND player_id = $3`,
+                    [stolenAmount, run.id, player.id]
+                );
+
+                payload.stolenAmount = stolenAmount;
 
             } else if (attackType === 'nuke') {
                 // Destroy all enemy buildings within Manhattan distance 4
@@ -490,9 +574,25 @@ function registerHandlers(io, socket) {
                         destroyed.push(b.cell_id);
                     }
                 }
+
+                const falloutDurationMs = 120000;
+                await db.query(
+                    `INSERT INTO fallout_zones (run_id, created_by, center_cell_id, radius, multiplier, expires_at)
+                     VALUES ($1, $2, $3, $4, $5, $6)`,
+                    [run.id, player.id, cellId, 5, 0.5, new Date(Date.now() + falloutDurationMs)]
+                );
+                await db.query(
+                    `UPDATE run_player_state
+                     SET strikes_used_today = strikes_used_today + 1,
+                         used_nuke = TRUE,
+                         updated_at = NOW()
+                     WHERE run_id = $1 AND player_id = $2`,
+                    [run.id, player.id]
+                );
+
                 payload.destroyedCells  = destroyed;
                 payload.falloutRadius   = 4;
-                payload.falloutDuration = 120000; // ms — clients animate fallout locally
+                payload.falloutDuration = falloutDurationMs; // ms — clients animate fallout locally
             }
 
             // Broadcast to entire run room (everyone sees the attack)
@@ -503,19 +603,10 @@ function registerHandlers(io, socket) {
     });
 
     // ── INCOME SYNC ───────────────────────────────────────────────────────────
-    // Clients periodically report their locally-simulated income so the server
-    // wallet stays roughly up to date between building purchases.
-    socket.on('player:income_sync', async ({ jwt, income }) => {
-        if (typeof income !== 'number' || income < 0 || income > 100000) return; // ignore nonsense
-        await requireAuth(socket, jwt, async (decoded, player) => {
-            await db.query(
-                'UPDATE players SET token_balance = token_balance + $1 WHERE id = $2',
-                [Math.floor(income), player.id]
-            );
-            if (socket.runId) {
-                await emitRunEconomy(io, socket.runId);
-            }
-        });
+    // Legacy client packets are intentionally ignored now that run economy,
+    // uranium, storage, and income all tick on the server.
+    socket.on('player:income_sync', async () => {
+        return;
     });
 
     // ── USERNAME RENAME ───────────────────────────────────────────────────────
