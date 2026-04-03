@@ -44,6 +44,13 @@ const BUILDING_RULES = {
     silo: { cost: 6000, constructionMs: 35000, isWeapon: true },
 };
 
+function setBuildingRules(type, cost, constructionMs) {
+    if (!BUILDING_RULES[type]) return false;
+    if (Number.isFinite(Number(cost)) && Number(cost) >= 0) BUILDING_RULES[type].cost = Math.floor(Number(cost));
+    if (Number.isFinite(Number(constructionMs)) && Number(constructionMs) >= 0) BUILDING_RULES[type].constructionMs = Math.floor(Number(constructionMs));
+    return true;
+}
+
 function parseRunRow(row) {
     if (!row) return null;
     return {
@@ -766,6 +773,7 @@ module.exports = {
     getRunSnapshot,
     emitRunSnapshot,
     BUILDING_RULES,
+    setBuildingRules,
     DAY_DURATION_MS,
     BUY_IN,
     setNextRunLength,

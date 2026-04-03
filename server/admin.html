@@ -148,6 +148,28 @@
     </div>
 
     <section class="card" style="margin-top:16px;">
+      <h2>Building Config</h2>
+      <p class="muted" style="font-size:13px;">Adjust building costs and construction times. Changes apply to the live server immediately and broadcast to all connected clients. Resets when the server restarts.</p>
+      <table id="buildingConfigTable">
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Cost (tokens)</th>
+            <th>Build time (ms)</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="buildingConfigBody">
+          <tr><td colspan="4" class="muted">Click Load to see current config.</td></tr>
+        </tbody>
+      </table>
+      <div class="row" style="margin-top:10px;">
+        <button class="primary" id="loadBuildingConfigBtn">Load Config</button>
+      </div>
+      <div id="buildingConfigMsg" class="muted" style="font-size:12px; margin-top:6px;"></div>
+    </section>
+
+    <section class="card" style="margin-top:16px;">
       <h2>Live Status</h2>
       <div id="summary" class="muted">Loading…</div>
       <div id="pills" style="margin-top:10px;"></div>
@@ -507,6 +529,51 @@
     });
 
     refreshStatus();
+
+    // ── Building Config ──────────────────────────────────────────────────────
+    async function loadBuildingConfig() {
+      $('buildingConfigMsg').textContent = 'Loading…';
+      try {
+        const data = await api('/admin/api/building-config');
+        renderBuildingConfig(data.buildingRules);
+        $('buildingConfigMsg').textContent = 'Loaded.';
+      } catch (err) {
+        $('buildingConfigMsg').textContent = '❌ ' + err.message;
+      }
+    }
+
+    function renderBuildingConfig(rules) {
+      const tbody = $('buildingConfigBody');
+      tbody.innerHTML = Object.entries(rules).map(([type, r]) => `
+        <tr>
+          <td><strong>${type}</strong></td>
+          <td><input type="number" id="cfg_cost_${type}" value="${r.cost}" min="0" style="width:110px;padding:4px 6px;font-size:13px;" /></td>
+          <td><input type="number" id="cfg_ms_${type}" value="${r.constructionMs}" min="0" style="width:120px;padding:4px 6px;font-size:13px;" /></td>
+          <td><button class="primary" onclick="saveBuildingRow('${type}')" style="padding:5px 12px;font-size:12px;">Save</button></td>
+        </tr>
+      `).join('');
+    }
+
+    async function saveBuildingRow(type) {
+      const costEl = $('cfg_cost_' + type);
+      const msEl   = $('cfg_ms_'   + type);
+      if (!costEl || !msEl) return;
+      const cost = Number(costEl.value);
+      const constructionMs = Number(msEl.value);
+      $('buildingConfigMsg').textContent = 'Saving…';
+      try {
+        const data = await api('/admin/api/set-building-config', {
+          method: 'POST',
+          body: JSON.stringify({ type, cost, constructionMs })
+        });
+        renderBuildingConfig(data.buildingRules);
+        $('buildingConfigMsg').textContent = `✅ ${type} updated and broadcast to clients.`;
+      } catch (err) {
+        $('buildingConfigMsg').textContent = '❌ ' + err.message;
+      }
+    }
+
+    $('loadBuildingConfigBtn').addEventListener('click', loadBuildingConfig);
   </script>
 </body>
 </html>

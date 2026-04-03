@@ -6,7 +6,7 @@ const cors       = require('cors');
 const fs         = require('fs');
 const path       = require('path');
 const db         = require('./db');
-const { setupGameLoop, getActiveRun, createNewRun, setNextRunLength, getNextRunLength } = require('./gameLoop');
+const { setupGameLoop, getActiveRun, createNewRun, setNextRunLength, getNextRunLength, BUILDING_RULES, setBuildingRules } = require('./gameLoop');
 const { registerHandlers } = require('./socket/handlers');
 
 let dbReady = false;
@@ -342,6 +342,26 @@ app.post('/admin/api/set-run-length', requireAdmin, async (req, res) => {
             io.to(`run:${run.id}`).emit('run:config_update', { run_length: len });
         }
         res.json({ ok: true, runLength: len, appliedToCurrentRun: !!run });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Get current building costs and construction times
+app.get('/admin/api/building-config', requireAdmin, (_req, res) => {
+    res.json({ ok: true, buildingRules: BUILDING_RULES });
+});
+
+// Update a building type's cost and/or constructionMs; broadcast to all clients
+app.post('/admin/api/set-building-config', requireAdmin, async (req, res) => {
+    try {
+        const { type, cost, constructionMs } = req.body;
+        if (!type || !BUILDING_RULES[type]) {
+            res.status(400).json({ error: `Unknown building type '${type}'. Valid: ${Object.keys(BUILDING_RULES).join(', ')}` }); return;
+        }
+        setBuildingRules(type, cost, constructionMs);
+        io.emit('run:building_config', { buildingRules: BUILDING_RULES });
+        res.json({ ok: true, buildingRules: BUILDING_RULES });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

@@ -417,6 +417,20 @@ function connectSocket() {
         }
     });
 
+    // Building cost/time config pushed from admin panel
+    socket.on('run:building_config', ({ buildingRules }) => {
+        if (!buildingRules || typeof buildingRules !== 'object') return;
+        Object.entries(buildingRules).forEach(([type, rules]) => {
+            if (!buildingTypes[type]) return;
+            if (Number.isFinite(Number(rules.cost))) buildingTypes[type].cost = Number(rules.cost);
+            // server stores constructionMs; client stores constructionTime in units of 10 000 ms
+            if (Number.isFinite(Number(rules.constructionMs))) {
+                buildingTypes[type].constructionTime = Number(rules.constructionMs) / 10000;
+            }
+        });
+        updateUI();
+    });
+
     // ── Sabotage events ─────────────────────────────────────────────────
     socket.on('sabotage:applied', ({ attackType, cellId, attackerName, attackerId,
                                       disableUntil, stolenAmount, destroyedCells, falloutDuration }) => {
@@ -4436,8 +4450,19 @@ function setAIBotsEnabled(enabled) {
 
         addNotification('info', '🧪 AI bots disabled for testing. Bot buildings were removed.');
     } else {
-        if (!socket?.connected || !_authJWT) {
-            initPlayerRegistry();
+        const hasBots = (game.players || []).some(p => p.isBot);
+        if (!hasBots) {
+            if (!socket?.connected || !_authJWT) {
+                // Offline: reinitialise the whole registry (bots + local player)
+                initPlayerRegistry();
+            } else {
+                // Online: server owns game.players — just inject bots directly
+                game.players = game.players || [];
+                game.players.push(
+                    { id: 'bot-phantom', name: 'PHANTOM_IX', avatar: '🤖', isLocal: false, isBot: true, wallet: 50000, score: 0, total_buildings: 0 },
+                    { id: 'bot-neutron',  name: 'NEUTRON_',   avatar: '🐺', isLocal: false, isBot: true, wallet: 50000, score: 0, total_buildings: 0 }
+                );
+            }
             spawnEnemyBuildings();
         }
         startBotAI();
