@@ -2330,8 +2330,19 @@ function renderBuilding(id, type, isPlayer, building) {
     const totalMs = (Number(buildingTypes[type]?.constructionTime) || 0) * 10000;
     const endsAt = building?.constructionEndsAtMs || null;
     const stillBuilding = !!(endsAt && endsAt > now);
+    // Pending = under construction but server hasn't confirmed timing yet
+    const pendingConfirm = !!(building?.isUnderConstruction && !endsAt);
 
-    if (stillBuilding) {
+    if (pendingConfirm) {
+        // Server confirmation not yet received — show flavor text
+        const emoji = buildingTypes[type].emoji || '';
+        cell.innerHTML = `
+            <div style="position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;">
+                <span class="icon-emoji" style="font-size: 18px; opacity: 0.5;">${emoji}</span>
+                <span style="font-size: 8px; color: #aaa; text-align: center; line-height: 1.2; padding: 0 2px;">Workers<br>En Route…</span>
+            </div>
+        `;
+    } else if (stillBuilding) {
         const elapsed = now - (endsAt - totalMs);
         const progress = totalMs > 0 ? Math.max(0.02, Math.min(1, elapsed / totalMs)) : 0;
         const pct = Math.round(progress * 100);
