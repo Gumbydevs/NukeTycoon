@@ -9,9 +9,11 @@ CREATE TABLE IF NOT EXISTS players (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email           TEXT UNIQUE NOT NULL,
     username        TEXT UNIQUE NOT NULL,
+    avatar          TEXT DEFAULT '☢️',
     token_balance   BIGINT DEFAULT 50000,
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE players ADD COLUMN IF NOT EXISTS avatar TEXT DEFAULT '☢️';
 
 -- ── Email login codes (one-time, 10-min expiry) ───────────────────────────────
 CREATE TABLE IF NOT EXISTS auth_codes (

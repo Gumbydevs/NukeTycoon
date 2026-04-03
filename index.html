@@ -4,13 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NUKWAR</title>
-    <link rel="stylesheet" href="styles/main.css">
+    <link rel="stylesheet" href="styles/main.css?v=20260403b">
 </head>
 <body>
     <div id="loginModal" style="position:fixed; left:0; top:0; right:0; bottom:0; background:rgba(0,0,0,0.85); z-index:999; display:flex; align-items:center; justify-content:center;">
         <div style="background:#0d0d0d; border:1px solid #333; padding:24px; width:420px; color:#fff;">
             <div style="font-weight:700; font-size:18px; margin-bottom:4px; color:#ffb84d;">☢️ NUKWAR</div>
-            <div style="color:#888; font-size:12px; margin-bottom:20px;">Enter your email to receive a login code.</div>
+            <div style="color:#888; font-size:12px; margin-bottom:20px;">Enter your email to log in or create your commander account.</div>
 
             <!-- Step 1: Email input -->
             <div id="loginStep1">
@@ -36,6 +36,24 @@
                     <div id="loginError2" style="color:#ff6b6b; font-size:11px; min-height:14px;"></div>
                     <button id="loginBackBtn" style="background:none; border:none; color:#888; font-size:11px; cursor:pointer; text-decoration:underline;">Use different email</button>
                 </div>
+            </div>
+
+            <!-- Step 3: New account profile setup -->
+            <div id="loginStep3" style="display:none;">
+                <div style="color:#ccc; font-size:12px; margin-bottom:10px;">
+                    Welcome to NUKWAR. Choose your commander name and profile picture to finish creating your account.
+                </div>
+                <div style="margin-bottom:10px;">
+                    <div style="font-weight:700; margin-bottom:6px;">Commander Name</div>
+                    <input id="signupUsername" type="text" maxlength="20" placeholder="YourName_1234"
+                        style="width:100%; padding:8px; background:#111; border:1px solid #333; color:#ffb84d; font-family:monospace;" />
+                </div>
+                <div style="margin-bottom:10px;">
+                    <div style="font-weight:700; margin-bottom:6px;">Profile Picture</div>
+                    <div id="signupAvatarPicker" class="avatar-picker" data-selected-avatar="☢️"></div>
+                </div>
+                <div id="loginError3" style="color:#ff6b6b; font-size:11px; min-height:14px; margin-bottom:8px;"></div>
+                <button class="btn" id="accountCreateBtn" style="width:100%;">Enter NUKWAR</button>
             </div>
         </div>
     </div>
@@ -210,7 +228,7 @@
             </div>
 
             <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px;">
-                <div style="width:72px; height:72px; border-radius:8px; background:#222; display:flex; align-items:center; justify-content:center; font-size:20px;">YOU</div>
+                <div id="profileAvatarDisplay" class="profile-avatar-display">☢️</div>
                 <div style="flex:1;">
                     <div style="font-weight:700;">Player Name</div>
                     <div id="profileName" style="color:#ccc; margin-bottom:8px;">You</div>
@@ -220,11 +238,16 @@
             </div>
 
             <div style="margin-bottom:12px;">
+                <div style="font-weight:700; margin-bottom:6px;">Profile Picture</div>
+                <div id="profileAvatarPicker" class="avatar-picker" data-selected-avatar="☢️"></div>
+            </div>
+
+            <div style="margin-bottom:12px;">
                 <div style="font-weight:700; margin-bottom:6px;">Username</div>
                 <div style="display:flex; gap:8px;">
                     <input id="profileUsernameInput" type="text" maxlength="20" placeholder="YourName_1234"
                         style="flex:1; padding:8px; background:#111; border:1px solid #333; color:#ffb84d; font-family:monospace;" />
-                    <button class="btn" onclick="changeUsername()">Save</button>
+                    <button class="btn" onclick="changeUsername()">Save Profile</button>
                 </div>
                 <div id="profileUsernameMsg" style="color:#ff6b6b; font-size:11px; min-height:14px; margin-top:4px;"></div>
             </div>
@@ -304,6 +327,6 @@
 
     <!-- Socket.io client — must load before game.js -->
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-    <script src="game.js?v=20260402"></script>
+    <script src="game.js?v=20260403b"></script>
 </body>
 </html>

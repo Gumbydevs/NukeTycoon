@@ -1,8 +1,11 @@
-const { sendOTP, verifyOTP, verifyJWT } = require('../auth');
+const { sendOTP, verifyOTP, verifyJWT, generateJWT } = require('../auth');
 const db = require('../db');
 const { getActiveRun, calculateScores } = require('../gameLoop');
 
 const BUY_IN = 5000;
+const DEFAULT_AVATAR = '☢️';
+const VALID_AVATARS = new Set(['☢️', '🧑‍🚀', '👩‍🔬', '👨‍🔬', '🤖', '🦊', '🐺', '🐉']);
+const normalizeAvatar = (avatar) => VALID_AVATARS.has(avatar) ? avatar : DEFAULT_AVATAR;
 const BUILDING_COSTS = { mine: 800, processor: 1200, storage: 1000, plant: 1000, silo: 6000 };
 const VALID_TYPES = Object.keys(BUILDING_COSTS);
 
@@ -65,9 +68,11 @@ function registerHandlers(io, socket) {
                     id:            result.player.id,
                     username:      result.player.username,
                     email:         result.player.email,
+                    avatar:        result.player.avatar || DEFAULT_AVATAR,
                     token_balance: parseInt(result.player.token_balance, 10),
                 },
                 jwt: result.token,
+                isNewPlayer: !!result.isNewPlayer,
             });
         } catch (err) {
             console.error('auth:verify error:', err);
@@ -94,9 +99,11 @@ function registerHandlers(io, socket) {
                 id:            player.id,
                 username:      player.username,
                 email:         player.email,
+                avatar:        player.avatar || DEFAULT_AVATAR,
                 token_balance: parseInt(player.token_balance, 10),
             },
             jwt, // return the same token
+            isNewPlayer: false,
         });
     });
 
@@ -153,7 +160,7 @@ function registerHandlers(io, socket) {
                     [run.id]
                 ),
                 db.query(
-                    `SELECT p.id, p.username, p.token_balance, rp.joined_at
+                    `SELECT p.id, p.username, p.avatar, p.token_balance, rp.joined_at
                      FROM run_players rp
                      JOIN players p ON p.id = rp.player_id
                      WHERE rp.run_id = $1`,
@@ -173,7 +180,7 @@ function registerHandlers(io, socket) {
 
             if (isNewJoiner) {
                 socket.to(`run:${run.id}`).emit('run:player_joined', {
-                    player: { id: player.id, username: player.username },
+                    player: { id: player.id, username: player.username, avatar: player.avatar || DEFAULT_AVATAR },
                 });
             }
         });
@@ -390,13 +397,14 @@ function registerHandlers(io, socket) {
     });
 
     // ── USERNAME RENAME ───────────────────────────────────────────────────────
-    socket.on('player:rename', async ({ jwt, username }) => {
+    socket.on('player:rename', async ({ jwt, username, avatar }) => {
         await requireAuth(socket, jwt, async (decoded, player) => {
             if (!username || typeof username !== 'string') {
                 socket.emit('player:rename_error', { message: 'Invalid username.' });
                 return;
             }
             const clean = username.trim();
+            const cleanAvatar = normalizeAvatar(avatar);
             if (clean.length < 3 || clean.length > 20) {
                 socket.emit('player:rename_error', { message: 'Username must be 3–20 characters.' });
                 return;
@@ -414,8 +422,23 @@ function registerHandlers(io, socket) {
                 socket.emit('player:rename_error', { message: 'Username already taken.' });
                 return;
             }
-            await db.query('UPDATE players SET username = $1 WHERE id = $2', [clean, player.id]);
-            socket.emit('player:rename_success', { username: clean });
+
+            const oldUsername = player.username;
+            await db.query('UPDATE players SET username = $1, avatar = $2 WHERE id = $3', [clean, cleanAvatar, player.id]);
+            const updatedPlayer = { ...player, username: clean, avatar: cleanAvatar };
+            const refreshedJwt = generateJWT(updatedPlayer);
+
+            socket.emit('player:rename_success', { username: clean, avatar: cleanAvatar, jwt: refreshedJwt });
+
+            const run = await getActiveRun();
+            if (run) {
+                io.to(`run:${run.id}`).emit('run:player_updated', {
+                    playerId: player.id,
+                    oldUsername,
+                    username: clean,
+                    avatar: cleanAvatar,
+                });
+            }
         });
     });
 }

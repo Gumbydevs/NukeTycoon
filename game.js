@@ -8,6 +8,8 @@ const SERVER_URL = window.location.hostname === 'localhost' || window.location.h
 let socket = null;
 let _authJWT = null;     // stored JWT for all socket events
 let _localPlayerId = null;
+const DEFAULT_PLAYER_AVATAR = '☢️';
+const AVATAR_OPTIONS = ['☢️', '🧑‍🚀', '👩‍🔬', '👨‍🔬', '🤖', '🦊', '🐺', '🐉'];
 
 function getLocalPlayerId() {
     if (_localPlayerId) return _localPlayerId;
@@ -56,13 +58,22 @@ function connectSocket() {
         document.getElementById('loginCode').focus();
     });
 
-    socket.on('auth:success', ({ player, jwt }) => {
+    socket.on('auth:success', ({ player, jwt, isNewPlayer }) => {
         _authJWT = jwt;
         _localPlayerId = player.id;
         localStorage.setItem('nuke_jwt', jwt);
         game.playerWallet = player.token_balance;
         game.playerName   = player.username;
         game.playerEmail  = player.email;
+        game.playerAvatar = player.avatar || DEFAULT_PLAYER_AVATAR;
+
+        if (isNewPlayer) {
+            game.pendingInitialProfileSetup = true;
+            showAccountSetupStep();
+            return;
+        }
+
+        game.pendingInitialProfileSetup = false;
         authenticate();
     });
 
@@ -97,6 +108,7 @@ function connectSocket() {
         game.players = players.map(p => ({
             id:      p.id,
             name:    p.username,
+            avatar:  p.avatar || DEFAULT_PLAYER_AVATAR,
             isLocal: p.id === getLocalPlayerId(),
             isBot:   false,
             wallet:  parseInt(p.token_balance, 10),
@@ -108,13 +120,24 @@ function connectSocket() {
         game.enemyBuildings = [];
         buildings.forEach(b => {
             if (b.player_id === getLocalPlayerId()) {
-                const bObj = { id: b.cell_id, type: b.type, owner: game.playerName };
+                const bObj = {
+                    id: b.cell_id,
+                    type: b.type,
+                    owner: game.playerName,
+                    ownerId: b.player_id,
+                    ownerAvatar: game.playerAvatar,
+                };
                 game.buildings.push(bObj);
                 renderBuilding(b.cell_id, b.type, true, bObj);
             } else {
-                const bObj = { id: b.cell_id, type: b.type, owner: b.owner_name };
+                const bObj = {
+                    id: b.cell_id,
+                    type: b.type,
+                    owner: b.owner_name,
+                    ownerId: b.player_id,
+                };
                 game.enemyBuildings.push(bObj);
-                renderBuilding(b.cell_id, b.type, false);
+                renderBuilding(b.cell_id, b.type, false, bObj);
             }
         });
 
@@ -135,7 +158,15 @@ function connectSocket() {
 
     socket.on('run:player_joined', ({ player }) => {
         if (!game.players.find(p => p.id === player.id)) {
-            game.players.push({ id: player.id, name: player.username, isLocal: false, isBot: false, wallet: 45000, score: 0 });
+            game.players.push({
+                id: player.id,
+                name: player.username,
+                avatar: player.avatar || DEFAULT_PLAYER_AVATAR,
+                isLocal: false,
+                isBot: false,
+                wallet: 45000,
+                score: 0
+            });
         }
         addNotification('info', `👤 ${player.username} joined the run.`);
     });
@@ -176,7 +207,11 @@ function connectSocket() {
             // Server confirmed our placement — render it locally now
             if (!game.buildings.find(b => b.id === building.cell_id)) {
                 const bObj = {
-                    id: building.cell_id, type: building.type, owner: game.playerName,
+                    id: building.cell_id,
+                    type: building.type,
+                    owner: game.playerName,
+                    ownerId: building.player_id || getLocalPlayerId(),
+                    ownerAvatar: game.playerAvatar,
                     constructionTimeRemaining: buildingTypes[building.type]?.constructionTime || 0,
                     isUnderConstruction: (buildingTypes[building.type]?.constructionTime || 0) > 0
                 };
@@ -192,9 +227,14 @@ function connectSocket() {
         }
         // Another player placed a building — render it as an enemy building
         if (!game.enemyBuildings.find(b => b.id === building.cell_id)) {
-            const bObj = { id: building.cell_id, type: building.type, owner: ownerName };
+            const bObj = {
+                id: building.cell_id,
+                type: building.type,
+                owner: ownerName,
+                ownerId: building.player_id || placedBy,
+            };
             game.enemyBuildings.push(bObj);
-            renderBuilding(building.cell_id, building.type, false);
+            renderBuilding(building.cell_id, building.type, false, bObj);
         }
     });
 
@@ -235,19 +275,42 @@ function connectSocket() {
     });
 
     // ── Username rename ──────────────────────────────────────────────────
-    socket.on('player:rename_success', ({ username }) => {
-        game.playerName = username;
-        const nameEl = document.getElementById('profileName');
-        if (nameEl) nameEl.textContent = username;
-        const input = document.getElementById('profileUsernameInput');
-        if (input) input.value = username;
+    socket.on('player:rename_success', ({ username, avatar, jwt }) => {
+        if (jwt) {
+            _authJWT = jwt;
+            localStorage.setItem('nuke_jwt', jwt);
+        }
+        applyPlayerProfileUpdate({
+            playerId: getLocalPlayerId(),
+            oldUsername: game.playerName,
+            username,
+            avatar: avatar || game.playerAvatar || DEFAULT_PLAYER_AVATAR,
+        });
+
         const msgEl = document.getElementById('profileUsernameMsg');
-        if (msgEl) { msgEl.style.color = '#4CAF50'; msgEl.textContent = 'Username updated!'; }
+        if (msgEl) { msgEl.style.color = '#4CAF50'; msgEl.textContent = 'Profile updated!'; }
+
+        const setupMsg = document.getElementById('loginError3');
+        if (setupMsg) {
+            setupMsg.style.color = '#4CAF50';
+            setupMsg.textContent = 'Profile saved. Entering the game…';
+        }
+
+        if (game.pendingInitialProfileSetup) {
+            game.pendingInitialProfileSetup = false;
+            authenticate();
+        }
     });
 
     socket.on('player:rename_error', ({ message }) => {
         const msgEl = document.getElementById('profileUsernameMsg');
         if (msgEl) { msgEl.style.color = '#ff6b6b'; msgEl.textContent = message; }
+        const setupMsg = document.getElementById('loginError3');
+        if (setupMsg) { setupMsg.style.color = '#ff6b6b'; setupMsg.textContent = message; }
+    });
+
+    socket.on('run:player_updated', ({ playerId, oldUsername, username, avatar }) => {
+        applyPlayerProfileUpdate({ playerId, oldUsername, username, avatar });
     });
 
     socket.on('error', ({ message }) => {
@@ -278,8 +341,8 @@ function _updateLobbyFromServerState(run, players, yourWallet) {
     const list = el('lobbyPlayerList');
     if (list) {
         list.innerHTML = players.map(p =>
-            `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #1e1e1e;">
-                <span style="color:${p.id === getLocalPlayerId() ? '#ffb84d' : '#888'};">${p.username}</span>
+            `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #1e1e1e;gap:8px;">
+                <span style="display:inline-flex;align-items:center;gap:6px;color:${p.id === getLocalPlayerId() ? '#ffb84d' : '#888'};">${avatarBadge(p.avatar || DEFAULT_PLAYER_AVATAR)} ${escapeHtml(p.username)}</span>
                 <span style="color:#4CAF50;">${parseInt(p.token_balance,10).toLocaleString()} tokens</span>
             </div>`
         ).join('');
@@ -289,6 +352,10 @@ function _updateLobbyFromServerState(run, players, yourWallet) {
 // ── Game state ────────────────────────────────────────────────────────────────
 const game = {
     playerWallet: 50000,
+    playerName: 'You',
+    playerEmail: '',
+    playerAvatar: DEFAULT_PLAYER_AVATAR,
+    pendingInitialProfileSetup: false,
     uraniumRaw: 0,      // mined by Mine buildings
     uraniumRefined: 0,  // converted by Processor buildings; consumed by Plants
     maxStorage: 5000,   // total cap shared across raw + refined
@@ -446,7 +513,8 @@ function initPlayerRegistry() {
         // ── Human player (this client) ───────────────────────────────────────
         {
             id: 'local',
-            name: 'YOU',
+            name: game.playerName || 'You',
+            avatar: game.playerAvatar || DEFAULT_PLAYER_AVATAR,
             isLocal: true,
             isBot: false,
             wallet: game.playerWallet, // synced from game.playerWallet
@@ -458,6 +526,7 @@ function initPlayerRegistry() {
         {
             id: 'bot-phantom',
             name: 'PHANTOM_IX',
+            avatar: '🤖',
             isLocal: false,
             isBot: true,
             wallet: 50000,
@@ -467,6 +536,7 @@ function initPlayerRegistry() {
         {
             id: 'bot-neutron',
             name: 'NEUTRON_',
+            avatar: '🐺',
             isLocal: false,
             isBot: true,
             wallet: 50000,
@@ -476,25 +546,77 @@ function initPlayerRegistry() {
     ];
 }
 
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function avatarBadge(avatar, size = 18) {
+    return `<span style="display:inline-flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;border-radius:50%;background:#1a1a1a;border:1px solid #333;font-size:${Math.max(12, size - 4)}px;line-height:1;vertical-align:middle;">${escapeHtml(avatar || DEFAULT_PLAYER_AVATAR)}</span>`;
+}
+
+function applyPlayerProfileUpdate({ playerId, oldUsername, username, avatar }) {
+    const nextName = username || game.playerName || 'You';
+    const nextAvatar = avatar || DEFAULT_PLAYER_AVATAR;
+
+    if (playerId === getLocalPlayerId() || oldUsername === game.playerName) {
+        game.playerName = nextName;
+        game.playerAvatar = nextAvatar;
+    }
+
+    (game.players || []).forEach((p) => {
+        if ((playerId && p.id === playerId) || (oldUsername && p.name === oldUsername)) {
+            p.name = nextName;
+            p.avatar = nextAvatar;
+        }
+    });
+
+    [...(game.buildings || []), ...(game.enemyBuildings || [])].forEach((b) => {
+        if ((playerId && b.ownerId === playerId) || (oldUsername && b.owner === oldUsername)) {
+            b.owner = nextName;
+            b.ownerAvatar = nextAvatar;
+            if (playerId) b.ownerId = playerId;
+        }
+    });
+
+    const nameEl = document.getElementById('profileName');
+    if (nameEl) nameEl.textContent = game.playerName || 'You';
+    const input = document.getElementById('profileUsernameInput');
+    if (input) input.value = game.playerName || '';
+    const signupInput = document.getElementById('signupUsername');
+    if (signupInput && game.pendingInitialProfileSetup) signupInput.value = game.playerName || '';
+    const avatarDisplay = document.getElementById('profileAvatarDisplay');
+    if (avatarDisplay) avatarDisplay.textContent = game.playerAvatar || DEFAULT_PLAYER_AVATAR;
+
+    const profilePicker = document.getElementById('profileAvatarPicker');
+    if (profilePicker) profilePicker.dataset.selectedAvatar = game.playerAvatar || DEFAULT_PLAYER_AVATAR;
+    const signupPicker = document.getElementById('signupAvatarPicker');
+    if (signupPicker) signupPicker.dataset.selectedAvatar = game.playerAvatar || DEFAULT_PLAYER_AVATAR;
+
+    document.querySelectorAll('.avatar-option').forEach((btn) => {
+        const picker = btn.closest('.avatar-picker');
+        if (!picker) return;
+        btn.classList.toggle('selected', btn.dataset.avatar === picker.dataset.selectedAvatar);
+    });
+}
+
 /**
- * Resolve an owner name string to a full player record from game.players.
+ * Resolve an owner id/name to a full player record from game.players.
  * Returns a plain object so callers get a consistent shape even when the
  * record is missing (e.g. during a reconnect before the server has re-sent
  * the player list).
  *
- * BACKEND_STUB: When the backend is live, game.players will be populated
- *   from the server 'run:players' payload and this function stays unchanged.
- *   To enrich with live stats (rank, score, ping) just add those fields
- *   to the objects the server sends — they will flow through here automatically.
- *
- * @param {string} ownerName  The owner string stored on a building (b.owner)
- * @returns {{ name:string, isBot:boolean, isLocal:boolean, id:string|null }}
+ * @param {string} ownerRef  The owner id or owner string stored on a building
+ * @returns {{ name:string, avatar:string, isBot:boolean, isLocal:boolean, id:string|null }}
  */
-function resolveOwner(ownerName) {
-    const p = (game.players || []).find(pl => pl.name === ownerName);
-    if (p) return p;
-    // Fallback for buildings spawned before the player registry was initialised
-    return { name: ownerName || 'Unknown', isBot: true, isLocal: false, id: null };
+function resolveOwner(ownerRef) {
+    const p = (game.players || []).find(pl => pl.id === ownerRef || pl.name === ownerRef);
+    if (p) return { ...p, avatar: p.avatar || DEFAULT_PLAYER_AVATAR };
+    return { name: ownerRef || 'Unknown', avatar: DEFAULT_PLAYER_AVATAR, isBot: true, isLocal: false, id: null };
 }
 
 /**
@@ -1059,7 +1181,9 @@ function buildBuilding(id, type) {
     game.buildings.push({ 
         id, 
         type, 
-        owner: 'YOU',
+        owner: game.playerName || 'You',
+        ownerId: getLocalPlayerId() || 'local',
+        ownerAvatar: game.playerAvatar || DEFAULT_PLAYER_AVATAR,
         constructionTimeRemaining: buildingTypes[type].constructionTime,
         isUnderConstruction: true
     });
@@ -1821,8 +1945,8 @@ function showLobby() {
     const list = document.getElementById('lobbyPlayerList');
     if (list) {
         list.innerHTML = game.players.map(p =>
-            `<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #1e1e1e;">
-                <span style="color:${p.isLocal ? '#ffb84d' : '#888'};">${p.name}${p.isBot ? ' <span style="font-size:10px; color:#555;">[BOT]</span>' : ''}</span>
+            `<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #1e1e1e; gap:8px;">
+                <span style="display:inline-flex;align-items:center;gap:6px;color:${p.isLocal ? '#ffb84d' : '#888'};">${avatarBadge(p.avatar || DEFAULT_PLAYER_AVATAR)} ${escapeHtml(p.name)}${p.isBot ? ' <span style="font-size:10px; color:#555;">[BOT]</span>' : ''}</span>
                 <span style="color:#4CAF50;">${p.wallet.toLocaleString()} tokens</span>
             </div>`
         ).join('');
@@ -1855,6 +1979,59 @@ function confirmBuyIn() {
 }
 
 /* Profile modal handlers */
+function renderAvatarPicker(pickerId, selectedAvatar = DEFAULT_PLAYER_AVATAR) {
+    const picker = document.getElementById(pickerId);
+    if (!picker) return;
+
+    const activeAvatar = selectedAvatar || picker.dataset.selectedAvatar || DEFAULT_PLAYER_AVATAR;
+    picker.dataset.selectedAvatar = activeAvatar;
+    picker.innerHTML = AVATAR_OPTIONS.map((avatar) => `
+        <button type="button" class="avatar-option ${avatar === activeAvatar ? 'selected' : ''}" data-avatar="${avatar}" aria-label="Select ${avatar} avatar">${avatar}</button>
+    `).join('');
+
+    picker.querySelectorAll('.avatar-option').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            picker.dataset.selectedAvatar = btn.dataset.avatar;
+            if (pickerId === 'profileAvatarPicker') {
+                const avatarDisplay = document.getElementById('profileAvatarDisplay');
+                if (avatarDisplay) avatarDisplay.textContent = btn.dataset.avatar;
+            }
+            renderAvatarPicker(pickerId, btn.dataset.avatar);
+        });
+    });
+}
+
+function getSelectedAvatar(pickerId) {
+    const picker = document.getElementById(pickerId);
+    return picker?.dataset.selectedAvatar || game.playerAvatar || DEFAULT_PLAYER_AVATAR;
+}
+
+function showAccountSetupStep() {
+    const modal = document.getElementById('loginModal');
+    if (modal) modal.style.display = 'flex';
+    const step1 = document.getElementById('loginStep1');
+    const step2 = document.getElementById('loginStep2');
+    const step3 = document.getElementById('loginStep3');
+    if (step1) step1.style.display = 'none';
+    if (step2) step2.style.display = 'none';
+    if (step3) step3.style.display = 'block';
+
+    const input = document.getElementById('signupUsername');
+    if (input) {
+        input.value = game.playerName || '';
+        input.focus();
+        input.select();
+    }
+
+    const msgEl = document.getElementById('loginError3');
+    if (msgEl) {
+        msgEl.style.color = '#888';
+        msgEl.textContent = 'Pick your commander name and profile icon.';
+    }
+
+    renderAvatarPicker('signupAvatarPicker', game.playerAvatar || DEFAULT_PLAYER_AVATAR);
+}
+
 function showProfile() {
     const modal = document.getElementById('profileModal');
     if (!modal) return;
@@ -1866,6 +2043,9 @@ function showProfile() {
     if (emailEl) emailEl.textContent = game.playerEmail || '';
     const usernameInput = document.getElementById('profileUsernameInput');
     if (usernameInput) usernameInput.value = game.playerName || '';
+    const avatarDisplay = document.getElementById('profileAvatarDisplay');
+    if (avatarDisplay) avatarDisplay.textContent = game.playerAvatar || DEFAULT_PLAYER_AVATAR;
+    renderAvatarPicker('profileAvatarPicker', game.playerAvatar || DEFAULT_PLAYER_AVATAR);
     const msgEl = document.getElementById('profileUsernameMsg');
     if (msgEl) msgEl.textContent = '';
     const statsEl = document.getElementById('profileStats');
@@ -1881,6 +2061,7 @@ function changeUsername() {
     const msgEl = document.getElementById('profileUsernameMsg');
     if (!input || !msgEl) return;
     const newName = input.value.trim();
+    const avatar = getSelectedAvatar('profileAvatarPicker');
     if (!newName || newName.length < 3) {
         msgEl.style.color = '#ff6b6b';
         msgEl.textContent = 'Username must be at least 3 characters.';
@@ -1898,7 +2079,36 @@ function changeUsername() {
     }
     msgEl.style.color = '#888';
     msgEl.textContent = 'Saving...';
-    socket.emit('player:rename', { jwt: _authJWT, username: newName });
+    socket.emit('player:rename', { jwt: _authJWT, username: newName, avatar });
+}
+
+function submitAccountSetup() {
+    const input = document.getElementById('signupUsername');
+    const msgEl = document.getElementById('loginError3');
+    if (!input || !msgEl) return;
+
+    const newName = input.value.trim();
+    const avatar = getSelectedAvatar('signupAvatarPicker');
+
+    if (!newName || newName.length < 3) {
+        msgEl.style.color = '#ff6b6b';
+        msgEl.textContent = 'Username must be at least 3 characters.';
+        return;
+    }
+    if (!/^[a-zA-Z0-9_]+$/.test(newName)) {
+        msgEl.style.color = '#ff6b6b';
+        msgEl.textContent = 'Only letters, numbers, and underscores allowed.';
+        return;
+    }
+    if (!socket?.connected || !_authJWT) {
+        msgEl.style.color = '#ff6b6b';
+        msgEl.textContent = 'Not connected to server.';
+        return;
+    }
+
+    msgEl.style.color = '#888';
+    msgEl.textContent = 'Creating profile...';
+    socket.emit('player:rename', { jwt: _authJWT, username: newName, avatar });
 }
 
 function closeProfile() {
@@ -1988,12 +2198,24 @@ document.addEventListener('DOMContentLoaded', function() {
     const verifyBtn = document.getElementById('loginVerifyBtn');
     const codeIn    = document.getElementById('loginCode');
     const backBtn   = document.getElementById('loginBackBtn');
+    const accountBtn = document.getElementById('accountCreateBtn');
+    const signupInput = document.getElementById('signupUsername');
+    const profileNameInput = document.getElementById('profileUsernameInput');
     if (verifyBtn) verifyBtn.addEventListener('click', verifyLoginCode);
     if (codeIn)    codeIn.addEventListener('keyup', (e) => { if (e.key === 'Enter') verifyLoginCode(); });
+    if (accountBtn) accountBtn.addEventListener('click', submitAccountSetup);
+    if (signupInput) signupInput.addEventListener('keyup', (e) => { if (e.key === 'Enter') submitAccountSetup(); });
+    if (profileNameInput) profileNameInput.addEventListener('keyup', (e) => { if (e.key === 'Enter') changeUsername(); });
+    renderAvatarPicker('signupAvatarPicker', game.playerAvatar || DEFAULT_PLAYER_AVATAR);
+    renderAvatarPicker('profileAvatarPicker', game.playerAvatar || DEFAULT_PLAYER_AVATAR);
     if (backBtn)   backBtn.addEventListener('click', () => {
         document.getElementById('loginStep1').style.display = 'block';
         document.getElementById('loginStep2').style.display = 'none';
+        const step3 = document.getElementById('loginStep3');
+        if (step3) step3.style.display = 'none';
         document.getElementById('loginError').textContent = '';
+        const setupMsg = document.getElementById('loginError3');
+        if (setupMsg) setupMsg.textContent = '';
         document.getElementById('loginEmail').value = '';
     });
 
@@ -2779,7 +3001,9 @@ function onCellHover(id, e) {
         for (const en of game.enemyBuildings) if (distance(id, en.id) <= game.proximityRange) pen++;
         const label = displayNames[type] || type;
         const icon = (buildingTypes[type] && buildingTypes[type].emoji) ? buildingTypes[type].emoji + ' ' : '';
-        content = `<div style="font-weight:700;">${icon}${label} <span style="color:#4CAF50;">(You)</span></div>` +
+        const ownerLine = `<div style="margin-top:2px;">Owner: <span style="display:inline-flex;align-items:center;gap:6px;color:#4CAF50;">${avatarBadge(game.playerAvatar)} ${escapeHtml(game.playerName || 'You')} <span style="font-size:10px;color:#aaa;">(You)</span></span></div>`;
+        content = `<div style="font-weight:700;">${icon}${label}</div>` +
+            ownerLine +
             `<div>📐 Same-type neighbors: ${same} (${same>0? '+'+ (same*25) +'%': 'none'})</div>` +
             `<div>⚠️ Nearby enemies: ${pen}</div>`;
         
@@ -2807,14 +3031,16 @@ function onCellHover(id, e) {
     // If hovering an enemy building (only show details when NOT in build mode)
     if (enemy && !game.selectedMode) {
         const type = enemy.type;
-        const owner = resolveOwner(enemy.owner);
+        const owner = resolveOwner(enemy.ownerId || enemy.owner);
         const sabotageCost = Math.max(0, buildingTypes[type] ? buildingTypes[type].cost - 200 : 300);
         const label = displayNames[type] || type;
         const icon = (buildingTypes[type] && buildingTypes[type].emoji) ? buildingTypes[type].emoji + ' ' : '';
-        // Owner label: bot tag for bots, 'Player' for future human opponents
-        const ownerTag = owner.isLocal ? 'You'
-            : owner.isBot ? `<span style="color:#ff9944;">${owner.name} <span style="font-size:10px;color:#666;">[BOT]</span></span>`
-            : `<span style="color:#e05ce0;">${owner.name} <span style="font-size:10px;color:#aaa;">[PLAYER]</span></span>`;
+        const ownerName = escapeHtml(owner.name || 'Unknown');
+        const ownerTag = owner.isLocal
+            ? `<span style="display:inline-flex;align-items:center;gap:6px;color:#4CAF50;">${avatarBadge(owner.avatar)} ${ownerName} <span style="font-size:10px;color:#aaa;">(You)</span></span>`
+            : owner.isBot
+                ? `<span style="display:inline-flex;align-items:center;gap:6px;color:#ff9944;">${avatarBadge(owner.avatar)} ${ownerName} <span style="font-size:10px;color:#666;">[BOT]</span></span>`
+                : `<span style="display:inline-flex;align-items:center;gap:6px;color:#e05ce0;">${avatarBadge(owner.avatar)} ${ownerName} <span style="font-size:10px;color:#aaa;">[PLAYER]</span></span>`;
         const ownerBuildings = game.enemyBuildings.filter(b => b.owner === enemy.owner).length;
         // Active debuffs on this building
         const now = Date.now();

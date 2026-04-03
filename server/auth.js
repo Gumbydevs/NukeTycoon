@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const { Resend } = require('resend');
 const db = require('./db');
 
+const DEFAULT_AVATAR = '☢️';
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 // Simple in-memory rate limit: max 3 OTP requests per email per 10 minutes
@@ -28,7 +29,7 @@ function hashCode(code) {
 
 function generateJWT(player) {
     return jwt.sign(
-        { id: player.id, email: player.email, username: player.username },
+        { id: player.id, email: player.email, username: player.username, avatar: player.avatar || DEFAULT_AVATAR },
         process.env.JWT_SECRET,
         { expiresIn: '30d' }
     );
@@ -104,9 +105,11 @@ async function verifyOTP(email, code) {
     await db.query('UPDATE auth_codes SET used = TRUE WHERE id = $1', [result.rows[0].id]);
 
     // Get or create player
+    let isNewPlayer = false;
     let playerResult = await db.query('SELECT * FROM players WHERE email = $1', [email]);
 
     if (playerResult.rows.length === 0) {
+        isNewPlayer = true;
         // New player — auto-generate a username from the email local part
         const base = email.split('@')[0]
             .replace(/[^a-zA-Z0-9]/g, '')
@@ -115,14 +118,15 @@ async function verifyOTP(email, code) {
         const suffix = Math.floor(Math.random() * 9000) + 1000;
         const username = `${base}_${suffix}`;
         playerResult = await db.query(
-            'INSERT INTO players (email, username, token_balance) VALUES ($1, $2, 50000) RETURNING *',
-            [email, username]
+            'INSERT INTO players (email, username, avatar, token_balance) VALUES ($1, $2, $3, 50000) RETURNING *',
+            [email, username, DEFAULT_AVATAR]
         );
     }
 
     const player = playerResult.rows[0];
+    if (!player.avatar) player.avatar = DEFAULT_AVATAR;
     const token = generateJWT(player);
-    return { ok: true, player, token };
+    return { ok: true, player, token, isNewPlayer };
 }
 
 module.exports = { sendOTP, verifyOTP, verifyJWT, generateJWT };
