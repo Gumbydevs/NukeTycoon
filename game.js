@@ -459,7 +459,21 @@ function connectSocket() {
 
     // ── Wallet sync ─────────────────────────────────────────────────────
     socket.on('player:wallet_update', ({ token_balance }) => {
+        const prev = game.playerWallet;
         game.playerWallet = token_balance;
+        // Show a floating cost/gain indicator and sync the HUD display value
+        const delta = token_balance - prev;
+        if (delta !== 0) {
+            const walletEl = document.getElementById('wallet');
+            if (walletEl) {
+                showFloatingText(
+                    (delta > 0 ? '+' : '') + delta.toLocaleString(),
+                    delta > 0 ? '#4CAF50' : '#ff6b6b',
+                    walletEl
+                );
+            }
+        }
+        game._walletShown = token_balance;
         syncLocalPlayerEntry();
         updateUI();
     });
