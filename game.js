@@ -2719,7 +2719,12 @@ function productionTick() {
     const now = Date.now();
     const updateConstructionTimers = (buildings, isPlayerOwned) => {
         (buildings || []).forEach((b) => {
-            if (!b.isUnderConstruction) return;
+            // Drive entirely from the wall-clock end timestamp when present.
+            // Also keep isUnderConstruction in sync so the guard never blocks valid buildings.
+            if (b.constructionEndsAtMs && b.constructionEndsAtMs > now) {
+                b.isUnderConstruction = true;
+            }
+            if (!b.isUnderConstruction && !b.constructionEndsAtMs) return;
 
             if (b.constructionEndsAtMs) {
                 b.constructionTimeRemainingMs = Math.max(0, b.constructionEndsAtMs - now);
@@ -2734,7 +2739,7 @@ function productionTick() {
                 b.constructionTimeRemaining = 0;
                 b.constructionTimeRemainingMs = 0;
                 b.isUnderConstruction = false;
-                b.constructionEndsAtMs = null; // clear so renderBuilding shows completed state
+                b.constructionEndsAtMs = null;
                 renderBuilding(b.id, b.type, isPlayerOwned, b);
 
                 if (isPlayerOwned) {
