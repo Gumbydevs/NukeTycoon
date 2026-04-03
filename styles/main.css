@@ -287,21 +287,13 @@ body.authenticated .container {
 
 .buttons {
     position: fixed;
-    top: 73px;
+    top: 92px;
     right: 10px;
     z-index: 200;
     display: flex;
     flex-direction: column;
     gap: 6px;
     align-items: center;
-}
-
-/* Visually nudge the right-side toolbar buttons down without
-   changing the container positioning (preserves dropdown anchors) */
-.buttons > #notifBellBtn,
-.buttons > .actions-menu,
-.buttons > #devToggle {
-    transform: translateY(19px);
 }
 
 /* Actions popup menu (desktop) */
