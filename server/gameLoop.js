@@ -67,6 +67,22 @@ async function loadBuildingRulesFromDB() {
             if (field === 'constructionMs') BUILDING_RULES[type].constructionMs = Math.floor(num);
             if (field === 'maintenanceCost') BUILDING_RULES[type].maintenanceCost = Math.floor(num);
         });
+
+        // Always re-seed maintenanceCost from hardcoded defaults so stale DB values
+        // from earlier deployments never override the current intended values.
+        const seedParams = [];
+        const seedValues = [];
+        let p = 1;
+        for (const [type, rule] of Object.entries(BUILDING_RULES)) {
+            seedParams.push(`($${p++}, $${p++}, NOW())`);
+            seedValues.push(`building.${type}.maintenanceCost`, String(rule.maintenanceCost ?? 0));
+        }
+        await db.query(
+            `INSERT INTO server_config (key, value, updated_at) VALUES ${seedParams.join(', ')}
+             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+            seedValues
+        );
+
         console.log('[config] Building rules loaded from DB:', JSON.stringify(BUILDING_RULES));
     } catch (err) {
         console.warn('[config] Could not load building rules from DB (table may not exist yet):', err.message);
@@ -610,6 +626,11 @@ async function processRunEconomy(io, run) {
             dailyIncome += income;
             totalIncome += netIncome;
             const score = (plants.length * 100) + (activeMines.length * 50) + Math.floor(nextBalance / 1000);
+            // Economy diagnostic (logs every 30 ticks to avoid spam)
+            if (!processRunEconomy._logTick) processRunEconomy._logTick = 0;
+            if (++processRunEconomy._logTick % 30 === 0) {
+                console.log(`[economy] ${player.username} | buildings:${completedBuildings.length} income:${income} maintenance:${totalMaintenance} net:${netIncome} balance:${nextBalance}`);
+            }
 
             await client.query(
                 'UPDATE players SET token_balance = $1 WHERE id = $2',
