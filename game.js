@@ -932,6 +932,11 @@ function applyAuthoritativeServerState({ run, playerState, falloutZones, nuclear
 
     if (Number.isFinite(Number(wallet))) {
         game.playerWallet = Number(wallet);
+        // Keep _walletShown in sync with authoritative balance so the portfolio
+        // calculation and the HUD wallet display use the same number.
+        // We don't show a floating text here — floats are only for explicit
+        // spend/earn events (building placement, wallet_update events).
+        game._walletShown = game.playerWallet;
     }
 
     if (run) {
