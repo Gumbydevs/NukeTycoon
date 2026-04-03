@@ -708,7 +708,10 @@ function applyServerBuildingTiming(buildingRef, serverRow) {
         remainingMs = Math.max(0, totalMs - (now - placedAtMs));
     }
 
-    buildingRef.constructionEndsAtMs = Number.isFinite(endsAtMs) ? endsAtMs : null;
+    // If the building's construction already finished (endsAt in the past), null
+    // out the timestamp so the rAF loop doesn't fire a spurious completion.
+    const alreadyComplete = Number.isFinite(endsAtMs) && endsAtMs <= now;
+    buildingRef.constructionEndsAtMs = (Number.isFinite(endsAtMs) && !alreadyComplete) ? endsAtMs : null;
     buildingRef.constructionTotalMs = totalMs;
     // Determine placedAt if available (server may provide placed_at) otherwise derive from endsAt
     if (Number.isFinite(placedAtMs)) {
@@ -723,6 +726,9 @@ function applyServerBuildingTiming(buildingRef, serverRow) {
         buildingRef.constructionTimeRemaining = remainingMs / 10000;
         buildingRef.constructionTimeRemainingMs = remainingMs;
         buildingRef.isUnderConstruction = remainingMs > 0;
+    }
+    if (alreadyComplete) {
+        buildingRef._completionNotified = true; // suppress rAF completion notification
     }
 
     return buildingRef;
@@ -2840,17 +2846,100 @@ function startSimLoops() {
     // ── Tear down any lingering intervals first ──────────────────────────
     if (game._productionInterval) { clearInterval(game._productionInterval); game._productionInterval = null; }
     if (game._clockInterval)      { clearInterval(game._clockInterval);      game._clockInterval = null; }
-    if (game._constructionUIInterval) { clearInterval(game._constructionUIInterval); game._constructionUIInterval = null; }
 
-    // production tick — drives construction timers + resource production (1 Hz)
+    // production tick — drives resource production (1 Hz)
     game._productionInterval = setInterval(productionTick, 1000);
 
     // clock tick — advances simulated minutes based on minutesPerSecond (2 Hz)
     game._lastClockTS = Date.now();
     game._clockInterval = setInterval(clockTick, 500);
 
+    // construction animation — independent rAF loop, cannot be blocked
+    if (!game._constructionRAFRunning) {
+        game._constructionRAFRunning = true;
+        requestAnimationFrame(constructionAnimLoop);
+    }
+
     // bot AI loop — bots build and sabotage dynamically
     startBotAI();
+}
+
+/**
+ * Construction animation loop — runs via requestAnimationFrame (~60 fps).
+ *
+ * Uses ONE field as the source of truth: building.constructionEndsAtMs.
+ * If that timestamp is set and in the future → building is under construction.
+ * If that timestamp is in the past or null → building is complete.
+ *
+ * This is completely independent of productionTick so construction can never
+ * get stuck even if other game loops are blocked.
+ */
+function constructionAnimLoop() {
+    // If game was torn down (returnToMenu), stop looping
+    if (!game._constructionRAFRunning) return;
+
+    // One-time confirmation that the rAF loop is alive
+    if (!game._constructionRAFLogOnce) {
+        game._constructionRAFLogOnce = true;
+        console.log('[constructionAnimLoop] rAF construction loop started');
+    }
+
+    const now = Date.now();
+
+    const processList = (buildings, isPlayerOwned) => {
+        if (!buildings) return;
+        for (let i = 0; i < buildings.length; i++) {
+            const b = buildings[i];
+            if (!b || !b.constructionEndsAtMs) continue;
+
+            const cell = document.querySelector('[data-id="' + b.id + '"]');
+            if (!cell) continue;
+
+            if (b.constructionEndsAtMs <= now) {
+                // ── Construction finished ─────────────────────────────────────
+                console.log('[constructionAnimLoop] COMPLETE', b.type, 'cell', b.id);
+                b.isUnderConstruction = false;
+                b.constructionTimeRemaining = 0;
+                b.constructionTimeRemainingMs = 0;
+                const endsAtBackup = b.constructionEndsAtMs;
+                b.constructionEndsAtMs = null;
+                renderBuilding(b.id, b.type, isPlayerOwned, b);
+
+                if (isPlayerOwned && !b._completionNotified) {
+                    b._completionNotified = true;
+                    cell.classList.add('build-complete');
+                    setTimeout(() => cell.classList.remove('build-complete'), 900);
+                    addNotification('success', `✅ ${displayNames[b.type] || b.type} construction complete!`);
+                }
+                continue;
+            }
+
+            // ── Still building → update SVG progress ring directly ────────
+            b.isUnderConstruction = true;
+            const totalMs = b.constructionTotalMs || (Number(buildingTypes[b.type]?.constructionTime) || 0) * 10000;
+            if (totalMs <= 0) continue;
+
+            const elapsed = now - (b.constructionEndsAtMs - totalMs);
+            const progress = Math.max(0.02, Math.min(1, elapsed / totalMs));
+            const circumference = 2 * Math.PI * 45;
+            const targetOffset = circumference * (1 - progress);
+
+            // Fast path: update existing SVG circle attribute (no innerHTML thrash)
+            const ring = cell.querySelector('svg circle:nth-of-type(2)');
+            if (ring) {
+                ring.setAttribute('stroke-dashoffset', targetOffset);
+            } else {
+                // SVG doesn't exist yet → full render (first frame after placement)
+                console.log('[constructionAnimLoop] first-frame render', b.type, 'cell', b.id, 'progress', (progress * 100).toFixed(1) + '%');
+                renderBuilding(b.id, b.type, isPlayerOwned, b);
+            }
+        }
+    };
+
+    processList(game.buildings, true);
+    processList(game.enemyBuildings, false);
+
+    requestAnimationFrame(constructionAnimLoop);
 }
 
 /**
@@ -2881,55 +2970,11 @@ function updateFalloutVisualization() {
 
 /**
  * Production tick: called every real-second to produce continuous feel.
+ * NOTE: Construction animation + completion is handled entirely by
+ * constructionAnimLoop (requestAnimationFrame). This function only
+ * handles resource production and market ticks.
  */
 function productionTick() {
-    // ── Handle construction timers ────────────────────────────────────────────
-    const now = Date.now();
-    const updateConstructionTimers = (buildings, isPlayerOwned) => {
-        (buildings || []).forEach((b) => {
-          try {
-            // Drive entirely from the wall-clock end timestamp when present.
-            // Also keep isUnderConstruction in sync so the guard never blocks valid buildings.
-            if (b.constructionEndsAtMs && b.constructionEndsAtMs > now) {
-                b.isUnderConstruction = true;
-            }
-            if (!b.isUnderConstruction && !b.constructionEndsAtMs) return;
-
-            if (b.constructionEndsAtMs) {
-                b.constructionTimeRemainingMs = Math.max(0, b.constructionEndsAtMs - now);
-                b.constructionTimeRemaining = b.constructionTimeRemainingMs / 10000;
-            } else if (b.constructionTimeRemaining > 0) {
-                b.constructionTimeRemaining = Math.max(0, b.constructionTimeRemaining - 0.1);
-                b.constructionTimeRemainingMs = b.constructionTimeRemaining * 10000;
-            }
-
-            const done = b.constructionTimeRemaining <= 0 || (b.constructionEndsAtMs && b.constructionEndsAtMs <= now);
-            if (done) {
-                b.constructionTimeRemaining = 0;
-                b.constructionTimeRemainingMs = 0;
-                b.isUnderConstruction = false;
-                b.constructionEndsAtMs = null;
-                renderBuilding(b.id, b.type, isPlayerOwned, b);
-
-                if (isPlayerOwned) {
-                    const _c = document.querySelector('[data-id="' + b.id + '"]');
-                    if (_c) {
-                        _c.classList.add('build-complete');
-                        setTimeout(() => _c.classList.remove('build-complete'), 900);
-                    }
-                    addNotification('success', `✅ ${displayNames[b.type] || b.type} construction complete!`);
-                }
-            } else {
-                renderBuilding(b.id, b.type, isPlayerOwned, b);
-            }
-          } catch (err) {
-            console.warn('updateConstructionTimers error for building', b?.id, err);
-          }
-        });
-    };
-
-    updateConstructionTimers(game.buildings, true);
-    updateConstructionTimers(game.enemyBuildings, false);
 
     if (game._serverAuthoritative) {
         updateUI();
@@ -3434,7 +3479,7 @@ function returnToMenu() {
     if (game._productionInterval) { clearInterval(game._productionInterval); game._productionInterval = null; }
     if (game._clockInterval)      { clearInterval(game._clockInterval);      game._clockInterval = null; }
     if (game._botInterval)        { clearInterval(game._botInterval);        game._botInterval = null; }
-    if (game._constructionUIInterval) { clearInterval(game._constructionUIInterval); game._constructionUIInterval = null; }
+    game._constructionRAFRunning = false; // stops the rAF construction loop
     
     // Reset game state
     game.runEnded = false;
