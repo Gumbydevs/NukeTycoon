@@ -1167,10 +1167,18 @@ function renderLiveSidebar() {
         el.innerHTML = players.map((p, idx) => {
             const avatar = escapeHtml(p.avatar || DEFAULT_PLAYER_AVATAR);
             const name = escapeHtml(p.name || 'Unknown');
-            const score = formatNumber(Math.floor(p.score || 0));
-            const wallet = formatNumber(p.wallet || 0);
+            // For the local player use live values that match the HUD:
+            //   score  — always recalculate (same formula as top-bar Rank)
+            //   wallet — use _walletShown so it matches the top-bar Wallet display
+            //   buildings — use the live game.buildings array, not the stale server count
+            const score = p.isLocal
+                ? formatNumber(Math.floor(calculateLeaderboardScore(p)))
+                : formatNumber(Math.floor(p.score || 0));
+            const wallet = p.isLocal
+                ? formatNumber(game._walletShown !== undefined ? Math.floor(game._walletShown) : game.playerWallet)
+                : formatNumber(p.wallet || 0);
             const highlight = p.isLocal ? 'background:linear-gradient(90deg, rgba(255,184,77,0.04), transparent); border-color: rgba(255,184,77,0.06);' : '';
-            const buildings = p.total_buildings || 0;
+            const buildings = p.isLocal ? (game.buildings ? game.buildings.length : 0) : (p.total_buildings || 0);
             const timeLabel = (() => {
                 try {
                     if (!p.joinedAt) return '-';
@@ -1188,7 +1196,7 @@ function renderLiveSidebar() {
             return `<div class="leaderboard-item" style="${highlight}">
                         <div class="left"><div style="width:28px;text-align:center;font-weight:700;color:#ffb84d;">${idx+1}</div><div class="avatar">${avatar}</div><div class="name">${name}</div></div>
                         <div style="display:flex;flex-direction:column;align-items:flex-end;min-width:96px;">
-                            <div class="score">${score}</div>
+                            <div class="score">${score} <span style="font-size:10px;color:#888;font-weight:400;">pts</span></div>
                             <div style="font-size:11px;color:#888;margin-top:4px;">${buildings} b · ${timeLabel}</div>
                             <div style="font-size:11px;color:#888;margin-top:2px;">${wallet} tok</div>
                         </div>
@@ -2547,6 +2555,9 @@ function updateUI() {
             mobileStats.style.display = 'none';
         }
     }
+
+    // Keep leaderboard sidebar in sync with HUD on every UI update (throttled inside)
+    renderLiveSidebar();
 }
 
 /**
