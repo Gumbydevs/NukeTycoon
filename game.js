@@ -681,11 +681,11 @@ const PLAYER_COLOR = '#ffb84d';
 const ENEMY_COLOR = '#888888';
 
 const buildingTypes = {
-    mine:      { cost: 800,  emoji: '⛏️',  color: '#4CAF50', power: 0, constructionTime: 1,   maintenanceCost: 10 },
-    processor: { cost: 1200, emoji: '🏭',  color: '#d98a3a', power: 0, constructionTime: 1.5, maintenanceCost: 15 },
-    storage:   { cost: 1000, emoji: '🗄️',  color: '#b08b4f', power: 0, constructionTime: 2,   maintenanceCost: 5 },
-    plant:     { cost: 1000, emoji: '☢️',  color: '#ffb84d', power: 100, constructionTime: 2.2, maintenanceCost: 25 },
-    silo:      { cost: 6000, emoji: '💥',  color: '#ff0000', power: 0, constructionTime: 3.5, isWeapon: true, maintenanceCost: 50 }
+    mine:      { cost: 800,  emoji: '⛏️',  color: '#4CAF50', power: 0,   constructionTime: 1,   maintenanceCost: 1 },
+    processor: { cost: 1200, emoji: '🏭',  color: '#d98a3a', power: 0,   constructionTime: 1.5, maintenanceCost: 2 },
+    storage:   { cost: 1000, emoji: '🗄️',  color: '#b08b4f', power: 0,   constructionTime: 2,   maintenanceCost: 1 },
+    plant:     { cost: 1000, emoji: '☢️',  color: '#ffb84d', power: 100, constructionTime: 2.2, maintenanceCost: 3 },
+    silo:      { cost: 6000, emoji: '💥',  color: '#ff0000', power: 0,   constructionTime: 3.5, isWeapon: true, maintenanceCost: 5 }
 };
 
 // Display names used in UI (keep keys stable in logic)
@@ -4561,15 +4561,17 @@ function setPortfolioDisplay(target) {
     if (game._portfolioDisplayed === undefined) game._portfolioDisplayed = target;
     const prev = game._portfolioDisplayed;
     game._portfolioTarget = target;
-    // Color pulse on direction change
-    if (Math.abs(target - prev) > 1) {
+    // Color pulse only on meaningful direction change (>0.5% swing) to avoid
+    // maintenance-tick noise keeping the number permanently red.
+    const threshold = Math.max(50, Math.abs(prev) * 0.005);
+    if (Math.abs(target - prev) > threshold) {
         const up = target > prev;
         el.style.transition = 'color 0.3s';
         el.style.color = up ? '#4CAF50' : '#ff6b6b';
         clearTimeout(game._portfolioColorReset);
         game._portfolioColorReset = setTimeout(() => {
             el.style.color = '';
-        }, 800);
+        }, 1200);
     }
     if (game._portfolioAnimFrame) return;
     const startVal  = game._portfolioDisplayed;
