@@ -238,6 +238,7 @@ function connectSocket() {
         if (isMyBuilding) {
             // Server confirmed our placement — render it locally now
             if (!game.buildings.find(b => b.id === building.cell_id)) {
+                console.log('[building:placed] raw server row keys:', Object.keys(building), 'construction_ends_at:', building.construction_ends_at, 'placed_at:', building.placed_at);
                 const bObj = applyServerBuildingTiming({
                     id: building.cell_id,
                     type: building.type,
@@ -247,6 +248,7 @@ function connectSocket() {
                     constructionTimeRemaining: buildingTypes[building.type]?.constructionTime || 0,
                     isUnderConstruction: (buildingTypes[building.type]?.constructionTime || 0) > 0
                 }, building);
+                console.log('[building:placed] after timing:', { id: bObj.id, type: bObj.type, endsAtMs: bObj.constructionEndsAtMs, totalMs: bObj.constructionTotalMs, isUC: bObj.isUnderConstruction });
                 game.buildings.push(bObj);
                 renderBuilding(building.cell_id, building.type, true, bObj);
                 calculateProximity();
@@ -712,6 +714,7 @@ function applyServerBuildingTiming(buildingRef, serverRow) {
     // out the timestamp so the rAF loop doesn't fire a spurious completion.
     const alreadyComplete = Number.isFinite(endsAtMs) && endsAtMs <= now;
     buildingRef.constructionEndsAtMs = (Number.isFinite(endsAtMs) && !alreadyComplete) ? endsAtMs : null;
+    console.log('[applyServerBuildingTiming]', buildingRef.type, '| raw construction_ends_at:', serverRow?.construction_ends_at, '| parsed endsAtMs:', endsAtMs, '| alreadyComplete:', alreadyComplete, '| final constructionEndsAtMs:', buildingRef.constructionEndsAtMs);
     buildingRef.constructionTotalMs = totalMs;
     // Determine placedAt if available (server may provide placed_at) otherwise derive from endsAt
     if (Number.isFinite(placedAtMs)) {
@@ -2881,27 +2884,60 @@ function constructionAnimLoop() {
     // One-time confirmation that the rAF loop is alive
     if (!game._constructionRAFLogOnce) {
         game._constructionRAFLogOnce = true;
-        console.log('[constructionAnimLoop] rAF construction loop started');
+        console.log('[constructionRAF] loop started');
     }
 
     const now = Date.now();
+
+    // Throttled diagnostic — fires every 2 seconds
+    if (!game._constructionRAFLastDiag || now - game._constructionRAFLastDiag > 2000) {
+        game._constructionRAFLastDiag = now;
+        const diag = [];
+        (game.buildings || []).forEach(b => {
+            if (b && (b.isUnderConstruction || b.constructionEndsAtMs)) {
+                diag.push({ id: b.id, type: b.type, endsAtMs: b.constructionEndsAtMs, isUC: b.isUnderConstruction, totalMs: b.constructionTotalMs });
+            }
+        });
+        (game.enemyBuildings || []).forEach(b => {
+            if (b && (b.isUnderConstruction || b.constructionEndsAtMs)) {
+                diag.push({ id: b.id, type: b.type, endsAtMs: b.constructionEndsAtMs, isUC: b.isUnderConstruction, totalMs: b.constructionTotalMs, enemy: true });
+            }
+        });
+        if (diag.length) console.log('[constructionRAF] active:', JSON.stringify(diag));
+    }
 
     const processList = (buildings, isPlayerOwned) => {
         if (!buildings) return;
         for (let i = 0; i < buildings.length; i++) {
             const b = buildings[i];
-            if (!b || !b.constructionEndsAtMs) continue;
+            if (!b) continue;
+
+            // ── Ensure constructionEndsAtMs is set for any under-construction building ──
+            if (!b.constructionEndsAtMs && b.isUnderConstruction) {
+                // Fallback: derive from constructionTotalMs or buildingTypes
+                const fb = b.constructionTotalMs || (Number(buildingTypes[b.type]?.constructionTime) || 0) * 10000;
+                if (fb > 0) {
+                    const remaining = b.constructionTimeRemainingMs || fb;
+                    b.constructionEndsAtMs = now + remaining;
+                    b.constructionTotalMs = fb;
+                    console.warn('[constructionRAF] FALLBACK: derived endsAtMs for', b.type, 'cell', b.id, '→ endsAt', b.constructionEndsAtMs, 'totalMs', fb);
+                }
+            }
+
+            if (!b.constructionEndsAtMs) continue;
 
             const cell = document.querySelector('[data-id="' + b.id + '"]');
-            if (!cell) continue;
+            if (!cell) {
+                console.warn('[constructionRAF] cell not in DOM for', b.type, 'id', b.id);
+                continue;
+            }
 
             if (b.constructionEndsAtMs <= now) {
                 // ── Construction finished ─────────────────────────────────────
-                console.log('[constructionAnimLoop] COMPLETE', b.type, 'cell', b.id);
+                console.log('[constructionRAF] COMPLETE', b.type, 'cell', b.id);
                 b.isUnderConstruction = false;
                 b.constructionTimeRemaining = 0;
                 b.constructionTimeRemainingMs = 0;
-                const endsAtBackup = b.constructionEndsAtMs;
                 b.constructionEndsAtMs = null;
                 renderBuilding(b.id, b.type, isPlayerOwned, b);
 
@@ -2930,7 +2966,7 @@ function constructionAnimLoop() {
                 ring.setAttribute('stroke-dashoffset', targetOffset);
             } else {
                 // SVG doesn't exist yet → full render (first frame after placement)
-                console.log('[constructionAnimLoop] first-frame render', b.type, 'cell', b.id, 'progress', (progress * 100).toFixed(1) + '%');
+                console.log('[constructionRAF] first-frame', b.type, 'cell', b.id, Math.round(progress * 100) + '%');
                 renderBuilding(b.id, b.type, isPlayerOwned, b);
             }
         }
