@@ -2743,6 +2743,8 @@ function showLobby() {
     }
 
     modal.style.display = 'flex';
+    // Ensure any hover tooltip from the underlying grid is hidden
+    try { hideTooltip(); } catch (e) { /* no-op if function missing */ }
 }
 
 /**

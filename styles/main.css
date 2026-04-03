@@ -287,7 +287,7 @@ body.authenticated .container {
 
 .buttons {
     position: fixed;
-    top: 73px;
+    top: 92px;
     right: 10px;
     z-index: 200;
     display: flex;
