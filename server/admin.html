@@ -156,6 +156,7 @@
             <th>Type</th>
             <th>Cost (tokens)</th>
             <th>Build time (ms)</th>
+            <th>Op cost (tokens/tick)</th>
             <th></th>
           </tr>
         </thead>
@@ -549,6 +550,7 @@
           <td><strong>${type}</strong></td>
           <td><input type="number" id="cfg_cost_${type}" value="${r.cost}" min="0" style="width:110px;padding:4px 6px;font-size:13px;" /></td>
           <td><input type="number" id="cfg_ms_${type}" value="${r.constructionMs}" min="0" style="width:120px;padding:4px 6px;font-size:13px;" /></td>
+          <td><input type="number" id="cfg_mc_${type}" value="${r.maintenanceCost ?? 0}" min="0" style="width:110px;padding:4px 6px;font-size:13px;" /></td>
           <td><button class="primary" onclick="saveBuildingRow('${type}')" style="padding:5px 12px;font-size:12px;">Save</button></td>
         </tr>
       `).join('');
@@ -560,11 +562,13 @@
       if (!costEl || !msEl) return;
       const cost = Number(costEl.value);
       const constructionMs = Number(msEl.value);
+      const mcEl = $('cfg_mc_' + type);
+      const maintenanceCost = mcEl ? Number(mcEl.value) : undefined;
       $('buildingConfigMsg').textContent = 'Saving…';
       try {
         const data = await api('/admin/api/set-building-config', {
           method: 'POST',
-          body: JSON.stringify({ type, cost, constructionMs })
+          body: JSON.stringify({ type, cost, constructionMs, maintenanceCost })
         });
         renderBuildingConfig(data.buildingRules);
         $('buildingConfigMsg').textContent = `✅ ${type} updated and broadcast to clients.`;

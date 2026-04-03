@@ -356,11 +356,11 @@ app.get('/admin/api/building-config', requireAdmin, (_req, res) => {
 // Update a building type's cost and/or constructionMs; save to DB and broadcast to all clients
 app.post('/admin/api/set-building-config', requireAdmin, async (req, res) => {
     try {
-        const { type, cost, constructionMs } = req.body;
+        const { type, cost, constructionMs, maintenanceCost } = req.body;
         if (!type || !BUILDING_RULES[type]) {
             res.status(400).json({ error: `Unknown building type '${type}'. Valid: ${Object.keys(BUILDING_RULES).join(', ')}` }); return;
         }
-        setBuildingRules(type, cost, constructionMs);
+        setBuildingRules(type, cost, constructionMs, maintenanceCost);
         await saveBuildingRulesToDB(type);
         io.emit('run:building_config', { buildingRules: BUILDING_RULES });
         res.json({ ok: true, buildingRules: BUILDING_RULES });

@@ -37,17 +37,18 @@ const MARKET_PER_SECOND_VOL = MARKET_VOLATILITY / 60;
 const MARKET_BASE_DEMAND = 1000;
 const MARKET_DRIFT_FACTOR = 0.0002;
 const BUILDING_RULES = {
-    mine: { cost: 800, constructionMs: 10000 },
-    processor: { cost: 1200, constructionMs: 15000 },
-    storage: { cost: 1000, constructionMs: 20000, storageBonus: 1000 },
-    plant: { cost: 1000, constructionMs: 22000, basePower: 100 },
-    silo: { cost: 6000, constructionMs: 35000, isWeapon: true },
+    mine:      { cost: 800,  constructionMs: 10000, maintenanceCost: 10 },
+    processor: { cost: 1200, constructionMs: 15000, maintenanceCost: 15 },
+    storage:   { cost: 1000, constructionMs: 20000, maintenanceCost: 5,  storageBonus: 1000 },
+    plant:     { cost: 1000, constructionMs: 22000, maintenanceCost: 25, basePower: 100 },
+    silo:      { cost: 6000, constructionMs: 35000, maintenanceCost: 50, isWeapon: true },
 };
 
-function setBuildingRules(type, cost, constructionMs) {
+function setBuildingRules(type, cost, constructionMs, maintenanceCost) {
     if (!BUILDING_RULES[type]) return false;
     if (Number.isFinite(Number(cost)) && Number(cost) >= 0) BUILDING_RULES[type].cost = Math.floor(Number(cost));
     if (Number.isFinite(Number(constructionMs)) && Number(constructionMs) >= 0) BUILDING_RULES[type].constructionMs = Math.floor(Number(constructionMs));
+    if (Number.isFinite(Number(maintenanceCost)) && Number(maintenanceCost) >= 0) BUILDING_RULES[type].maintenanceCost = Math.floor(Number(maintenanceCost));
     return true;
 }
 
@@ -64,6 +65,7 @@ async function loadBuildingRulesFromDB() {
             if (!Number.isFinite(num)) return;
             if (field === 'cost') BUILDING_RULES[type].cost = Math.floor(num);
             if (field === 'constructionMs') BUILDING_RULES[type].constructionMs = Math.floor(num);
+            if (field === 'maintenanceCost') BUILDING_RULES[type].maintenanceCost = Math.floor(num);
         });
         console.log('[config] Building rules loaded from DB:', JSON.stringify(BUILDING_RULES));
     } catch (err) {
@@ -75,11 +77,13 @@ async function saveBuildingRulesToDB(type) {
     const r = BUILDING_RULES[type];
     if (!r) return;
     await db.query(
-        `INSERT INTO server_config (key, value, updated_at) VALUES ($1, $2, NOW()), ($3, $4, NOW())
+        `INSERT INTO server_config (key, value, updated_at)
+         VALUES ($1, $2, NOW()), ($3, $4, NOW()), ($5, $6, NOW())
          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
         [
-            `building.${type}.cost`, String(r.cost),
-            `building.${type}.constructionMs`, String(r.constructionMs),
+            `building.${type}.cost`,            String(r.cost),
+            `building.${type}.constructionMs`,  String(r.constructionMs),
+            `building.${type}.maintenanceCost`, String(r.maintenanceCost ?? 0),
         ]
     );
 }
@@ -599,9 +603,12 @@ async function processRunEconomy(io, run) {
                 income = Math.floor(totalPower * powerFraction * 0.3); // was * 2
             }
 
-            const nextBalance = (parseInt(player.token_balance, 10) || 0) + income;
+            // Deduct maintenance cost for every completed building
+            const totalMaintenance = completedBuildings.reduce((sum, b) => sum + (BUILDING_RULES[b.type]?.maintenanceCost || 0), 0);
+            const netIncome = income - totalMaintenance;
+            const nextBalance = Math.max(0, (parseInt(player.token_balance, 10) || 0) + netIncome);
             dailyIncome += income;
-            totalIncome += income;
+            totalIncome += netIncome;
             const score = (plants.length * 100) + (activeMines.length * 50) + Math.floor(nextBalance / 1000);
 
             await client.query(

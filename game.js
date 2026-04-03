@@ -427,6 +427,9 @@ function connectSocket() {
             if (Number.isFinite(Number(rules.constructionMs))) {
                 buildingTypes[type].constructionTime = Number(rules.constructionMs) / 10000;
             }
+            if (Number.isFinite(Number(rules.maintenanceCost))) {
+                buildingTypes[type].maintenanceCost = Number(rules.maintenanceCost);
+            }
         });
         updateUI();
     });
@@ -678,11 +681,11 @@ const PLAYER_COLOR = '#ffb84d';
 const ENEMY_COLOR = '#888888';
 
 const buildingTypes = {
-    mine: { cost: 800, emoji: '⛏️', color: '#4CAF50', power: 0, constructionTime: 1 },
-    processor: { cost: 1200, emoji: '🏭', color: '#d98a3a', power: 0, constructionTime: 1.5 },
-    storage: { cost: 1000, emoji: '🗄️', color: '#b08b4f', power: 0, constructionTime: 2 },
-    plant: { cost: 1000, emoji: '☢️', color: '#ffb84d', power: 100, constructionTime: 2.2 },
-    silo: { cost: 6000, emoji: '💥', color: '#ff0000', power: 0, constructionTime: 3.5, isWeapon: true }
+    mine:      { cost: 800,  emoji: '⛏️',  color: '#4CAF50', power: 0, constructionTime: 1,   maintenanceCost: 10 },
+    processor: { cost: 1200, emoji: '🏭',  color: '#d98a3a', power: 0, constructionTime: 1.5, maintenanceCost: 15 },
+    storage:   { cost: 1000, emoji: '🗄️',  color: '#b08b4f', power: 0, constructionTime: 2,   maintenanceCost: 5 },
+    plant:     { cost: 1000, emoji: '☢️',  color: '#ffb84d', power: 100, constructionTime: 2.2, maintenanceCost: 25 },
+    silo:      { cost: 6000, emoji: '💥',  color: '#ff0000', power: 0, constructionTime: 3.5, isWeapon: true, maintenanceCost: 50 }
 };
 
 // Display names used in UI (keep keys stable in logic)
@@ -3942,7 +3945,10 @@ function onCellHover(id, e) {
         }
         const label = displayNames[type] || type;
         const icon = (buildingTypes[type] && buildingTypes[type].emoji) ? buildingTypes[type].emoji + ' ' : '';
+        const mc = buildingTypes[type]?.maintenanceCost || 0;
         content = `<div style="font-weight:700;">${icon}Place: ${label}</div>` +
+            `<div>💰 Cost: ${(buildingTypes[type]?.cost || 0).toLocaleString()} tokens</div>` +
+            `<div style="color:#ff9944;">⚙️ Operating: ${mc.toLocaleString()} tokens/tick</div>` +
             `<div>📐 Same-type neighbors: ${same} (${same>0? '+'+ (same*25) +'% efficiency': 'no bonus'})</div>` +
             `<div>⚠️ Nearby enemies: ${pen}</div>`;
         
@@ -3976,7 +3982,9 @@ function onCellHover(id, e) {
         const label = displayNames[type] || type;
         const icon = (buildingTypes[type] && buildingTypes[type].emoji) ? buildingTypes[type].emoji + ' ' : '';
         const ownerLabel = `<span style="display:inline-flex;align-items:center;gap:6px;color:#4CAF50;">${avatarBadge(game.playerAvatar)} ${escapeHtml(game.playerName || 'You')} <span style="font-size:10px;color:#aaa;">(You)</span></span>`;
+        const mcOwned = buildingTypes[type]?.maintenanceCost || 0;
         content = `<div style="font-weight:700;">${icon}${label} — ${ownerLabel}</div>` +
+            `<div style="color:#ff9944;">⚙️ Operating: ${mcOwned.toLocaleString()} tokens/tick</div>` +
             `<div>📐 Same-type neighbors: ${same} (${same>0? '+'+ (same*25) +'%': 'none'})</div>` +
             `<div>⚠️ Nearby enemies: ${pen}</div>`;
         
