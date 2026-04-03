@@ -435,7 +435,7 @@ const game = {
     selectedCell: null,
     proximityRange: 2,
     round: 1,
-    runLength: 8,                 // configurable: 8 days for standard run, adjust for events or shorter runs
+    runLength: 3,                 // configurable: 3 days for standard run, adjust for events or shorter runs
     // Token economy
     totalTokenSupply: 1000000000, // 1 billion — the hard cap; tokens are MINTED from this reserve
     tokensIssued: 0,              // total ever drawn from the 1B reserve (wallets + income rewards)
@@ -455,7 +455,7 @@ const game = {
 
     // ── Buy-in / run entry ───────────────────────────────────────────────────
     // Every player (human or bot) pays this once to enter a run.
-    // A run = runLength rounds (default 8), each lasting one real 24-hour day.
+    // A run = runLength rounds (default 3), each lasting one real 24-hour day.
     // Their buy-in seeds the prize pool and the bonding curve pool directly.
     buyIn: 5000, // tunable — cost per player per run (in tokens)
     
@@ -1301,7 +1301,7 @@ function initMenu() {
 const HELP_CONTENT = [
     { id: 'overview', title: 'Overview', html: `
         <h3>Overview</h3>
-        <p>NUKWAR is a strategy game where players build and manage facilities on a shared map. Place mines to extract raw ore. Use processors to refine raw ore into refined material. Build reactors to convert refined material into power and income. Store material in storage to avoid losing it when production spikes.</p>
+        <p>NUKEWAR is a strategy game where players build and manage facilities on a shared map. Place mines to extract raw ore. Use processors to refine raw ore into refined material. Build reactors to convert refined material into power and income. Store material in storage to avoid losing it when production spikes.</p>
         <p>Each run consists of several rounds. Players pay an entry fee to join a run. Tokens fund the prize pool. Manage your resources and expand your infrastructure to earn the top score.</p>
     `},
     { id: 'buildings', title: 'Buildings', html: `
