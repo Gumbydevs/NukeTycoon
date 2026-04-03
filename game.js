@@ -141,6 +141,8 @@ function connectSocket() {
                     type: b.type,
                     owner: b.owner_name,
                     ownerId: b.player_id,
+                    constructionTimeRemaining: buildingTypes[b.type]?.constructionTime || 0,
+                    isUnderConstruction: !!(b.construction_ends_at || b.placed_at),
                 }, b);
                 game.enemyBuildings.push(bObj);
                 renderBuilding(b.cell_id, b.type, false, bObj);
@@ -262,6 +264,8 @@ function connectSocket() {
                 type: building.type,
                 owner: ownerName,
                 ownerId: building.player_id || placedBy,
+                constructionTimeRemaining: buildingTypes[building.type]?.constructionTime || 0,
+                isUnderConstruction: true,
             }, building);
             game.enemyBuildings.push(bObj);
             renderBuilding(building.cell_id, building.type, false, bObj);
@@ -691,20 +695,25 @@ function resolveOwner(ownerRef) {
 function applyServerBuildingTiming(buildingRef, serverRow) {
     if (!buildingRef) return buildingRef;
 
+    const totalUnits = Number(buildingTypes[buildingRef.type]?.constructionTime || 0);
+    const totalMs = Math.max(0, totalUnits * 10000);
+    const now = Date.now();
     const endsAtMs = serverRow?.construction_ends_at ? new Date(serverRow.construction_ends_at).getTime() : null;
     const placedAtMs = serverRow?.placed_at ? new Date(serverRow.placed_at).getTime() : null;
-    const fallbackTotalMs = (buildingTypes[buildingRef.type]?.constructionTime || 1) * 10000;
 
-    buildingRef.constructionEndsAtMs = endsAtMs;
-    if (endsAtMs) {
-        const totalMs = Math.max(1000, (placedAtMs && endsAtMs > placedAtMs) ? (endsAtMs - placedAtMs) : fallbackTotalMs);
-        const remainingMs = Math.max(0, endsAtMs - Date.now());
-        buildingRef.constructionStartedAtMs = placedAtMs || (endsAtMs - totalMs);
-        buildingRef.constructionTotalMs = totalMs;
-        buildingRef.constructionTimeRemainingMs = remainingMs;
+    let remainingMs = null;
+    if (Number.isFinite(endsAtMs)) {
+        remainingMs = Math.max(0, endsAtMs - now);
+    } else if (Number.isFinite(placedAtMs) && totalMs > 0) {
+        remainingMs = Math.max(0, totalMs - (now - placedAtMs));
+    }
+
+    buildingRef.constructionEndsAtMs = Number.isFinite(endsAtMs) ? endsAtMs : null;
+    if (remainingMs !== null) {
         buildingRef.constructionTimeRemaining = remainingMs / 10000;
         buildingRef.isUnderConstruction = remainingMs > 0;
     }
+
     return buildingRef;
 }
 
@@ -1836,14 +1845,8 @@ function renderBuilding(id, type, isPlayer, building) {
     const isUnderConstruction = !!(building && (building.isUnderConstruction || (building.constructionEndsAtMs && building.constructionEndsAtMs > Date.now())));
     
     if (isUnderConstruction && building) {
-        // Render progress circle
-        const fallbackTotal = (buildingTypes[type]?.constructionTime || 1) * 10000;
-        const totalMs = Number(building.constructionTotalMs || fallbackTotal);
-        const remainingMs = Number(
-            building.constructionTimeRemainingMs ??
-            ((building.constructionEndsAtMs ? Math.max(0, building.constructionEndsAtMs - Date.now()) : 0))
-        );
-        const progress = Math.max(0, Math.min(1, 1 - (remainingMs / Math.max(1, totalMs))));
+        // Render progress circle using the original construction effect.
+        const progress = 1 - (building.constructionTimeRemaining / buildingTypes[type].constructionTime);
         const circumference = 2 * Math.PI * 45; // 45 = radius
         const strokeDashoffset = circumference * (1 - progress);
         
