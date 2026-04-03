@@ -2950,25 +2950,12 @@ function constructionAnimLoop() {
                 continue;
             }
 
-            // ── Still building → update SVG progress ring directly ────────
+            // ── Still building → re-render at throttled rate (10 fps) ────────
             b.isUnderConstruction = true;
-            const totalMs = b.constructionTotalMs || (Number(buildingTypes[b.type]?.constructionTime) || 0) * 10000;
-            if (totalMs <= 0) continue;
-
-            const elapsed = now - (b.constructionEndsAtMs - totalMs);
-            const progress = Math.max(0.02, Math.min(1, elapsed / totalMs));
-            const circumference = 2 * Math.PI * 45;
-            const targetOffset = circumference * (1 - progress);
-
-            // Fast path: update existing SVG circle attribute (no innerHTML thrash)
-            const ring = cell.querySelector('svg circle:nth-of-type(2)');
-            if (ring) {
-                ring.setAttribute('stroke-dashoffset', targetOffset);
-            } else {
-                // SVG doesn't exist yet → full render (first frame after placement)
-                console.log('[constructionRAF] first-frame', b.type, 'cell', b.id, Math.round(progress * 100) + '%');
-                renderBuilding(b.id, b.type, isPlayerOwned, b);
-            }
+            // Throttle to every 100ms per building to avoid excessive DOM churn
+            if (b._lastConstructionRender && (now - b._lastConstructionRender) < 100) continue;
+            b._lastConstructionRender = now;
+            renderBuilding(b.id, b.type, isPlayerOwned, b);
         }
     };
 
