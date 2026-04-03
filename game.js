@@ -65,6 +65,7 @@ function connectSocket() {
 
     // ── Auth events ─────────────────────────────────────────────────────
     socket.on('auth:code_sent', ({ email }) => {
+        if (typeof NukeSounds !== 'undefined') NukeSounds.codeSent();
         document.getElementById('loginStep1').style.display = 'none';
         document.getElementById('loginStep2').style.display = 'block';
         document.getElementById('loginEmailDisplay').textContent = email;
@@ -74,6 +75,7 @@ function connectSocket() {
     });
 
     socket.on('auth:success', ({ player, jwt, isNewPlayer }) => {
+        if (typeof NukeSounds !== 'undefined') NukeSounds.authSuccess();
         _authJWT = jwt;
         _localPlayerId = player.id;
         localStorage.setItem('nuke_jwt', jwt);
@@ -336,7 +338,14 @@ function connectSocket() {
         const isMyBuilding = placedBy === getLocalPlayerId();
         if (isMyBuilding) {
             // Server confirmed our placement — render it locally now
-            if (!game.buildings.find(b => b.id === building.cell_id)) {
+            const _existingBld = game.buildings.find(b => b.id === building.cell_id);
+            if (_existingBld && _existingBld._pendingServerConfirm) {
+                // Optimistic build was waiting — apply server timing now
+                applyServerBuildingTiming(_existingBld, building);
+                _existingBld._pendingServerConfirm = false;
+                renderBuilding(_existingBld.id, _existingBld.type, true, _existingBld);
+                scheduleConstructionTimers(_existingBld, true);
+            } else if (!_existingBld) {
                 console.log('[building:placed] raw server row keys:', Object.keys(building), 'construction_ends_at:', building.construction_ends_at, 'placed_at:', building.placed_at);
                 const bObj = applyServerBuildingTiming({
                     id: building.cell_id,
@@ -356,7 +365,7 @@ function connectSocket() {
                 if (building.type === 'storage') game.maxStorage += 1000;
                 addNotification('success', `🛠️ ${displayNames[building.type] || building.type} construction started.`);
                 updateUI();
-            }
+            } // end else (!_existingBld)
             game.selectedMode = null;
             return;
         }
@@ -1489,6 +1498,7 @@ function cellHasRoadNeighbor(cellId) {
  * Select a building type to place
  */
 function selectBuilding(type) {
+    if (typeof NukeSounds !== 'undefined') NukeSounds.buildSelect();
     game.selectedMode = type;
     updateButtonStates();
 }
@@ -1526,6 +1536,7 @@ function initMenu() {
 
     function setMenuOpen(open) {
         if (!actionsBtn || !actionsMenu) return;
+        if (typeof NukeSounds !== 'undefined') { open ? NukeSounds.menuOpen() : NukeSounds.menuClose(); }
         actionsBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
         if (!open) {
             // If a child inside the menu currently has focus, move it back to the toggle
@@ -1597,6 +1608,7 @@ function initMenu() {
     // Menu item actions — menu stays open after selection; click hamburger again to close
     document.querySelectorAll('.menu-item').forEach(mi => {
         mi.addEventListener('click', (e) => {
+            if (typeof NukeSounds !== 'undefined') NukeSounds.uiTick();
             const type = mi.dataset.type;
             if (type) {
                 selectBuilding(type);
@@ -1724,6 +1736,7 @@ function initHelpUI() {
     }
 
     function setActiveTab(id) {
+        if (typeof NukeSounds !== 'undefined') NukeSounds.tabSwitch();
         const item = HELP_CONTENT.find(x => x.id === id);
         if (!item) return;
         // update active state
@@ -1939,9 +1952,9 @@ function buildBuilding(id, type) {
     game.market.tokenPool = Math.max(1, game.market.tokenPool - cost / game.market.poolBurnRate);
     const _constrMs = (buildingTypes[type].constructionTime || 0) * 10000;
     const nowMs = serverNow();
-    game.buildings.push({ 
-        id, 
-        type, 
+    game.buildings.push({
+        id,
+        type,
         owner: game.playerName || 'You',
         ownerId: getLocalPlayerId() || 'local',
         ownerAvatar: game.playerAvatar || DEFAULT_PLAYER_AVATAR,
@@ -1949,9 +1962,11 @@ function buildBuilding(id, type) {
         constructionTimeRemainingMs: _constrMs,
         constructionTotalMs: _constrMs,
         constructionPlacedAtMs: nowMs,
-        constructionEndsAtMs: nowMs + _constrMs,
+        constructionEndsAtMs: null,       // filled in by server confirmation
+        _pendingServerConfirm: true,      // show Workers En Route until server responds
         isUnderConstruction: true
     });
+    if (typeof NukeSounds !== 'undefined') NukeSounds.buildPlace();
     console.debug('buildBuilding: started', { id, type, placedAt: nowMs, endsAt: nowMs + _constrMs, totalMs: _constrMs });
 
     const _depositBonus = (type === 'mine') ? getDepositBonus(id) : null;
@@ -2110,6 +2125,7 @@ function executeTemporaryDisable(cellId, cost) {
     if (!enemy) return;
 
     if (socket?.connected && _authJWT) {
+        if (typeof NukeSounds !== 'undefined') NukeSounds.sabotage();
         socket.emit('sabotage:execute', { jwt: _authJWT, cellId, attackType: 'disable' });
         game.selectedMode = null;
         return;
@@ -2128,6 +2144,7 @@ function executeTemporaryDisable(cellId, cost) {
     game._walletMarketBaseline = game.market.price;
     const _wEl1 = document.getElementById('wallet');
     if (_wEl1) showFloatingText('-' + cost.toLocaleString(), '#ff6b6b', _wEl1);
+    if (typeof NukeSounds !== 'undefined') NukeSounds.sabotage();
 
     // Mark enemy as disabled
     if (!enemy.disabled) {
@@ -2197,6 +2214,7 @@ function executeNuclearStrike(targetId) {
     }
 
     if (socket?.connected && _authJWT) {
+        if (typeof NukeSounds !== 'undefined') NukeSounds.nuclear();
         socket.emit('sabotage:execute', { jwt: _authJWT, cellId: targetId, attackType: 'nuke' });
         game.dayStrikes++;
         game.selectedMode = null;
@@ -3075,13 +3093,13 @@ document.addEventListener('DOMContentLoaded', function() {
     // Wire login step 1
     const sendBtn  = document.getElementById('loginSendBtn');
     const emailIn  = document.getElementById('loginEmail');
-    if (sendBtn) sendBtn.addEventListener('click', requestLoginCode);
+    if (sendBtn) sendBtn.addEventListener('click', () => { if (typeof NukeSounds !== 'undefined') NukeSounds.prime(); NukeSounds && NukeSounds.uiTick(); requestLoginCode(); });
     if (emailIn)  emailIn.addEventListener('keyup', (e) => { if (e.key === 'Enter') requestLoginCode(); });
     const loginPwBtn = document.getElementById('loginPasswordBtn');
     const signupPwBtn = document.getElementById('signupPasswordBtn');
     const pwInput = document.getElementById('loginPassword');
-    if (loginPwBtn) loginPwBtn.addEventListener('click', loginWithPassword);
-    if (signupPwBtn) signupPwBtn.addEventListener('click', signupWithPassword);
+    if (loginPwBtn) loginPwBtn.addEventListener('click', () => { if (typeof NukeSounds !== 'undefined') NukeSounds.uiTick(); loginWithPassword(); });
+    if (signupPwBtn) signupPwBtn.addEventListener('click', () => { if (typeof NukeSounds !== 'undefined') NukeSounds.uiTick(); signupWithPassword(); });
     if (pwInput) pwInput.addEventListener('keyup', (e) => { if (e.key === 'Enter') loginWithPassword(); });
 
     // Wire login step 2
@@ -3091,9 +3109,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const accountBtn = document.getElementById('accountCreateBtn');
     const signupInput = document.getElementById('signupUsername');
     const profileNameInput = document.getElementById('profileUsernameInput');
-    if (verifyBtn) verifyBtn.addEventListener('click', verifyLoginCode);
+    if (verifyBtn) verifyBtn.addEventListener('click', () => { if (typeof NukeSounds !== 'undefined') NukeSounds.uiTick(); verifyLoginCode(); });
     if (codeIn)    codeIn.addEventListener('keyup', (e) => { if (e.key === 'Enter') verifyLoginCode(); });
-    if (accountBtn) accountBtn.addEventListener('click', submitAccountSetup);
+    if (accountBtn) accountBtn.addEventListener('click', () => { if (typeof NukeSounds !== 'undefined') NukeSounds.uiTick(); submitAccountSetup(); });
     if (signupInput) signupInput.addEventListener('keyup', (e) => { if (e.key === 'Enter') submitAccountSetup(); });
     if (profileNameInput) profileNameInput.addEventListener('keyup', (e) => { if (e.key === 'Enter') changeUsername(); });
     renderAvatarPicker('signupAvatarPicker', game.playerAvatar || DEFAULT_PLAYER_AVATAR);
@@ -3124,6 +3142,20 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const prizeInfoBtn = document.getElementById('prizeInfoBtn');
     if (prizeInfoBtn) prizeInfoBtn.addEventListener('click', showConversionModal);
+
+    // Sound toggle button
+    const soundToggleBtn = document.getElementById('soundToggleBtn');
+    if (soundToggleBtn) {
+        soundToggleBtn.addEventListener('click', () => {
+            if (typeof NukeSounds === 'undefined') return;
+            NukeSounds.prime();
+            const nowEnabled = !NukeSounds.isEnabled();
+            NukeSounds.setEnabled(nowEnabled);
+            soundToggleBtn.textContent = nowEnabled ? '🔊' : '🔇';
+            soundToggleBtn.title = nowEnabled ? 'Mute sound' : 'Unmute sound';
+            if (nowEnabled) NukeSounds.uiTick();
+        });
+    }
 
     // Notification bell
     const bellBtn    = document.getElementById('notifBellBtn');
@@ -3247,6 +3279,15 @@ function constructionAnimLoop() {
 
             // ── Ensure constructionEndsAtMs is set for any under-construction building ──
             if (!b.constructionEndsAtMs && b.isUnderConstruction) {
+                // Skip fallback if waiting for server confirmation — show Workers En Route
+                if (b._pendingServerConfirm) {
+                    // Re-render to keep Workers En Route text visible
+                    if (!b._lastConstructionRender || (localNow - b._lastConstructionRender) >= 500) {
+                        b._lastConstructionRender = localNow;
+                        renderBuilding(b.id, b.type, isPlayerOwned, b);
+                    }
+                    continue;
+                }
                 // Fallback: derive from constructionTotalMs or buildingTypes
                 const fb = b.constructionTotalMs || (Number(buildingTypes[b.type]?.constructionTime) || 0) * 10000;
                 if (fb > 0) {
@@ -3278,6 +3319,7 @@ function constructionAnimLoop() {
                     b._completionNotified = true;
                     cell.classList.add('build-complete');
                     setTimeout(() => cell.classList.remove('build-complete'), 900);
+                    if (typeof NukeSounds !== 'undefined') NukeSounds.buildComplete();
                     addNotification('success', `✅ ${displayNames[b.type] || b.type} construction complete!`);
                 }
                 continue;
@@ -3537,6 +3579,7 @@ function onHourAdvance() {
 }
 
 function onDayAdvance() {
+    if (typeof NukeSounds !== 'undefined') NukeSounds.dayAdvance();
     // Show dramatic day transition overlay
     showDayTransition(game.time.day);
 
@@ -4720,6 +4763,11 @@ if (!game.notifications) game.notifications = [];
  * @param {object} [data]  - Optional payload (reserved for backend use)
  */
 function addNotification(type, message, data) {
+    if (typeof NukeSounds !== 'undefined') {
+        if (type === 'success') NukeSounds.notifSuccess();
+        else if (type === 'warning') NukeSounds.notifWarning();
+        else if (type === 'danger')  NukeSounds.notifDanger();
+    }
     const notif = {
         id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
         type: type || 'info',
