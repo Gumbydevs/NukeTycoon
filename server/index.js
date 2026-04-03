@@ -310,16 +310,121 @@ app.post('/admin/api/full-db-reset', requireAdmin, async (_req, res) => {
         }
         // End all active runs
         await db.query("UPDATE runs SET status = 'ended', ended_at = NOW() WHERE status = 'active'");
-        // Wipe per-run data
-        await db.query('DELETE FROM run_players');
+        // Wipe ALL per-run data (every historical run)
+        await db.query('DELETE FROM sabotage_events');
+        await db.query('DELETE FROM fallout_zones');
         await db.query('DELETE FROM run_player_state');
-        await db.query('UPDATE buildings SET is_active = FALSE, destroyed_at = NOW() WHERE is_active = TRUE');
+        await db.query('DELETE FROM run_players');
+        await db.query('DELETE FROM buildings');
+        await db.query('DELETE FROM runs');
         // Reset player balances
         await db.query('UPDATE players SET token_balance = 50000');
         // Start fresh run
         const newRun = await createNewRun();
         io.emit('run:new', { runId: newRun.id, runNumber: newRun.run_number, forced: true });
         res.json({ ok: true, message: 'Full DB reset complete.', newRun });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Purge used/expired auth codes
+app.post('/admin/api/purge-auth-codes', requireAdmin, async (_req, res) => {
+    try {
+        const result = await db.query("DELETE FROM auth_codes WHERE used = TRUE OR expires_at < NOW()");
+        res.json({ ok: true, deleted: result.rowCount });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Delete all ended runs and their orphaned per-run data; active run is untouched
+app.post('/admin/api/wipe-old-runs', requireAdmin, async (_req, res) => {
+    try {
+        const ended = await db.query("SELECT id FROM runs WHERE status = 'ended'");
+        if (!ended.rowCount) { res.json({ ok: true, deleted: 0 }); return; }
+        const ids = ended.rows.map(r => r.id);
+        await db.query('DELETE FROM sabotage_events WHERE run_id = ANY($1)', [ids]);
+        await db.query('DELETE FROM fallout_zones WHERE run_id = ANY($1)', [ids]);
+        await db.query('DELETE FROM buildings WHERE run_id = ANY($1)', [ids]);
+        await db.query('DELETE FROM run_player_state WHERE run_id = ANY($1)', [ids]);
+        await db.query('DELETE FROM run_players WHERE run_id = ANY($1)', [ids]);
+        const r = await db.query('DELETE FROM runs WHERE id = ANY($1)', [ids]);
+        res.json({ ok: true, deleted: r.rowCount });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Hard-delete all buildings for the current run and broadcast grid reset
+app.post('/admin/api/wipe-buildings', requireAdmin, async (_req, res) => {
+    try {
+        const run = await getActiveRun();
+        if (!run) { res.status(404).json({ error: 'No active run.' }); return; }
+        const result = await db.query('DELETE FROM buildings WHERE run_id = $1', [run.id]);
+        io.to(`run:${run.id}`).emit('buildings:reset', {});
+        res.json({ ok: true, deleted: result.rowCount });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Wipe fallout zones for current run
+app.post('/admin/api/wipe-fallout-zones', requireAdmin, async (_req, res) => {
+    try {
+        const run = await getActiveRun();
+        if (!run) { res.status(404).json({ error: 'No active run.' }); return; }
+        const result = await db.query('DELETE FROM fallout_zones WHERE run_id = $1', [run.id]);
+        res.json({ ok: true, deleted: result.rowCount });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Wipe sabotage event log for current run
+app.post('/admin/api/wipe-sabotage-log', requireAdmin, async (_req, res) => {
+    try {
+        const run = await getActiveRun();
+        if (!run) { res.status(404).json({ error: 'No active run.' }); return; }
+        const result = await db.query('DELETE FROM sabotage_events WHERE run_id = $1', [run.id]);
+        res.json({ ok: true, deleted: result.rowCount });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Set a specific player's token balance by email or username
+app.post('/admin/api/set-player-balance', requireAdmin, async (req, res) => {
+    try {
+        const { identifier, amount } = req.body;
+        const parsed = Number(amount);
+        if (!identifier || !Number.isFinite(parsed) || parsed < 0) {
+            res.status(400).json({ error: 'Provide identifier (email or username) and a non-negative amount.' }); return;
+        }
+        const result = await db.query(
+            'UPDATE players SET token_balance = $1 WHERE email = $2 OR username = $2 RETURNING username, token_balance',
+            [Math.floor(parsed), identifier]
+        );
+        if (!result.rowCount) { res.status(404).json({ error: `Player '${identifier}' not found.` }); return; }
+        res.json({ ok: true, player: result.rows[0] });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Scorched-earth: delete every player account and all related data
+app.post('/admin/api/wipe-all-players', requireAdmin, async (_req, res) => {
+    try {
+        await db.query("UPDATE runs SET status = 'ended', ended_at = COALESCE(ended_at, NOW()) WHERE status = 'active'");
+        await db.query('DELETE FROM sabotage_events');
+        await db.query('DELETE FROM fallout_zones');
+        await db.query('DELETE FROM buildings');
+        await db.query('DELETE FROM run_player_state');
+        await db.query('DELETE FROM run_players');
+        await db.query('DELETE FROM runs');
+        await db.query('DELETE FROM auth_codes');
+        const result = await db.query('DELETE FROM players');
+        res.json({ ok: true, deleted: result.rowCount });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
