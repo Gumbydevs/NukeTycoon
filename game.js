@@ -1880,7 +1880,10 @@ function renderBuilding(id, type, isPlayer, building) {
             </div>
         `;
     } else {
-        // Render normal building
+        // Render normal (complete) building
+        if (building) {
+            building.isUnderConstruction = false;
+        }
         const tint = isPlayer ? PLAYER_COLOR : ENEMY_COLOR;
         if (USE_SVG_ICONS || type === 'storage') {
             const svg = getIconSVG(type, tint);
@@ -2733,10 +2736,12 @@ function productionTick() {
                 b.constructionTimeRemainingMs = b.constructionTimeRemaining * 10000;
             }
 
-            if (b.constructionTimeRemaining <= 0 || (b.constructionEndsAtMs && b.constructionEndsAtMs <= now)) {
+            const done = b.constructionTimeRemaining <= 0 || (b.constructionEndsAtMs && b.constructionEndsAtMs <= now);
+            if (done) {
                 b.constructionTimeRemaining = 0;
                 b.constructionTimeRemainingMs = 0;
                 b.isUnderConstruction = false;
+                b.constructionEndsAtMs = null; // clear so renderBuilding shows completed state
                 renderBuilding(b.id, b.type, isPlayerOwned, b);
 
                 if (isPlayerOwned) {
