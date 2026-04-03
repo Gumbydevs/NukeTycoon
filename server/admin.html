@@ -178,24 +178,31 @@
 
     <section class="card" style="margin-top:16px;">
       <h2>Recent Active Buildings</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Cell</th>
-            <th>Type</th>
-            <th>Owner</th>
-            <th>Placed</th>
-          </tr>
-        </thead>
-        <tbody id="buildingsBody">
-          <tr><td colspan="4" class="muted">No data yet.</td></tr>
-        </tbody>
-      </table>
+      <div style="max-height:320px; overflow-y:auto; border:1px solid #2a2a2a; border-radius:4px;">
+        <table style="margin:0;">
+          <thead style="position:sticky;top:0;background:#111;z-index:1;">
+            <tr>
+              <th>Cell</th>
+              <th>Type</th>
+              <th>Owner</th>
+              <th>Placed</th>
+            </tr>
+          </thead>
+          <tbody id="buildingsBody">
+            <tr><td colspan="4" class="muted">No data yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <section class="card" style="margin-top:16px;">
-      <h2>Raw Response</h2>
-      <pre id="rawOutput">Awaiting status…</pre>
+      <h2 style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;" id="rawResponseToggle">
+        <span>Raw Response</span>
+        <span id="rawResponseChevron" style="font-size:13px;color:#888;">▶ Show</span>
+      </h2>
+      <div id="rawResponseBody" style="display:none;">
+        <pre id="rawOutput" style="max-height:400px;overflow-y:auto;margin:0;">Awaiting status…</pre>
+      </div>
     </section>
 
     <!-- ── DANGER ZONE ───────────────────────────────────────────────────── -->
@@ -578,6 +585,15 @@
     }
 
     $('loadBuildingConfigBtn').addEventListener('click', loadBuildingConfig);
+
+    // Raw Response collapsible toggle
+    $('rawResponseToggle').addEventListener('click', () => {
+      const body = $('rawResponseBody');
+      const chevron = $('rawResponseChevron');
+      const open = body.style.display === 'none';
+      body.style.display = open ? 'block' : 'none';
+      chevron.textContent = open ? '▼ Hide' : '▶ Show';
+    });
   </script>
 </body>
 </html>
