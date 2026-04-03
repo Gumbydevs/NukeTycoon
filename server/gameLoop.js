@@ -391,6 +391,14 @@ async function emitRunSnapshot(io, runId, eventName = 'run:tick') {
     const stateByPlayer = new Map(snapshot.playerStates.map((state) => [state.player_id, state]));
     const playerById = new Map(snapshot.players.map((player) => [player.id, player]));
 
+    // Detect buildings that just completed construction (within last 2 seconds)
+    const serverNow = Date.now();
+    const justCompleted = (snapshot.buildings || []).filter(b => {
+        if (!b.construction_ends_at) return false;
+        const endsAt = new Date(b.construction_ends_at).getTime();
+        return endsAt <= serverNow && endsAt > serverNow - 2000;
+    });
+
     sockets.forEach((roomSocket) => {
         roomSocket.emit(eventName, {
             run: snapshot.run,
@@ -399,7 +407,16 @@ async function emitRunSnapshot(io, runId, eventName = 'run:tick') {
             yourWallet: parseInt(playerById.get(roomSocket.playerId)?.token_balance, 10) || 0,
             falloutZones: snapshot.falloutZones,
             nuclearThreats: snapshot.nuclearThreats,
+            serverTime: serverNow,
         });
+
+        // Notify about just-completed buildings
+        if (justCompleted.length > 0) {
+            roomSocket.emit('building:construction_complete', {
+                buildings: justCompleted.map(b => ({ cellId: b.cell_id, type: b.type, playerId: b.player_id })),
+                serverTime: serverNow,
+            });
+        }
     });
 
     return snapshot;

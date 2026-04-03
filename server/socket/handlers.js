@@ -273,6 +273,7 @@ function registerHandlers(io, socket) {
                 nuclearThreats: snapshot?.nuclearThreats || [],
                 yourWallet: parseInt(mePlayer?.token_balance ?? player.token_balance, 10) || 0,
                 isNewJoiner,
+                serverTime: Date.now(),
             });
 
             if (isNewJoiner) {

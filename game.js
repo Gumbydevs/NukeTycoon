@@ -12,6 +12,17 @@ const DEFAULT_PLAYER_AVATAR = '☢️';
 const AVATAR_OPTIONS = ['☢️', '🧑‍🚀', '👩‍🔬', '👨‍🔬', '🤖', '🦊', '🐺', '🐉'];
 const ADMIN_KEY_STORAGE = 'nukwar_admin_key';
 
+/**
+ * Returns the current server time, interpolated between ticks.
+ * All construction timestamp comparisons MUST use this, never raw Date.now().
+ */
+function serverNow() {
+    if (game._serverTime && game._serverTimeLocal) {
+        return game._serverTime + (Date.now() - game._serverTimeLocal);
+    }
+    return Date.now(); // fallback for offline mode
+}
+
 function getLocalPlayerId() {
     if (_localPlayerId) return _localPlayerId;
     if (!_authJWT) return null;
@@ -99,7 +110,14 @@ function connectSocket() {
     });
 
     // ── Run events ──────────────────────────────────────────────────────
-    socket.on('run:state', ({ run, buildings, players, scores, playerState, falloutZones, nuclearThreats, yourWallet, isNewJoiner }) => {
+    socket.on('run:state', ({ run, buildings, players, scores, playerState, falloutZones, nuclearThreats, yourWallet, isNewJoiner, serverTime }) => {
+        // Store server clock for interpolation
+        if (serverTime) {
+            game._serverTime = serverTime;
+            game._serverTimeLocal = Date.now();
+            const offset = serverTime - Date.now();
+            console.log('[clock] server→client offset:', offset + 'ms (' + (offset / 1000).toFixed(1) + 's)');
+        }
         // Set authoritative run state from server
         game._serverAuthoritative = true;
         game._serverRunId = run.id;
@@ -196,11 +214,49 @@ function connectSocket() {
         applyServerScores(scores);
     });
 
-    socket.on('run:tick', ({ run, playerState, yourWallet, scores, falloutZones, nuclearThreats }) => {
+    socket.on('run:tick', ({ run, playerState, yourWallet, scores, falloutZones, nuclearThreats, serverTime }) => {
+        // Store server clock for interpolation
+        if (serverTime) {
+            game._serverTime = serverTime;
+            game._serverTimeLocal = Date.now();
+        }
         applyAuthoritativeServerState({ run, playerState, falloutZones, nuclearThreats, wallet: yourWallet });
         applyServerScores(scores);
         updateUI();
         updateFalloutVisualization();
+    });
+
+    // Server says these buildings finished construction
+    socket.on('building:construction_complete', ({ buildings: completed, serverTime }) => {
+        if (serverTime) {
+            game._serverTime = serverTime;
+            game._serverTimeLocal = Date.now();
+        }
+        const localId = getLocalPlayerId();
+        (completed || []).forEach(({ cellId, type, playerId }) => {
+            const isOwn = playerId === localId;
+            const list = isOwn ? game.buildings : game.enemyBuildings;
+            const b = list.find(x => x.id === cellId);
+            if (!b) return;
+            console.log('[building:construction_complete] server says DONE:', type, 'cell', cellId);
+            b.isUnderConstruction = false;
+            b.constructionTimeRemaining = 0;
+            b.constructionTimeRemainingMs = 0;
+            b.constructionEndsAtMs = null;
+            // Clear timers
+            if (b._constructionTickTimer) { clearInterval(b._constructionTickTimer); b._constructionTickTimer = null; }
+            if (b._constructionDoneTimer) { clearTimeout(b._constructionDoneTimer); b._constructionDoneTimer = null; }
+            renderBuilding(cellId, type, isOwn, b);
+            if (isOwn && !b._completionNotified) {
+                b._completionNotified = true;
+                const cell = document.querySelector('[data-id="' + cellId + '"]');
+                if (cell) {
+                    cell.classList.add('build-complete');
+                    setTimeout(() => cell.classList.remove('build-complete'), 900);
+                }
+                addNotification('success', `✅ ${displayNames[type] || type} construction complete!`);
+            }
+        });
     });
 
     socket.on('run:economy_update', ({ prizePool, scores, nuclearThreats }) => {
@@ -248,7 +304,7 @@ function connectSocket() {
                     constructionTimeRemaining: buildingTypes[building.type]?.constructionTime || 0,
                     isUnderConstruction: (buildingTypes[building.type]?.constructionTime || 0) > 0
                 }, building);
-                console.log('[building:placed] after timing:', { id: bObj.id, type: bObj.type, endsAtMs: bObj.constructionEndsAtMs, totalMs: bObj.constructionTotalMs, isUC: bObj.isUnderConstruction, clientNow: Date.now() });
+                console.log('[building:placed] after timing:', { id: bObj.id, type: bObj.type, endsAtMs: bObj.constructionEndsAtMs, totalMs: bObj.constructionTotalMs, isUC: bObj.isUnderConstruction, serverNow: serverNow() });
                 game.buildings.push(bObj);
                 renderBuilding(building.cell_id, building.type, true, bObj);
                 // Schedule guaranteed completion + visual update ticks via setTimeout
@@ -703,7 +759,7 @@ function resolveOwner(ownerRef) {
  */
 function scheduleConstructionTimers(building, isPlayerOwned) {
     if (!building || !building.constructionEndsAtMs) return;
-    const now = Date.now();
+    const now = serverNow();
     const remaining = building.constructionEndsAtMs - now;
     if (remaining <= 0) return; // already complete
 
@@ -752,7 +808,7 @@ function applyServerBuildingTiming(buildingRef, serverRow) {
 
     const totalUnits = Number(buildingTypes[buildingRef.type]?.constructionTime || 0);
     const totalMs = Math.max(0, totalUnits * 10000);
-    const now = Date.now();
+    const now = serverNow();
     const endsAtMs = serverRow?.construction_ends_at ? new Date(serverRow.construction_ends_at).getTime() : null;
     const placedAtMs = serverRow?.placed_at ? new Date(serverRow.placed_at).getTime() : null;
 
@@ -1687,7 +1743,7 @@ function buildBuilding(id, type) {
     // drain liquidity pool → pushes price up via bonding curve
     game.market.tokenPool = Math.max(1, game.market.tokenPool - cost / game.market.poolBurnRate);
     const _constrMs = (buildingTypes[type].constructionTime || 0) * 10000;
-    const nowMs = Date.now();
+    const nowMs = serverNow();
     game.buildings.push({ 
         id, 
         type, 
@@ -2074,8 +2130,8 @@ function renderBuilding(id, type, isPlayer, building) {
     cell.className = 'cell owned ' + type + (isPlayer ? ' owned-player' : ' owned-enemy');
 
     // Use only the wall-clock end timestamp to decide construction state.
-    // Never rely on the isUnderConstruction flag — it can be stale.
-    const now = Date.now();
+    // Uses serverNow() so we compare against server clock, not local clock.
+    const now = serverNow();
     const totalMs = (Number(buildingTypes[type]?.constructionTime) || 0) * 10000;
     const endsAt = building?.constructionEndsAtMs || null;
     const stillBuilding = !!(endsAt && endsAt > now);
@@ -2949,11 +3005,12 @@ function constructionAnimLoop() {
         console.log('[constructionRAF] loop started');
     }
 
-    const now = Date.now();
+    const now = serverNow();
+    const localNow = Date.now(); // for throttling only (not for timestamp comparisons)
 
     // Throttled diagnostic — fires every 2 seconds
-    if (!game._constructionRAFLastDiag || now - game._constructionRAFLastDiag > 2000) {
-        game._constructionRAFLastDiag = now;
+    if (!game._constructionRAFLastDiag || localNow - game._constructionRAFLastDiag > 2000) {
+        game._constructionRAFLastDiag = localNow;
         const diag = [];
         (game.buildings || []).forEach(b => {
             if (b && (b.isUnderConstruction || b.constructionEndsAtMs)) {
@@ -3015,8 +3072,8 @@ function constructionAnimLoop() {
             // ── Still building → re-render at throttled rate (10 fps) ────────
             b.isUnderConstruction = true;
             // Throttle to every 100ms per building to avoid excessive DOM churn
-            if (b._lastConstructionRender && (now - b._lastConstructionRender) < 100) continue;
-            b._lastConstructionRender = now;
+            if (b._lastConstructionRender && (localNow - b._lastConstructionRender) < 100) continue;
+            b._lastConstructionRender = localNow;
             try {
                 renderBuilding(b.id, b.type, isPlayerOwned, b);
             } catch (e) {
