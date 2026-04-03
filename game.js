@@ -709,8 +709,19 @@ function applyServerBuildingTiming(buildingRef, serverRow) {
     }
 
     buildingRef.constructionEndsAtMs = Number.isFinite(endsAtMs) ? endsAtMs : null;
+    buildingRef.constructionTotalMs = totalMs;
+    // Determine placedAt if available (server may provide placed_at) otherwise derive from endsAt
+    if (Number.isFinite(placedAtMs)) {
+        buildingRef.constructionPlacedAtMs = placedAtMs;
+    } else if (buildingRef.constructionEndsAtMs) {
+        buildingRef.constructionPlacedAtMs = buildingRef.constructionEndsAtMs - totalMs;
+    } else {
+        buildingRef.constructionPlacedAtMs = null;
+    }
+
     if (remainingMs !== null) {
         buildingRef.constructionTimeRemaining = remainingMs / 10000;
+        buildingRef.constructionTimeRemainingMs = remainingMs;
         buildingRef.isUnderConstruction = remainingMs > 0;
     }
 
@@ -1614,6 +1625,7 @@ function buildBuilding(id, type) {
     // drain liquidity pool → pushes price up via bonding curve
     game.market.tokenPool = Math.max(1, game.market.tokenPool - cost / game.market.poolBurnRate);
     const _constrMs = (buildingTypes[type].constructionTime || 0) * 10000;
+    const nowMs = Date.now();
     game.buildings.push({ 
         id, 
         type, 
@@ -1622,9 +1634,12 @@ function buildBuilding(id, type) {
         ownerAvatar: game.playerAvatar || DEFAULT_PLAYER_AVATAR,
         constructionTimeRemaining: buildingTypes[type].constructionTime,
         constructionTimeRemainingMs: _constrMs,
-        constructionEndsAtMs: Date.now() + _constrMs,
+        constructionTotalMs: _constrMs,
+        constructionPlacedAtMs: nowMs,
+        constructionEndsAtMs: nowMs + _constrMs,
         isUnderConstruction: true
     });
+    console.debug('buildBuilding: started', { id, type, placedAt: nowMs, endsAt: nowMs + _constrMs, totalMs: _constrMs });
 
     const _depositBonus = (type === 'mine') ? getDepositBonus(id) : null;
     const _roadBonus    = (type === 'plant') ? cellHasRoadNeighbor(id) : false;
@@ -2833,6 +2848,20 @@ function startSimLoops() {
 
     // bot AI loop — bots build and sabotage dynamically
     startBotAI();
+
+    // Construction UI updater: ensure progress rings animate even if other loops are paused
+    if (!game._constructionUIInterval) {
+        game._constructionUIInterval = setInterval(() => {
+            try {
+                (game.buildings || []).forEach(b => {
+                    if (b && (b.isUnderConstruction || b.constructionEndsAtMs)) renderBuilding(b.id, b.type, true, b);
+                });
+                (game.enemyBuildings || []).forEach(b => {
+                    if (b && (b.isUnderConstruction || b.constructionEndsAtMs)) renderBuilding(b.id, b.type, false, b);
+                });
+            } catch (e) { console.debug('constructionUIInterval error', e && e.message); }
+        }, 500);
+    }
 }
 
 /**
@@ -3412,6 +3441,7 @@ function returnToMenu() {
     if (game._productionInterval) clearInterval(game._productionInterval);
     if (game._clockInterval) clearInterval(game._clockInterval);
     if (game._botInterval) { clearInterval(game._botInterval); game._botInterval = null; }
+    if (game._constructionUIInterval) { clearInterval(game._constructionUIInterval); game._constructionUIInterval = null; }
     
     // Reset game state
     game.runEnded = false;
