@@ -19,7 +19,16 @@ function getLocalPlayerId() {
 }
 
 function connectSocket() {
-    socket = io(SERVER_URL, { transports: ['websocket'], autoConnect: true });
+    socket = io(SERVER_URL, {
+        transports: ['websocket', 'polling'],
+        autoConnect: true,
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        pingInterval: 25000,
+        pingTimeout: 20000,
+    });
 
     socket.on('connect', () => {
         console.log('☢️ Connected to server');
@@ -120,7 +129,7 @@ function connectSocket() {
             // Returning player: skip lobby, go straight into the game
             const modal = document.getElementById('lobbyModal');
             if (modal) modal.style.display = 'none';
-            startGame();
+            startGame(true); // true = server-mode, skip initRun/initGrid
         }
     });
 
@@ -1737,15 +1746,19 @@ function formatUranium(n) {
 /**
  * Initialize game on page load
  */
-function startGame() {
+function startGame(serverMode) {
     // Reveal game-only menu items now that the run has started
     // Use explicit display values to override the .game-only { display:none } CSS rule
     document.querySelectorAll('.game-only').forEach(el => {
         el.style.display = el.tagName === 'BUTTON' ? 'flex' : 'block';
     });
 
-    initGrid();
-    initRun();   // collect buy-ins, seed prize pool & bonding curve pool (once per run)
+    if (!serverMode) {
+        // Offline / single-player: build grid and run from scratch
+        initGrid();
+        initRun();
+    }
+    // In server-mode, run:state already set game.players, buildings, wallet, etc.
     updateUI();
     // initialize toolbar/menu interactions
     initMenu();
@@ -1827,7 +1840,7 @@ function confirmBuyIn() {
         // The run:state event already joined us; just close the lobby and start.
         const modal = document.getElementById('lobbyModal');
         if (modal) modal.style.display = 'none';
-        startGame();
+        startGame(true); // server-mode
     } else {
         // Offline fallback
         if (game.playerWallet < game.buyIn) {

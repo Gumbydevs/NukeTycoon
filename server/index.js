@@ -73,6 +73,11 @@ const io = new Server(server, {
         origin: allowedOrigins.includes('*') ? '*' : allowedOrigins,
         methods: ['GET', 'POST'],
     },
+    // Allow both websocket and polling for Railway proxy compatibility
+    transports: ['websocket', 'polling'],
+    // Heartbeat to prevent Railway/proxy idle-timeout disconnects
+    pingInterval: 25000,
+    pingTimeout: 20000,
     // Keep socket payloads small — disable per-message compression overhead
     perMessageDeflate: false,
 });
