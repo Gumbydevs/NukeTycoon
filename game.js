@@ -993,6 +993,7 @@ function applyServerScores(scores) {
     if (me) {
         me.score = calculateLeaderboardScore(me);
     }
+    try { document.dispatchEvent(new Event('nukeworld:renderPlayers')); } catch(e){}
 }
 
 /**
@@ -1087,6 +1088,75 @@ function initGrid() {
     // Spawn enemy buildings
     spawnEnemyBuildings();
 }
+
+// ── Live leaderboard / player list UI (throttled client-side rendering) ──
+let _lastSidebarRender = 0;
+function formatNumber(n){ return typeof n === 'number' ? n.toLocaleString() : String(n); }
+function renderLiveSidebar() {
+    try {
+        const el = document.getElementById('leaderboardList');
+        if (!el) return;
+        const now = Date.now();
+        if (now - _lastSidebarRender < 700) return; // throttle to ~700ms
+        _lastSidebarRender = now;
+
+        const players = (game.players || []).slice().sort((a,b) => (b.score||0)-(a.score||0));
+        el.innerHTML = players.map((p, idx) => {
+            const avatar = escapeHtml(p.avatar || DEFAULT_PLAYER_AVATAR);
+            const name = escapeHtml(p.name || 'Unknown');
+            const score = formatNumber(Math.floor(p.score || 0));
+            const wallet = formatNumber(p.wallet || 0);
+            const highlight = p.isLocal ? 'background:linear-gradient(90deg, rgba(255,184,77,0.04), transparent); border-color: rgba(255,184,77,0.06);' : '';
+            return `<div class="leaderboard-item" style="${highlight}">
+                        <div class="left"><div class="avatar">${avatar}</div><div class="name">${name}</div></div>
+                        <div style="display:flex;flex-direction:column;align-items:flex-end;min-width:72px;">
+                            <div class="score">${score}</div>
+                            <div style="font-size:11px;color:#888;margin-top:2px;">${wallet} tok</div>
+                        </div>
+                    </div>`;
+        }).join('');
+    } catch (e) { console.error('renderLiveSidebar error', e); }
+}
+
+function toggleLiveSidebar(expand) {
+    const root = document.getElementById('liveSidebar');
+    const panel = document.getElementById('livePanel');
+    const btn = document.getElementById('liveToggleBtn');
+    if (!root || !panel || !btn) return;
+    const willOpen = typeof expand === 'boolean' ? expand : root.classList.contains('collapsed');
+    if (willOpen) {
+        root.classList.remove('collapsed');
+        panel.style.display = 'block';
+        btn.setAttribute('aria-expanded','true');
+        btn.textContent = '◀ Hide';
+        renderLiveSidebar();
+    } else {
+        root.classList.add('collapsed');
+        panel.style.display = 'none';
+        btn.setAttribute('aria-expanded','false');
+        btn.textContent = '▶ Players';
+    }
+}
+
+// initialize UI hooks (called after DOM ready)
+function initLiveSidebar() {
+    const btn = document.getElementById('liveToggleBtn');
+    const closeBtn = document.getElementById('liveCloseBtn');
+    if (btn) btn.addEventListener('click', () => toggleLiveSidebar(true));
+    if (closeBtn) closeBtn.addEventListener('click', () => toggleLiveSidebar(false));
+
+    // Render at a steady cadence even when server sends bursts
+    setInterval(renderLiveSidebar, 1000);
+
+    // Update immediately when key events occur
+    const eventsToWatch = ['run:state','run:player_joined','run:player_updated','run:tick','run:economy_update'];
+    // Attach temporary local hooks: whenever applyServerScores or run:state updates game.players, render.
+    // We rely on socket handlers already present to mutate game.players; schedule a render after those handlers run.
+    document.addEventListener('nukeworld:renderPlayers', renderLiveSidebar);
+}
+
+// fire our init once DOM is parsed (game.js loads at end of body so DOM is ready)
+try { initLiveSidebar(); } catch (e) { /* ignore in environments where DOM not present */ }
 
 /**
  * Spawn random enemy buildings on the grid

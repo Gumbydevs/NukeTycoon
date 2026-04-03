@@ -749,6 +749,54 @@ body.mobile-menu-open .dropdown { display: none !important; }
 .help-tabs button.active { background: rgba(255,184,77,0.06); color:#ffb84d; border-color: rgba(255,184,77,0.08); }
 .help-content { flex:1; overflow:auto; padding:6px 12px; color:#dcdcdc; font-size:14px; line-height:1.45; }
 
+/* Live sidebar (players & leaderboard) */
+#liveSidebar {
+    position: fixed;
+    left: 10px;
+    top: 72px; /* sits below the stats bar */
+    z-index: 180;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    pointer-events: auto;
+}
+
+#liveSidebar .live-toggle {
+    background: #111;
+    border: 1px solid #333;
+    color: #fff;
+    padding: 8px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight:700;
+}
+
+#liveSidebar .live-panel {
+    background: rgba(10,10,12,0.95);
+    border: 1px solid #222;
+    min-width: 220px;
+    max-width: 320px;
+    max-height: 60vh;
+    overflow: auto;
+    padding: 8px;
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+}
+
+.live-header { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
+.live-title { font-weight:700; color:#ffb84d; }
+.leaderboard-list { display:flex; flex-direction:column; gap:6px; }
+.leaderboard-item { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px; border-radius:4px; background:linear-gradient(180deg,#0d0d0d,#0b0b0b); border:1px solid rgba(255,255,255,0.02); }
+.leaderboard-item .left { display:flex; align-items:center; gap:8px; }
+.leaderboard-item .avatar { width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center; border-radius:6px; background:#111; border:1px solid #333; font-size:16px; }
+.leaderboard-item .name { color:#ddd; font-weight:600; }
+.leaderboard-item .score { color:#4CAF50; font-weight:700; min-width:48px; text-align:right; }
+
+@media (max-width: 900px) {
+    #liveSidebar { left: 6px; top: 86px; }
+    #liveSidebar .live-panel { min-width: 180px; max-height: 50vh; }
+}
+
 @media (max-width: 820px) {
     .help-body { flex-direction: column; }
     .help-tabs { width:100%; display:flex; flex-direction:row; gap:6px; overflow:auto; }

@@ -148,6 +148,18 @@
             </div>
         </div>
 
+        <!-- Live players / leaderboard sidebar (collapsed by default) -->
+        <div id="liveSidebar" class="live-sidebar collapsed" aria-hidden="true">
+            <button id="liveToggleBtn" class="live-toggle" aria-expanded="false" title="Show players">▶ Players</button>
+            <div id="livePanel" class="live-panel" style="display:none;">
+                <div class="live-header">
+                    <div class="live-title">Players</div>
+                    <button id="liveCloseBtn" class="btn" title="Close">✕</button>
+                </div>
+                <div id="leaderboardList" class="leaderboard-list"></div>
+            </div>
+        </div>
+
         <div class="grid-area">
             <div class="grid" id="gameGrid"></div>
         </div>
