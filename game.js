@@ -248,9 +248,11 @@ function connectSocket() {
                     constructionTimeRemaining: buildingTypes[building.type]?.constructionTime || 0,
                     isUnderConstruction: (buildingTypes[building.type]?.constructionTime || 0) > 0
                 }, building);
-                console.log('[building:placed] after timing:', { id: bObj.id, type: bObj.type, endsAtMs: bObj.constructionEndsAtMs, totalMs: bObj.constructionTotalMs, isUC: bObj.isUnderConstruction });
+                console.log('[building:placed] after timing:', { id: bObj.id, type: bObj.type, endsAtMs: bObj.constructionEndsAtMs, totalMs: bObj.constructionTotalMs, isUC: bObj.isUnderConstruction, clientNow: Date.now() });
                 game.buildings.push(bObj);
                 renderBuilding(building.cell_id, building.type, true, bObj);
+                // Schedule guaranteed completion + visual update ticks via setTimeout
+                scheduleConstructionTimers(bObj, true);
                 calculateProximity();
                 if (building.type === 'storage') game.maxStorage += 1000;
                 addNotification('success', `🛠️ ${displayNames[building.type] || building.type} construction started.`);
@@ -271,6 +273,7 @@ function connectSocket() {
             }, building);
             game.enemyBuildings.push(bObj);
             renderBuilding(building.cell_id, building.type, false, bObj);
+            scheduleConstructionTimers(bObj, false);
         }
     });
 
@@ -692,6 +695,56 @@ function resolveOwner(ownerRef) {
     const p = (game.players || []).find(pl => pl.id === ownerRef || pl.name === ownerRef);
     if (p) return { ...p, avatar: p.avatar || DEFAULT_PLAYER_AVATAR };
     return { name: ownerRef || 'Unknown', avatar: DEFAULT_PLAYER_AVATAR, isBot: true, isLocal: false, id: null };
+}
+
+/**
+ * Schedule setTimeout-based construction progress ticks and guaranteed completion.
+ * setTimeout fires even in background tabs (unlike rAF), making this bulletproof.
+ */
+function scheduleConstructionTimers(building, isPlayerOwned) {
+    if (!building || !building.constructionEndsAtMs) return;
+    const now = Date.now();
+    const remaining = building.constructionEndsAtMs - now;
+    if (remaining <= 0) return; // already complete
+
+    const totalMs = building.constructionTotalMs || (Number(buildingTypes[building.type]?.constructionTime) || 0) * 10000;
+    const tickInterval = Math.max(100, totalMs / 50); // ~50 visual steps
+
+    console.log('[scheduleConstructionTimers]', building.type, 'cell', building.id, '| remaining', remaining + 'ms | tickInterval', tickInterval + 'ms');
+
+    // Clear any old timers on this building
+    if (building._constructionTickTimer) clearInterval(building._constructionTickTimer);
+    if (building._constructionDoneTimer) clearTimeout(building._constructionDoneTimer);
+
+    // Visual progress ticks via setInterval
+    building._constructionTickTimer = setInterval(() => {
+        if (!building.constructionEndsAtMs) {
+            clearInterval(building._constructionTickTimer);
+            return;
+        }
+        renderBuilding(building.id, building.type, isPlayerOwned, building);
+    }, tickInterval);
+
+    // Guaranteed completion via setTimeout
+    building._constructionDoneTimer = setTimeout(() => {
+        clearInterval(building._constructionTickTimer);
+        console.log('[scheduleConstructionTimers] COMPLETE (setTimeout)', building.type, 'cell', building.id);
+        building.isUnderConstruction = false;
+        building.constructionTimeRemaining = 0;
+        building.constructionTimeRemainingMs = 0;
+        building.constructionEndsAtMs = null;
+        renderBuilding(building.id, building.type, isPlayerOwned, building);
+
+        if (isPlayerOwned && !building._completionNotified) {
+            building._completionNotified = true;
+            const cell = document.querySelector('[data-id="' + building.id + '"]');
+            if (cell) {
+                cell.classList.add('build-complete');
+                setTimeout(() => cell.classList.remove('build-complete'), 900);
+            }
+            addNotification('success', `✅ ${displayNames[building.type] || building.type} construction complete!`);
+        }
+    }, remaining + 200); // +200ms safety buffer
 }
 
 function applyServerBuildingTiming(buildingRef, serverRow) {
@@ -1669,6 +1722,7 @@ function buildBuilding(id, type) {
 
     const building = game.buildings.find(b => b.id === id && b.type === type);
     renderBuilding(id, type, true, building);
+    scheduleConstructionTimers(building, true);
     calculateProximity();
     updateUI();
     game.selectedMode = null;
@@ -2911,7 +2965,7 @@ function constructionAnimLoop() {
                 diag.push({ id: b.id, type: b.type, endsAtMs: b.constructionEndsAtMs, isUC: b.isUnderConstruction, totalMs: b.constructionTotalMs, enemy: true });
             }
         });
-        if (diag.length) console.log('[constructionRAF] active:', JSON.stringify(diag));
+        if (diag.length) console.log('[constructionRAF] now:', now, 'active:', JSON.stringify(diag));
     }
 
     const processList = (buildings, isPlayerOwned) => {
