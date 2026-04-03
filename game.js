@@ -1845,14 +1845,41 @@ function renderBuilding(id, type, isPlayer, building) {
     const isUnderConstruction = !!(building && (building.isUnderConstruction || (building.constructionEndsAtMs && building.constructionEndsAtMs > Date.now())));
     
     if (isUnderConstruction && building) {
-        // Render progress circle using the original construction effect.
-        const progress = 1 - (building.constructionTimeRemaining / buildingTypes[type].constructionTime);
-        const circumference = 2 * Math.PI * 45; // 45 = radius
+        // Compute progress robustly from milliseconds so server/client timing
+        // granularity and unit conversions can't break the visual.
+        const totalMs = (Number(buildingTypes[type].constructionTime) || 0) * 10000; // unit -> ms (10s per unit)
+        const remainingMs = Number(building.constructionTimeRemainingMs ?? (Number(building.constructionTimeRemaining) * 10000)) || 0;
+
+        // progress: 0..1 (0 = not started, 1 = complete)
+        let progress = 0;
+        if (totalMs > 0) {
+            progress = (totalMs - Math.max(0, remainingMs)) / totalMs;
+            progress = Math.max(0, Math.min(1, progress));
+        }
+
+        // If complete, mark finished and render final building on next tick
+        if (progress >= 0.999) {
+            building.constructionTimeRemaining = 0;
+            building.constructionTimeRemainingMs = 0;
+            building.isUnderConstruction = false;
+            // render the completed building
+            const tint = isPlayer ? PLAYER_COLOR : ENEMY_COLOR;
+            if (USE_SVG_ICONS || type === 'storage') {
+                const svg = getIconSVG(type, tint);
+                cell.innerHTML = svg;
+            } else {
+                const emoji = buildingTypes[type].emoji || '';
+                cell.innerHTML = `<span class="icon-emoji" style="color:${tint};">${emoji}</span>`;
+            }
+            return;
+        }
+
+        const circumference = 2 * Math.PI * 45; // radius 45
         const strokeDashoffset = circumference * (1 - progress);
-        
+
         const tint = isPlayer ? PLAYER_COLOR : ENEMY_COLOR;
         const emoji = buildingTypes[type].emoji || '';
-        
+
         cell.innerHTML = `
             <div style="position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
                 <svg style="position: absolute; width: 100%; height: 100%; top: 0; left: 0;" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
