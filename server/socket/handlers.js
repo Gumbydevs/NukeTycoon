@@ -5,8 +5,10 @@ const { getActiveRun, getRunSnapshot, ensureRunPlayerState, BUILDING_RULES, BUY_
 const DEFAULT_AVATAR = '☢️';
 const VALID_AVATARS = new Set(['☢️', '🧑‍🚀', '👩‍🔬', '👨‍🔬', '🤖', '🦊', '🐺', '🐉']);
 const normalizeAvatar = (avatar) => VALID_AVATARS.has(avatar) ? avatar : DEFAULT_AVATAR;
-const BUILDING_COSTS = Object.fromEntries(Object.entries(BUILDING_RULES).map(([type, meta]) => [type, meta.cost]));
-const VALID_TYPES = Object.keys(BUILDING_COSTS);
+// VALID_TYPES is static (the set of building type keys never changes at runtime)
+const VALID_TYPES = Object.keys(BUILDING_RULES);
+// Do NOT snapshot costs here — always read BUILDING_RULES[type].cost live so
+// admin changes via /admin/api/set-building-config are reflected immediately.
 const STRIKE_LIMIT_PER_DAY = 1;
 const MARKET_POOL_BURN_RATE = 50;
 
@@ -347,7 +349,7 @@ function registerHandlers(io, socket) {
                 return;
             }
 
-            const cost = BUILDING_COSTS[type];
+            const cost = BUILDING_RULES[type].cost;
             const run  = await getActiveRun();
             if (!run) {
                 socket.emit('building:place_error', { message: 'No active run.' });
