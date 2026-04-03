@@ -277,12 +277,18 @@ function registerHandlers(io, socket) {
             });
 
             if (isNewJoiner) {
+                // Include lightweight authoritative counts when broadcasting a join
                 socket.to(`run:${run.id}`).emit('run:player_joined', {
                     player: {
                         id: player.id,
                         username: player.username,
                         avatar: player.avatar || DEFAULT_AVATAR,
                         token_balance: parseInt(mePlayer?.token_balance ?? player.token_balance, 10) || 0,
+                        total_buildings: 0,
+                        plant_count: 0,
+                        mine_count: 0,
+                        processor_count: 0,
+                        joined_at: new Date().toISOString(),
                     },
                 });
                 await emitRunEconomy(io, run.id);

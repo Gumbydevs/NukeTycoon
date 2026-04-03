@@ -367,14 +367,26 @@ async function getRunSnapshot(runId) {
     const playerNameById = new Map(playersResult.rows.map((player) => [player.id, player.username]));
     const nuclearThreats = playerStates.filter((state) => state.used_nuke).map((state) => playerNameById.get(state.player_id)).filter(Boolean);
 
+    // Merge authoritative counts from `scores` into the players array so
+    // clients receive building counts and score for each player in the
+    // `players` payload (reduces race conditions where clients see a
+    // lightweight player object before the separate `scores` packet).
+    const scoresById = new Map((scores || []).map(s => [String(s.player_id), s]));
     return {
         run,
-        players: playersResult.rows.map((row) => ({
-            ...row,
-            token_balance: parseInt(row.token_balance, 10) || 0,
-            score: Number(row.score || 0),
-            used_nuke: !!row.used_nuke,
-        })),
+        players: playersResult.rows.map((row) => {
+            const scoreEntry = scoresById.get(String(row.id));
+            return {
+                ...row,
+                token_balance: parseInt(row.token_balance, 10) || 0,
+                score: Number(row.score || (scoreEntry && scoreEntry.score) || 0),
+                used_nuke: !!row.used_nuke,
+                total_buildings: scoreEntry ? (scoreEntry.total_buildings || 0) : 0,
+                plant_count: scoreEntry ? (scoreEntry.plant_count || 0) : 0,
+                mine_count: scoreEntry ? (scoreEntry.mine_count || 0) : 0,
+                processor_count: scoreEntry ? (scoreEntry.processor_count || 0) : 0,
+            };
+        }),
         buildings: buildingsResult.rows,
         playerStates,
         falloutZones: falloutResult.rows,
