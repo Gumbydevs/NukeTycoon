@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>NUKEWAR Admin</title>
+  <script>
+    // Forward key= query param and redirect to the live server admin page
+    const key = new URLSearchParams(location.search).get('key') || '';
+    const dest = 'https://nuketycoon-production.up.railway.app/admin' + (key ? '?key=' + encodeURIComponent(key) : '');
+    location.replace(dest);
+  </script>
+  <style>
+    body { margin: 0; background: #0b0d10; color: #9fb0c3; font-family: monospace; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  </style>
+</head>
+<body>Redirecting to admin…</body>
+</html>

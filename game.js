@@ -4331,11 +4331,7 @@ async function serverAdminRequest(path, options = {}) {
 
 function openServerAdmin() {
     const key = getAdminKey();
-    const isGitHubPages = /github\.io$/i.test(window.location.hostname);
-    const adminUrl = isGitHubPages
-        ? new URL('admin.html', window.location.href)
-        : new URL('/admin', SERVER_URL);
-
+    const adminUrl = new URL('/admin', SERVER_URL);
     if (key) adminUrl.searchParams.set('key', key);
     window.open(adminUrl.toString(), '_blank', 'noopener');
 }
