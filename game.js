@@ -567,7 +567,7 @@ const game = {
     playerEmail: '',
     playerAvatar: DEFAULT_PLAYER_AVATAR,
     pendingInitialProfileSetup: false,
-    botsEnabled: true,
+    botsEnabled: false,
     uraniumRaw: 0,      // mined by Mine buildings
     uraniumRefined: 0,  // converted by Processor buildings; consumed by Plants
     maxStorage: 5000,   // total cap shared across raw + refined
