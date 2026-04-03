@@ -254,6 +254,8 @@ function registerHandlers(io, socket) {
                 yourWallet: parseInt(mePlayer?.token_balance ?? player.token_balance, 10) || 0,
                 isNewJoiner,
                 serverTime: Date.now(),
+                terrain: snapshot?.terrain || null,
+                deposits: snapshot?.deposits || null,
             });
         });
     });

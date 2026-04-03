@@ -4,6 +4,26 @@ const DAY_DURATION_MS = parseInt(process.env.DAY_DURATION_MS || '86400000', 10);
 const RUN_LENGTH = parseInt(process.env.RUN_LENGTH || '3', 10);
 let _nextRunLength = RUN_LENGTH;  // can be overridden at runtime by admin
 function setNextRunLength(n) { _nextRunLength = n; }
+
+// ── Per-run terrain + deposit cache ──────────────────────────────────────────
+// Keyed by runId. Populated once on run creation and lazily on server restart.
+const _terrainCache = new Map();
+const _depositsCache = new Map();
+
+function getOrGenerateTerrain(runId) {
+    if (!_terrainCache.has(runId)) {
+        _terrainCache.set(runId, generateTerrainForRun(runId));
+    }
+    return _terrainCache.get(runId);
+}
+
+function getOrGenerateDeposits(runId) {
+    const terrain = getOrGenerateTerrain(runId);
+    if (!_depositsCache.has(runId)) {
+        _depositsCache.set(runId, generateDepositsForRun(runId, terrain));
+    }
+    return _depositsCache.get(runId);
+}
 const BUY_IN = 5000;
 const GRID_COLS = 20;
 const GRID_ROWS = 20;
@@ -76,6 +96,9 @@ async function createNewRun() {
         [runNumber, _nextRunLength, MARKET_BASE_PRICE, MARKET_TOKEN_POOL_INITIAL, TOTAL_TOKEN_SUPPLY, DAY_DURATION_MS, nextDayAt]
     );
     console.log(`🔥 New run #${runNumber} started (day duration: ${DAY_DURATION_MS}ms)`);
+    // Pre-warm terrain + deposit cache so first player join is instant
+    getOrGenerateTerrain(result.rows[0].id);
+    getOrGenerateDeposits(result.rows[0].id);
     return parseRunRow(result.rows[0]);
 }
 
@@ -353,6 +376,9 @@ async function getRunSnapshot(runId) {
     const run = parseRunRow(runResult.rows[0]);
     if (!run) return null;
 
+    const terrain = getOrGenerateTerrain(run.id);
+    const deposits = getOrGenerateDeposits(run.id);
+
     const playerStates = playerStatesResult.rows.map((row) => ({
         ...row,
         uranium_raw: Number(row.uranium_raw || 0),
@@ -394,6 +420,8 @@ async function getRunSnapshot(runId) {
         falloutZones: falloutResult.rows,
         scores,
         nuclearThreats,
+        terrain,
+        deposits,
     };
 }
 
@@ -719,6 +747,9 @@ function setupGameLoop(io) {
                 console.log('Boot: no active run found, created one.');
             } else {
                 console.log(`Boot: active run #${run.run_number}, day ${run.current_day}/${run.run_length}`);
+                // Prime terrain cache for existing run on server restart
+                getOrGenerateTerrain(run.id);
+                getOrGenerateDeposits(run.id);
             }
         } catch (err) {
             console.error('Boot run check error:', err);
@@ -739,4 +770,6 @@ module.exports = {
     BUY_IN,
     setNextRunLength,
     getNextRunLength: () => _nextRunLength,
+    getTerrainForRun: getOrGenerateTerrain,
+    getDepositsForRun: getOrGenerateDeposits,
 };

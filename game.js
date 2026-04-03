@@ -110,7 +110,7 @@ function connectSocket() {
     });
 
     // ── Run events ──────────────────────────────────────────────────────
-    socket.on('run:state', ({ run, buildings, players, scores, playerState, falloutZones, nuclearThreats, yourWallet, isNewJoiner, serverTime }) => {
+    socket.on('run:state', ({ run, buildings, players, scores, playerState, falloutZones, nuclearThreats, yourWallet, isNewJoiner, serverTime, terrain, deposits }) => {
         // Store server clock for interpolation
         if (serverTime) {
             game._serverTime = serverTime;
@@ -145,7 +145,14 @@ function connectSocket() {
         applyServerScores(scores);
         syncLocalPlayerEntry();
 
-        // Rebuild the grid from the shared run seed, then render the live buildings.
+        // Rebuild the grid using server-authoritative terrain + deposits.
+        // Store them before calling initGrid so the function picks them up.
+        if (Array.isArray(terrain) && terrain.length === 400) {
+            game._serverTerrain = terrain;
+        }
+        if (Array.isArray(deposits)) {
+            game._serverDeposits = deposits;
+        }
         initGrid();
         game.buildings      = [];
         game.enemyBuildings = [];
@@ -297,6 +304,9 @@ function connectSocket() {
 
     socket.on('run:new', ({ runId, runNumber }) => {
         addNotification('info', `🔄 Run #${runNumber} has started! Entering lobby…`);
+        // Clear cached terrain so the new run's terrain arrives fresh from the server
+        game._serverTerrain = null;
+        game._serverDeposits = null;
         // Reset local game state then rejoin — server will return isNewJoiner=true
         // for the new run, which triggers the buy-in lobby automatically.
         game.buildings = [];
@@ -1103,10 +1113,18 @@ function initGrid() {
     game.enemyBuildings = [];
     const grid = document.getElementById('gameGrid');
     grid.innerHTML = '';
-    // generate a simple terrain map (grass / dirt / road)
-    const terrain = generateTerrain(20, 20);
-    game.terrain = terrain; // store so road-bonus checks work at runtime
-    game.deposits = generateDeposits(20, 20); // Generate uranium deposits
+
+    // Use server-authoritative terrain/deposits when available (multiplayer);
+    // fall back to client-side seeded generation for offline/solo play.
+    const terrain = (Array.isArray(game._serverTerrain) && game._serverTerrain.length === 400)
+        ? game._serverTerrain
+        : generateTerrain(20, 20);
+    const deposits = Array.isArray(game._serverDeposits)
+        ? game._serverDeposits
+        : generateDeposits(20, 20);
+
+    game.terrain = terrain;
+    game.deposits = deposits;
     
     for (let i = 0; i < 400; i++) {
         const cell = document.createElement('div');
