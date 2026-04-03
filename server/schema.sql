@@ -129,3 +129,10 @@ CREATE TABLE IF NOT EXISTS sabotage_events (
     cost            BIGINT NOT NULL,
     executed_at     TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- ── Global server config (key/value, persists across restarts) ───────────────
+CREATE TABLE IF NOT EXISTS server_config (
+    key    TEXT PRIMARY KEY,
+    value  TEXT NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);

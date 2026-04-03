@@ -51,6 +51,39 @@ function setBuildingRules(type, cost, constructionMs) {
     return true;
 }
 
+async function loadBuildingRulesFromDB() {
+    try {
+        const result = await db.query("SELECT key, value FROM server_config WHERE key LIKE 'building.%'");
+        result.rows.forEach(({ key, value }) => {
+            // key format: building.<type>.<field>  e.g. building.mine.cost
+            const parts = key.split('.');
+            if (parts.length !== 3) return;
+            const [, type, field] = parts;
+            if (!BUILDING_RULES[type]) return;
+            const num = Number(value);
+            if (!Number.isFinite(num)) return;
+            if (field === 'cost') BUILDING_RULES[type].cost = Math.floor(num);
+            if (field === 'constructionMs') BUILDING_RULES[type].constructionMs = Math.floor(num);
+        });
+        console.log('[config] Building rules loaded from DB:', JSON.stringify(BUILDING_RULES));
+    } catch (err) {
+        console.warn('[config] Could not load building rules from DB (table may not exist yet):', err.message);
+    }
+}
+
+async function saveBuildingRulesToDB(type) {
+    const r = BUILDING_RULES[type];
+    if (!r) return;
+    await db.query(
+        `INSERT INTO server_config (key, value, updated_at) VALUES ($1, $2, NOW()), ($3, $4, NOW())
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+        [
+            `building.${type}.cost`, String(r.cost),
+            `building.${type}.constructionMs`, String(r.constructionMs),
+        ]
+    );
+}
+
 function parseRunRow(row) {
     if (!row) return null;
     return {
@@ -774,6 +807,8 @@ module.exports = {
     emitRunSnapshot,
     BUILDING_RULES,
     setBuildingRules,
+    saveBuildingRulesToDB,
+    loadBuildingRulesFromDB,
     DAY_DURATION_MS,
     BUY_IN,
     setNextRunLength,
