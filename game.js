@@ -1844,23 +1844,16 @@ function renderBuilding(id, type, isPlayer, building) {
     const cell = document.querySelector('[data-id="' + id + '"]');
     cell.className = 'cell owned ' + type + (isPlayer ? ' owned-player' : ' owned-enemy');
 
-    // Check if building is under construction
-    const isUnderConstruction = !!(building && (building.isUnderConstruction || (building.constructionEndsAtMs && building.constructionEndsAtMs > Date.now())));
-    
-    if (isUnderConstruction && building) {
-        const totalMs = (Number(buildingTypes[type].constructionTime) || 0) * 10000;
-        const now = Date.now();
+    // Use only the wall-clock end timestamp to decide construction state.
+    // Never rely on the isUnderConstruction flag — it can be stale.
+    const now = Date.now();
+    const totalMs = (Number(buildingTypes[type]?.constructionTime) || 0) * 10000;
+    const endsAt = building?.constructionEndsAtMs || null;
+    const stillBuilding = !!(endsAt && endsAt > now);
 
-        // Prefer wall-clock end timestamp (set on both server and local builds)
-        let progress = 0;
-        if (building.constructionEndsAtMs && totalMs > 0) {
-            const elapsed = now - (building.constructionEndsAtMs - totalMs);
-            progress = Math.max(0, Math.min(1, elapsed / totalMs));
-        } else if (totalMs > 0) {
-            const remaining = Number(building.constructionTimeRemaining) || 0;
-            const total = totalMs / 10000;
-            progress = Math.max(0, Math.min(1, 1 - (remaining / total)));
-        }
+    if (stillBuilding) {
+        const elapsed = now - (endsAt - totalMs);
+        const progress = totalMs > 0 ? Math.max(0.02, Math.min(1, elapsed / totalMs)) : 0;
 
         const circumference = 2 * Math.PI * 45;
         const strokeDashoffset = circumference * (1 - progress);
