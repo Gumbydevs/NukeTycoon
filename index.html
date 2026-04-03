@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NUKEWAR</title>
-    <link rel="stylesheet" href="styles/main.css?v=20260403i">
+    <link rel="stylesheet" href="styles/main.css?v=20260403j">
 </head>
 <body>
     <div id="loginModal" style="position:fixed; left:0; top:0; right:0; bottom:0; background:rgba(0,0,0,0.85); z-index:999; display:flex; align-items:center; justify-content:center;">
@@ -114,7 +114,7 @@
                 🔔<span class="notif-badge" id="notifBadge" style="display:none;">0</span>
             </button>
             <div class="actions-menu">
-                <button class="btn menu-toggle" id="actionsMenuBtn" aria-haspopup="true" aria-expanded="false" title="Actions">☰</button>
+                <button class="btn menu-toggle" id="actionsMenuBtn" aria-haspopup="true" aria-expanded="false" title="Actions" onclick="toggleActionsMenu(event)">☰</button>
                 <div class="dropdown" id="actionsMenu" aria-hidden="true" style="display:none;">
                     <div class="menu-section game-only">
                         <div class="menu-section-title">Build</div>
@@ -382,6 +382,6 @@
 
     <!-- Socket.io client — must load before game.js -->
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-    <script src="game.js?v=20260403i"></script>
+    <script src="game.js?v=20260403j"></script>
 </body>
 </html>

@@ -1565,26 +1565,9 @@ function initMenu() {
     // expose setMenuOpen globally so inline fallbacks can delegate to the same logic
     try { window.setMenuOpen = setMenuOpen; } catch (e) { /* ignore */ }
 
+    // Click is handled via onclick="toggleActionsMenu(event)" on the HTML button.
+    // setMenuOpen is exposed globally below so toggleActionsMenu can use it.
     if (actionsBtn) {
-        const toggleHandler = (e) => {
-            if (e && e.preventDefault) e.preventDefault();
-            const expanded = actionsBtn.getAttribute('aria-expanded') === 'true';
-            setMenuOpen(!expanded);
-            console.log('initMenu: actionsBtn toggle -> setMenuOpen', !expanded);
-            if (e && e.stopPropagation) e.stopPropagation();
-        };
-        // click handles desktop; touchend handles mobile (iOS eats click when
-        // parent has overflow-x:auto + -webkit-overflow-scrolling:touch)
-        let _lastToggleTs = 0;
-        const debouncedToggle = (e) => {
-            const now = Date.now();
-            if (now - _lastToggleTs < 600) return; // dedupe touchend → synthesized click
-            _lastToggleTs = now;
-            toggleHandler(e);
-        };
-        actionsBtn.addEventListener('touchend', debouncedToggle, { passive: false });
-        actionsBtn.addEventListener('click', debouncedToggle);
-        // ensure button is on top and tappable on small screens
         try {
             actionsBtn.style.zIndex = '1000';
             actionsBtn.style.touchAction = 'manipulation';
@@ -1613,10 +1596,13 @@ function initMenu() {
         // Ignore key shortcuts when typing in an input/textarea
         const tag = document.activeElement && document.activeElement.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-        if (e.key === 'Escape') { setMenuOpen(false); return; }
+        if (e.key === 'Escape') {
+            const ab = document.getElementById('actionsMenuBtn');
+            if (ab && ab.getAttribute('aria-expanded') === 'true') toggleActionsMenu({ stopPropagation: () => {} });
+            return;
+        }
         if (e.key === 'm' || e.key === 'M') {
-            const expanded = actionsBtn && actionsBtn.getAttribute('aria-expanded') === 'true';
-            setMenuOpen(!expanded);
+            toggleActionsMenu({ stopPropagation: () => {} });
         }
     });
 }
@@ -1809,31 +1795,33 @@ window.addEventListener('DOMContentLoaded', () => {
  * Fallback toggle that can be called from inline onclick. Safe if initMenu already manages state.
  */
 function toggleActionsMenu(e) {
-    console.log('toggleActionsMenu called');
+    if (e && e.stopPropagation) e.stopPropagation();
     const actionsBtn = document.getElementById('actionsMenuBtn');
     const actionsMenu = document.getElementById('actionsMenu');
-    if (!actionsBtn || !actionsMenu) { console.warn('toggleActionsMenu: elements missing'); return; }
+    if (!actionsBtn || !actionsMenu) return;
     const expanded = actionsBtn.getAttribute('aria-expanded') === 'true';
     const open = !expanded;
-    // Delegate to the same placement logic used by initMenu
-    if (typeof setMenuOpen === 'function') {
-        try { setMenuOpen(open); } catch (err) {
-            actionsBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-            actionsMenu.setAttribute('aria-hidden', open ? 'false' : 'true');
-            actionsMenu.style.display = open ? 'block' : 'none';
-        }
-    } else {
-        actionsBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-        actionsMenu.setAttribute('aria-hidden', open ? 'false' : 'true');
-        actionsMenu.style.display = open ? 'block' : 'none';
-        if (open) {
-            actionsMenu.style.position = 'fixed';
-            actionsMenu.style.left = '8px';
-            actionsMenu.style.right = '8px';
-            actionsMenu.style.top = '60px';
-        }
+    actionsBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    actionsMenu.setAttribute('aria-hidden', open ? 'false' : 'true');
+    if (!open) {
+        actionsMenu.style.display = 'none';
+        actionsMenu.style.position = '';
+        return;
     }
-    if (e && e.stopPropagation) e.stopPropagation();
+    try { document.body.classList.remove('mobile-menu-open'); } catch (err) { }
+    actionsMenu.style.display = 'block';
+    actionsMenu.style.position = 'fixed';
+    actionsMenu.style.right = 'auto';
+    actionsMenu.style.left = 'auto';
+    const btnRect = actionsBtn.getBoundingClientRect();
+    const menuWidth = actionsMenu.getBoundingClientRect().width || actionsMenu.offsetWidth || 220;
+    let left = Math.max(8, Math.min(window.innerWidth - menuWidth - 8, btnRect.right - menuWidth));
+    let top = btnRect.bottom + 8;
+    if (top + actionsMenu.getBoundingClientRect().height > window.innerHeight - 8) {
+        top = Math.max(8, btnRect.top - actionsMenu.getBoundingClientRect().height - 8);
+    }
+    actionsMenu.style.left = left + 'px';
+    actionsMenu.style.top = top + 'px';
 }
 
 /**
