@@ -176,6 +176,10 @@ function connectSocket() {
 
         updateUI();
 
+        // Start sim loops (clock + production) as soon as server state is known,
+        // regardless of lobby state, so the clock ticks from the moment we connect.
+        startSimLoops();
+
         if (isNewJoiner) {
             // Fresh joiner: show the lobby modal with server-populated data
             _updateLobbyFromServerState(run, players, yourWallet);
@@ -292,7 +296,29 @@ function connectSocket() {
     });
 
     socket.on('run:new', ({ runId, runNumber }) => {
-        addNotification('info', `🔄 Run #${runNumber} has started! Rejoin via the lobby.`);
+        addNotification('info', `🔄 Run #${runNumber} has started! Entering lobby…`);
+        // Reset local game state then rejoin — server will return isNewJoiner=true
+        // for the new run, which triggers the buy-in lobby automatically.
+        game.buildings = [];
+        game.enemyBuildings = [];
+        game.runEnded = false;
+        initGrid();
+        if (socket?.connected && _authJWT) {
+            socket.emit('run:join', { jwt: _authJWT });
+        }
+    });
+
+    socket.on('run:buyin_ok', ({ yourWallet }) => {
+        if (Number.isFinite(Number(yourWallet))) {
+            game.playerWallet = Number(yourWallet);
+            game._walletShown = game.playerWallet;
+        }
+        const modal = document.getElementById('lobbyModal');
+        if (modal) modal.style.display = 'none';
+        // Re-enable buy-in button in case this fires after a retry
+        const btn = document.getElementById('lobbyConfirmBtn');
+        if (btn) { btn.disabled = false; btn.textContent = `Confirm Buy-In`; }
+        startGame(true);
     });
 
     // ── Building events ─────────────────────────────────────────────────
@@ -2650,11 +2676,14 @@ function showLobby() {
  */
 function confirmBuyIn() {
     if (socket?.connected && _authJWT) {
-        // Server-mode: deduction + validation happens server-side.
-        // The run:state event already joined us; just close the lobby and start.
-        const modal = document.getElementById('lobbyModal');
-        if (modal) modal.style.display = 'none';
-        startGame(true); // server-mode
+        // Server-mode: send buy-in confirmation — server deducts and responds with run:buyin_ok.
+        const errEl = document.getElementById('lobbyError');
+        if (errEl) errEl.textContent = '';
+        const btn = document.getElementById('lobbyConfirmBtn');
+        if (btn) { btn.disabled = true; btn.textContent = 'Processing…'; }
+        socket.emit('run:confirm_buyin', { jwt: _authJWT });
+        // Safety re-enable in case server never responds
+        setTimeout(() => { if (btn) { btn.disabled = false; btn.textContent = `Confirm Buy-In`; } }, 8000);
     } else {
         // Offline fallback
         if (game.playerWallet < game.buyIn) {

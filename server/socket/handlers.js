@@ -222,45 +222,25 @@ function registerHandlers(io, socket) {
                 return;
             }
 
-            // Check existing membership
+            // Check existing membership — do NOT auto-deduct; buy-in confirmation is a
+            // separate event (run:confirm_buyin) so the lobby can be shown first.
             const existing = await db.query(
                 'SELECT * FROM run_players WHERE run_id = $1 AND player_id = $2',
                 [run.id, player.id]
             );
-
-            let isNewJoiner = false;
-            if (existing.rows.length === 0) {
-                // Deduct buy-in
-                if (parseInt(player.token_balance, 10) < BUY_IN) {
-                    socket.emit('run:join_error', { message: 'Not enough tokens for the buy-in.' });
-                    return;
-                }
-                await db.query(
-                    'UPDATE players SET token_balance = token_balance - $1 WHERE id = $2',
-                    [BUY_IN, player.id]
-                );
-                await db.query(
-                    'INSERT INTO run_players (run_id, player_id) VALUES ($1, $2)',
-                    [run.id, player.id]
-                );
-                // 80% of buy-in seeds prize pool
-                await db.query(
-                    `UPDATE runs
-                     SET prize_pool = prize_pool + $1,
-                         market_token_pool = GREATEST(1, market_token_pool - $2)
-                     WHERE id = $3`,
-                    [Math.floor(BUY_IN * 0.8), Math.floor(BUY_IN * 0.2) / MARKET_POOL_BURN_RATE, run.id]
-                );
-                isNewJoiner = true;
-            }
+            const isNewJoiner = existing.rows.length === 0;
 
             socket.join(`run:${run.id}`);
             socket.runId = run.id;
             socket.playerId = player.id;
-            await ensureRunPlayerState(run.id, player.id);
+
+            // Only create/ensure player state row for players who have paid
+            if (!isNewJoiner) {
+                await ensureRunPlayerState(run.id, player.id);
+            }
 
             const snapshot = await getRunSnapshot(run.id);
-            const meState = (snapshot?.playerStates || []).find((row) => row.player_id === player.id) || null;
+            const meState = isNewJoiner ? null : ((snapshot?.playerStates || []).find((row) => row.player_id === player.id) || null);
             const mePlayer = (snapshot?.players || []).find((row) => row.id === player.id);
 
             socket.emit('run:state', {
@@ -275,24 +255,79 @@ function registerHandlers(io, socket) {
                 isNewJoiner,
                 serverTime: Date.now(),
             });
+        });
+    });
 
-            if (isNewJoiner) {
-                // Include lightweight authoritative counts when broadcasting a join
-                socket.to(`run:${run.id}`).emit('run:player_joined', {
-                    player: {
-                        id: player.id,
-                        username: player.username,
-                        avatar: player.avatar || DEFAULT_AVATAR,
-                        token_balance: parseInt(mePlayer?.token_balance ?? player.token_balance, 10) || 0,
-                        total_buildings: 0,
-                        plant_count: 0,
-                        mine_count: 0,
-                        processor_count: 0,
-                        joined_at: new Date().toISOString(),
-                    },
-                });
-                await emitRunEconomy(io, run.id);
+    // Player confirmed buy-in from the lobby — deduct tokens and enter the run.
+    socket.on('run:confirm_buyin', async ({ jwt }) => {
+        await requireAuth(socket, jwt, async (decoded, player) => {
+            const run = await getActiveRun();
+            if (!run) {
+                socket.emit('run:join_error', { message: 'No active run right now.' });
+                return;
             }
+
+            // Idempotent: if they somehow already paid, just start them
+            const existing = await db.query(
+                'SELECT * FROM run_players WHERE run_id = $1 AND player_id = $2',
+                [run.id, player.id]
+            );
+            if (existing.rows.length > 0) {
+                socket.emit('run:buyin_ok', {
+                    yourWallet: parseInt(player.token_balance, 10) || 0,
+                });
+                return;
+            }
+
+            // Deduct buy-in
+            if (parseInt(player.token_balance, 10) < BUY_IN) {
+                socket.emit('run:join_error', { message: 'Not enough tokens for the buy-in.' });
+                return;
+            }
+            await db.query(
+                'UPDATE players SET token_balance = token_balance - $1 WHERE id = $2',
+                [BUY_IN, player.id]
+            );
+            await db.query(
+                'INSERT INTO run_players (run_id, player_id) VALUES ($1, $2)',
+                [run.id, player.id]
+            );
+            // 80% of buy-in seeds prize pool
+            await db.query(
+                `UPDATE runs
+                 SET prize_pool = prize_pool + $1,
+                     market_token_pool = GREATEST(1, market_token_pool - $2)
+                 WHERE id = $3`,
+                [Math.floor(BUY_IN * 0.8), Math.floor(BUY_IN * 0.2) / MARKET_POOL_BURN_RATE, run.id]
+            );
+
+            socket.runId = run.id;
+            socket.playerId = player.id;
+            await ensureRunPlayerState(run.id, player.id);
+
+            // Re-fetch fresh wallet balance after deduction
+            const playerRow = await db.query('SELECT token_balance FROM players WHERE id = $1', [player.id]);
+            const freshWallet = parseInt(playerRow.rows[0]?.token_balance, 10) || 0;
+
+            socket.emit('run:buyin_ok', { yourWallet: freshWallet });
+
+            // Broadcast this new player to everyone else in the room
+            const snapshot = await getRunSnapshot(run.id);
+            const mePlayer = (snapshot?.players || []).find((row) => row.id === player.id);
+            socket.to(`run:${run.id}`).emit('run:player_joined', {
+                player: {
+                    id: player.id,
+                    username: player.username,
+                    avatar: player.avatar || DEFAULT_AVATAR,
+                    token_balance: freshWallet,
+                    total_buildings: 0,
+                    plant_count: 0,
+                    mine_count: 0,
+                    processor_count: 0,
+                    joined_at: new Date().toISOString(),
+                },
+            });
+            await emitRunEconomy(io, run.id);
         });
     });
 

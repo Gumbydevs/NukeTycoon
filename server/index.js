@@ -265,6 +265,66 @@ app.post('/admin/api/reset-run', requireAdmin, async (_req, res) => {
     }
 });
 
+// ── Danger zone endpoints ──────────────────────────────────────────────────
+
+// Wipe run_players for the current run — forces everyone back to the buy-in lobby
+app.post('/admin/api/wipe-run-players', requireAdmin, async (_req, res) => {
+    try {
+        const run = await getActiveRun();
+        if (!run) { res.status(404).json({ error: 'No active run.' }); return; }
+        const result = await db.query('DELETE FROM run_players WHERE run_id = $1', [run.id]);
+        res.json({ ok: true, deleted: result.rowCount });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Reset all player token balances to 50,000
+app.post('/admin/api/reset-balances', requireAdmin, async (_req, res) => {
+    try {
+        const result = await db.query('UPDATE players SET token_balance = 50000');
+        res.json({ ok: true, updated: result.rowCount });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Wipe all run_player_state rows for current run
+app.post('/admin/api/wipe-player-state', requireAdmin, async (_req, res) => {
+    try {
+        const run = await getActiveRun();
+        if (!run) { res.status(404).json({ error: 'No active run.' }); return; }
+        const result = await db.query('DELETE FROM run_player_state WHERE run_id = $1', [run.id]);
+        res.json({ ok: true, deleted: result.rowCount });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Nuclear option: end current run, wipe all per-run data, reset balances, start fresh
+app.post('/admin/api/full-db-reset', requireAdmin, async (_req, res) => {
+    try {
+        const activeRun = await getActiveRun();
+        if (activeRun) {
+            io.to(`run:${activeRun.id}`).emit('admin:run_reset', { runId: activeRun.id });
+        }
+        // End all active runs
+        await db.query("UPDATE runs SET status = 'ended', ended_at = NOW() WHERE status = 'active'");
+        // Wipe per-run data
+        await db.query('DELETE FROM run_players');
+        await db.query('DELETE FROM run_player_state');
+        await db.query('UPDATE buildings SET is_active = FALSE, destroyed_at = NOW() WHERE is_active = TRUE');
+        // Reset player balances
+        await db.query('UPDATE players SET token_balance = 50000');
+        // Start fresh run
+        const newRun = await createNewRun();
+        io.emit('run:new', { runId: newRun.id, runNumber: newRun.run_number, forced: true });
+        res.json({ ok: true, message: 'Full DB reset complete.', newRun });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 io.on('connection', (socket) => {
     console.log(`🔌 connected  ${socket.id}`);
     registerHandlers(io, socket);

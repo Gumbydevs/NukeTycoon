@@ -162,6 +162,41 @@
       <h2>Raw Response</h2>
       <pre id="rawOutput">Awaiting status…</pre>
     </section>
+
+    <!-- ── DANGER ZONE ───────────────────────────────────────────────────── -->
+    <section class="card" style="margin-top:32px; border-color:#6e2b2b;">
+      <h2 style="color:var(--danger);">⚠️ Danger Zone</h2>
+      <p style="color:#c97777;">These actions are destructive and irreversible. Confirm each before proceeding.</p>
+
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px,1fr)); gap:12px; margin-top:12px;">
+
+        <div style="background:#1a1014; border:1px solid #5a2222; border-radius:10px; padding:14px;">
+          <div style="font-weight:700; color:var(--danger); margin-bottom:6px;">🔄 Wipe Run Players</div>
+          <p style="font-size:12px; color:#b07070; margin:0 0 10px;">Removes all buy-in records for the current run. Every connected player will be forced back into the buy-in lobby on their next action.</p>
+          <button class="danger" id="wipeRunPlayersBtn">Wipe run_players</button>
+        </div>
+
+        <div style="background:#1a1014; border:1px solid #5a2222; border-radius:10px; padding:14px;">
+          <div style="font-weight:700; color:var(--danger); margin-bottom:6px;">💰 Reset All Balances</div>
+          <p style="font-size:12px; color:#b07070; margin:0 0 10px;">Resets every player's token balance to 50,000. Does not touch any other state.</p>
+          <button class="danger" id="resetBalancesBtn">Reset to 50,000 tokens</button>
+        </div>
+
+        <div style="background:#1a1014; border:1px solid #5a2222; border-radius:10px; padding:14px;">
+          <div style="font-weight:700; color:var(--danger); margin-bottom:6px;">🧹 Wipe Player State</div>
+          <p style="font-size:12px; color:#b07070; margin:0 0 10px;">Deletes all run_player_state rows for the current run (uranium, income, daily stats etc.).</p>
+          <button class="danger" id="wipePlayerStateBtn">Wipe player state</button>
+        </div>
+
+        <div style="background:#200a0a; border:2px solid var(--danger); border-radius:10px; padding:14px;">
+          <div style="font-weight:700; color:#ff3333; margin-bottom:6px;">☢️ FULL DB RESET</div>
+          <p style="font-size:12px; color:#b07070; margin:0 0 10px;">Ends current run, deletes all run_players + run_player_state, deactivates all buildings, resets all player balances to 50,000, then starts a fresh run. <strong style="color:var(--danger);">Cannot be undone.</strong></p>
+          <button class="danger" id="fullResetBtn" style="border-color:var(--danger); font-size:14px;">☢️ FULL RESET</button>
+        </div>
+      </div>
+
+      <div id="dangerMsg" class="muted" style="margin-top:12px; min-height:20px;"></div>
+    </section>
   </div>
 
   <script>
@@ -278,6 +313,62 @@
     $('clearCellBtn').addEventListener('click', clearCell);
     $('resetBuildingsBtn').addEventListener('click', resetBuildings);
     $('freshRunBtn').addEventListener('click', startFreshRun);
+
+    // ── Danger zone ──────────────────────────────────────────────────────────
+    function dangerMsg(text, isError) {
+      const el = $('dangerMsg');
+      if (el) { el.textContent = text; el.style.color = isError ? 'var(--danger)' : 'var(--success)'; }
+    }
+
+    async function dangerAction(endpoint, confirmText, successFn) {
+      if (!confirm(confirmText)) return;
+      try {
+        dangerMsg('Working…', false);
+        const data = await api(endpoint, { method: 'POST', body: '{}' });
+        successFn(data);
+      } catch (err) {
+        dangerMsg(err.message, true);
+      }
+    }
+
+    $('wipeRunPlayersBtn').addEventListener('click', () =>
+      dangerAction(
+        '/admin/api/wipe-run-players',
+        'Wipe all run_players for the current run? Every player will be forced back to the buy-in lobby.',
+        (d) => { dangerMsg(`✅ Wiped ${d.deleted} run_player rows.`, false); refreshStatus(); }
+      )
+    );
+
+    $('resetBalancesBtn').addEventListener('click', () =>
+      dangerAction(
+        '/admin/api/reset-balances',
+        'Reset ALL player token balances to 50,000?',
+        (d) => { dangerMsg(`✅ Reset ${d.updated} player balance(s) to 50,000.`, false); refreshStatus(); }
+      )
+    );
+
+    $('wipePlayerStateBtn').addEventListener('click', () =>
+      dangerAction(
+        '/admin/api/wipe-player-state',
+        'Wipe all run_player_state rows for the current run?',
+        (d) => { dangerMsg(`✅ Deleted ${d.deleted} state row(s).`, false); refreshStatus(); }
+      )
+    );
+
+    $('fullResetBtn').addEventListener('click', async () => {
+      const first = confirm('☢️ FULL DB RESET — this wipes runs, players, buildings & resets balances. Are you sure?');
+      if (!first) return;
+      const second = confirm('Last chance. This cannot be undone. Proceed?');
+      if (!second) return;
+      try {
+        dangerMsg('Running full reset…', false);
+        const data = await api('/admin/api/full-db-reset', { method: 'POST', body: '{}' });
+        dangerMsg(`✅ ${data.message} New run #${data.newRun?.run_number || '?'} started.`, false);
+        refreshStatus();
+      } catch (err) {
+        dangerMsg(err.message, true);
+      }
+    });
 
     refreshStatus();
   </script>
