@@ -596,7 +596,7 @@ async function processRunEconomy(io, run) {
                 fuelConsumed = Math.min(requiredFuel, uraniumRefined);
                 uraniumRefined -= fuelConsumed;
                 const powerFraction = requiredFuel > 0 ? (fuelConsumed / requiredFuel) : 0;
-                income = Math.floor(totalPower * powerFraction * 2);
+                income = Math.floor(totalPower * powerFraction * 0.3); // was * 2
             }
 
             const nextBalance = (parseInt(player.token_balance, 10) || 0) + income;

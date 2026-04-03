@@ -3393,7 +3393,7 @@ function productionTick() {
         fuelConsumed = Math.min(requiredFuel, game.uraniumRefined);
         const power = calculatePower();
         const powerFraction = fuelConsumed / requiredFuel;
-        income = Math.floor(power * powerFraction * 2); // tokens per production tick
+        income = Math.floor(power * powerFraction * 0.3); // tokens per production tick (matches server)
         game.uraniumRefined -= fuelConsumed;
     }
 
