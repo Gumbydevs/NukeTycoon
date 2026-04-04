@@ -403,8 +403,16 @@
         $('msg').textContent = 'Restoring snapshot...';
         const res = await api('/admin/api/config-snapshots/' + encodeURIComponent(id) + '/restore', { method: 'POST', body: '{}' });
         $('msg').textContent = 'Snapshot restored.';
+        // Show the audit immediately with a synthetic note indicating snapshot restore
+        try{
+          const snapRes = await api('/admin/api/config-snapshots/' + encodeURIComponent(id));
+          const snap = snapRes.snapshot || {};
+          window.syntheticAudit = { msg: `Snapshot restored: ${snap.name || id}`, ts: Date.now() };
+        }catch(e){ window.syntheticAudit = { msg: `Snapshot restored (${id})`, ts: Date.now() }; }
         loadAll();
         loadSnapshots();
+        // Open audit panel to show restore note + server audit rows
+        $('viewAuditBtn').click();
       }catch(err){ $('msg').textContent = '❌ ' + err.message; }
     }
 
@@ -478,14 +486,35 @@
       try{
         const data = await api('/admin/api/config-audit');
         const rows = data.audit || [];
+        // Filter out unchanged entries and group by action (admin + timestamp)
+        const filtered = rows.filter(r => String(r.old_value) !== String(r.new_value));
+        const groups = {};
+        filtered.forEach(r => {
+          const key = (r.admin_name || r.admin_key_id || 'unknown') + '|' + new Date(r.created_at).toISOString();
+          groups[key] = groups[key] || { who: r.admin_name || r.admin_key_id || 'unknown', when: r.created_at, changes: [] };
+          groups[key].changes.push({ key: r.key, old: r.old_value, new: r.new_value });
+        });
+
         const el = $('auditList');
-        el.innerHTML = rows.map(r => {
-          const when = new Date(r.created_at).toLocaleString();
-          const who = r.admin_name || r.admin_key_id || 'unknown';
-          const oldv = r.old_value === null ? 'NULL' : r.old_value;
-          const newv = r.new_value === null ? 'NULL' : r.new_value;
-          return `<div class="audit-row"><div><strong>${r.key}</strong> — ${oldv} → ${newv}</div><div class="muted">by ${who} · <time>${when}</time></div></div>`;
-        }).join('') || '<div class="muted">No audit entries</div>';
+        const groupKeys = Object.keys(groups).sort((a,b) => new Date(groups[b].when) - new Date(groups[a].when));
+        if (groupKeys.length === 0) {
+          el.innerHTML = '<div class="muted">No audit entries (no changes recorded)</div>';
+        } else {
+          el.innerHTML = groupKeys.map(gk => {
+            const g = groups[gk];
+            const when = new Date(g.when).toLocaleString();
+            const header = `<div style="padding:6px;border-bottom:1px solid #0f1a1f;margin-bottom:6px"><strong>Saved config</strong> — ${g.changes.length} change${g.changes.length>1?'s':''} · by ${g.who} · ${when}</div>`;
+            const body = g.changes.map(c => `<div class=\"audit-row\"><div><strong>${c.key}</strong> — ${c.old} → ${c.new}</div></div>`).join('');
+            return header + body;
+          }).join('');
+        }
+
+        // Prepend any synthetic audit note (e.g., snapshot restore) if set recently
+        if (window.syntheticAudit && (Date.now() - window.syntheticAudit.ts) < 10000) {
+          const note = `<div class=\"audit-row\" style=\"background:#071018;padding:8px;border-radius:6px;margin-bottom:8px\"><strong>${window.syntheticAudit.msg}</strong></div>`;
+          el.innerHTML = note + el.innerHTML;
+          window.syntheticAudit = null;
+        }
         $('auditWrap').style.display = 'block';
       }catch(err){ alert('Failed to load audit: ' + err.message); }
     });
