@@ -34,13 +34,27 @@ function setConnectionIndicator(connected) {
     try {
         const el = document.getElementById('connIndicator');
         if (!el) return;
-        el.classList.remove('on', 'off');
+        el.classList.remove('on', 'off', 'reconnecting');
         if (connected) {
             el.classList.add('on');
             el.setAttribute('title', 'Connected to server');
         } else {
             el.classList.add('off');
             el.setAttribute('title', 'Disconnected from server');
+        }
+    } catch (e) { /* ignore */ }
+}
+
+function setConnectionReconnecting(reconnecting) {
+    try {
+        const el = document.getElementById('connIndicator');
+        if (!el) return;
+        if (reconnecting) {
+            el.classList.remove('on', 'off');
+            el.classList.add('reconnecting');
+            el.setAttribute('title', 'Reconnecting to server…');
+        } else {
+            el.classList.remove('reconnecting');
         }
     } catch (e) { /* ignore */ }
 }
@@ -58,6 +72,24 @@ function fetchAndDisplayVersion() {
                 const el = document.getElementById('appVersion'); if (el) el.textContent = 'v?';
             });
     } catch (e) { /* ignore */ }
+}
+
+// Show changelog modal by fetching from server
+function showChangelog() {
+    const modal = document.getElementById('changelogModal');
+    const content = document.getElementById('changelogContent');
+    if (!modal || !content) return;
+    content.textContent = 'Loading…';
+    modal.style.display = 'flex';
+    fetch('/api/changelog', { cache: 'no-store' })
+        .then(r => r.text())
+        .then(t => { content.textContent = t || '(No changelog entries yet)'; })
+        .catch(() => { content.textContent = '(Unable to load changelog)'; });
+}
+
+function hideChangelog() {
+    const modal = document.getElementById('changelogModal');
+    if (modal) modal.style.display = 'none';
 }
 
 /**
@@ -205,6 +237,17 @@ function connectSocket() {
         setConnectionIndicator(false);
         document.getElementById('loginError') &&
             (document.getElementById('loginError').textContent = 'Cannot reach server. Check your connection.');
+    });
+
+    socket.on('reconnect_attempt', () => {
+        setConnectionReconnecting(true);
+    });
+    socket.on('reconnect', (attemptNumber) => {
+        setConnectionReconnecting(false);
+        setConnectionIndicator(true);
+    });
+    socket.on('reconnect_error', () => {
+        setConnectionReconnecting(true);
     });
 
     // ── Auth events ─────────────────────────────────────────────────────
@@ -3847,6 +3890,14 @@ document.addEventListener('DOMContentLoaded', function() {
     // Update UI elements: fetch app version and initialize connection indicator
     fetchAndDisplayVersion();
     setConnectionIndicator(false);
+
+    // Wire up changelog modal interactions
+    const verEl = document.getElementById('appVersion');
+    if (verEl) verEl.addEventListener('click', (e) => { e.preventDefault(); showChangelog(); });
+    const closeBtn = document.getElementById('changelogCloseBtn');
+    if (closeBtn) closeBtn.addEventListener('click', hideChangelog);
+    const changelogModal = document.getElementById('changelogModal');
+    if (changelogModal) changelogModal.addEventListener('click', (e) => { if (e.target === changelogModal) hideChangelog(); });
 
     // Wire login step 1
     const sendBtn  = document.getElementById('loginSendBtn');

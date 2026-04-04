@@ -229,6 +229,16 @@ app.get('/api/version', (_req, res) => {
     }
 });
 
+// Serve changelog text (reads root CHANGELOG.md)
+app.get('/api/changelog', (_req, res) => {
+    try {
+        const changelog = fs.readFileSync(path.join(__dirname, '..', 'CHANGELOG.md'), 'utf8');
+        res.type('text/plain').send(changelog);
+    } catch (err) {
+        res.status(500).json({ ok: false, error: 'Unable to read changelog' });
+    }
+});
+
 // Separate Balance UI — limited scope admin page for tuning economy
 app.get('/balance', (_req, res) => {
     res.sendFile(path.join(__dirname, 'balance.html'));

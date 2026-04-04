@@ -195,30 +195,55 @@ body.authenticated .container {
 /* Connection indicator (radioactive emoji) */
 .conn-indicator {
     display: inline-block;
-    margin-left: 8px;
-    font-size: 16px;
-    transition: filter 0.25s ease, transform 0.25s ease;
-    filter: drop-shadow(0 0 0 rgba(0,0,0,0));
+    margin-left: 6px;
+    font-size: 14px; /* smaller so it doesn't get clipped */
+    line-height: 1;
+    transition: box-shadow 0.18s ease, transform 0.18s ease, opacity 0.18s ease;
+    box-shadow: none;
+    transform-origin: center;
+    position: relative;
+    z-index: 9999; /* keep above header elements */
 }
 .conn-indicator.off {
-    filter: drop-shadow(0 0 6px rgba(255,0,0,0.9)) saturate(1.2);
-    transform: scale(1.05);
+    box-shadow: 0 0 6px rgba(255,60,60,0.95);
+    transform: scale(1.0);
+    opacity: 1;
 }
 .conn-indicator.on {
-    filter: drop-shadow(0 0 8px rgba(80,255,100,0.95)) saturate(1.6);
-    transform: scale(1.1);
+    box-shadow: 0 0 10px rgba(80,255,100,0.95);
+    transform: scale(1.02);
+    opacity: 1;
+}
+.conn-indicator.reconnecting {
+    animation: conn-flash 900ms linear infinite;
+}
+
+@keyframes conn-flash {
+    0% { box-shadow: 0 0 6px rgba(255,200,0,0.0); transform: scale(0.98); }
+    30% { box-shadow: 0 0 12px rgba(255,200,0,0.9); transform: scale(1.06); }
+    60% { box-shadow: 0 0 6px rgba(255,200,0,0.3); transform: scale(1.02); }
+    100% { box-shadow: 0 0 6px rgba(255,200,0,0.0); transform: scale(0.98); }
 }
 
 /* App version in top-right */
 .app-version {
-    color: #d6d6d6;
+    color: #e6f7df;
     font-size: 12px;
     margin-left: 10px;
     align-self: center;
     padding: 4px 6px;
     border-radius: 4px;
-    background: rgba(0,0,0,0.18);
+    background: rgba(0,0,0,0.3);
+    position: absolute;
+    right: 10px;
+    top: 8px;
+    z-index: 10001;
 }
+
+/* Changelog modal tweaks */
+.modal { display:flex; }
+.modal .modal-card { border: 1px solid rgba(255,255,255,0.03); }
+.modal pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, 'Roboto Mono', monospace; font-size:13px; line-height:1.4; }
 
 .avatar-picker {
     display: flex;
