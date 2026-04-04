@@ -239,9 +239,15 @@ app.get('/api/version', (_req, res) => {
 // Serve changelog text (reads root CHANGELOG.md)
 app.get('/api/changelog', (_req, res) => {
     try {
-        const changelog = fs.readFileSync(path.join(__dirname, '..', 'CHANGELOG.md'), 'utf8');
+        const changelogPath = path.join(__dirname, '..', 'CHANGELOG.md');
+        if (!fs.existsSync(changelogPath)) {
+            return res.status(404).json({ ok: false, error: 'Changelog not found' });
+        }
+        const changelog = fs.readFileSync(changelogPath, 'utf8');
+        // Serve plain text when available
         res.type('text/plain').send(changelog);
     } catch (err) {
+        // Do not emit HTML; return structured JSON so clients can handle errors safely
         res.status(500).json({ ok: false, error: 'Unable to read changelog' });
     }
 });
