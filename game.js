@@ -104,8 +104,19 @@ function connectSocket() {
             if (emailInput) emailInput.value = player.email || '';
             const authSub = document.querySelector('.lp-auth-sub');
             if (authSub) authSub.textContent = `Welcome back, ${player.username || 'Commander'}. Enter your password to continue.`;
+            // Restore saved password + remember-me checkbox if set
+            const rememberEl = document.getElementById('loginRememberMe');
             const pwInput = document.getElementById('loginPassword');
-            if (pwInput) pwInput.focus();
+            if (localStorage.getItem('nuke_remember') === '1') {
+                if (rememberEl) rememberEl.checked = true;
+                const savedPw = localStorage.getItem('nuke_saved_pw');
+                if (savedPw && pwInput) {
+                    try { pwInput.value = atob(savedPw); } catch(e) {}
+                }
+            } else {
+                if (rememberEl) rememberEl.checked = false;
+                if (pwInput) pwInput.focus();
+            }
             return;
         }
 
@@ -3333,6 +3344,17 @@ function loginWithPassword() {
         return;
     }
     if (errEl) errEl.textContent = '';
+    // Save credentials if Remember Me is checked, otherwise clear them
+    const rememberMe = document.getElementById('loginRememberMe');
+    if (rememberMe?.checked) {
+        localStorage.setItem('nuke_saved_email', email);
+        localStorage.setItem('nuke_saved_pw', btoa(pw));
+        localStorage.setItem('nuke_remember', '1');
+    } else {
+        localStorage.removeItem('nuke_saved_email');
+        localStorage.removeItem('nuke_saved_pw');
+        localStorage.removeItem('nuke_remember');
+    }
     const btn = document.getElementById('loginPasswordBtn');
     if (btn) { btn.disabled = true; btn.textContent = 'Signing in…'; }
     socket.emit('auth:login_password', { email, password: pw }, (res) => {
@@ -3411,6 +3433,16 @@ document.addEventListener('DOMContentLoaded', function() {
     if (loginPwBtn) loginPwBtn.addEventListener('click', () => { if (typeof NukeSounds !== 'undefined') NukeSounds.uiTick(); loginWithPassword(); });
     if (signupPwBtn) signupPwBtn.addEventListener('click', () => { if (typeof NukeSounds !== 'undefined') NukeSounds.uiTick(); signupWithPassword(); });
     if (pwInput) pwInput.addEventListener('keyup', (e) => { if (e.key === 'Enter') loginWithPassword(); });
+    const rememberEl = document.getElementById('loginRememberMe');
+    if (rememberEl) {
+        rememberEl.addEventListener('change', () => {
+            if (!rememberEl.checked) {
+                localStorage.removeItem('nuke_saved_email');
+                localStorage.removeItem('nuke_saved_pw');
+                localStorage.removeItem('nuke_remember');
+            }
+        });
+    }
 
     // Wire login step 2
     const verifyBtn = document.getElementById('loginVerifyBtn');
@@ -6275,7 +6307,7 @@ function botSabotagePlayer(bot, targets) {
     // ── Live prize pool + stats fetch ─────────────────────────────────
     async function fetchLandingStats() {
         try {
-            const res = await fetch(`${SERVER_URL}/api/economy`);
+            const res = await fetch(`${SERVER_URL}/economy/api/data`);
             if (!res.ok) return;
             const data = await res.json();
 
@@ -6299,8 +6331,8 @@ function botSabotagePlayer(bot, targets) {
             if (playersEl && data.players) playersEl.textContent = data.players.length;
 
             const marketEl = document.getElementById('landingMarket');
-            if (marketEl && data.marketPrice !== undefined) {
-                const p = parseFloat(data.marketPrice);
+            if (marketEl && run?.market_price !== undefined) {
+                const p = parseFloat(run.market_price);
                 marketEl.textContent = isNaN(p) ? '—' : '$' + p.toFixed(4);
             }
         } catch (e) {
