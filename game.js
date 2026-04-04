@@ -3637,13 +3637,26 @@ function updateFalloutVisualization() {
     });
 
     // Grey crater circle for nuke blast zones (Manhattan distance)
+    // Primary: client-side nukeZones (instant on hit)
     game.nukeZones = game.nukeZones.filter(z => z.expiresAt > now);
-    game.nukeZones.forEach(zone => {
-        const zoneCoords = getCoords(zone.center);
-        for (let x = Math.max(0, zoneCoords.x - zone.radius); x <= Math.min(19, zoneCoords.x + zone.radius); x++) {
-            for (let y = Math.max(0, zoneCoords.y - zone.radius); y <= Math.min(19, zoneCoords.y + zone.radius); y++) {
-                // Use Manhattan distance for a more circular look
-                if (Math.abs(x - zoneCoords.x) + Math.abs(y - zoneCoords.y) <= zone.radius) {
+    const craterCenters = new Map(); // cellId -> radius
+    game.nukeZones.forEach(z => {
+        const prev = craterCenters.get(z.center) || 0;
+        craterCenters.set(z.center, Math.max(prev, z.radius));
+    });
+    // Secondary: server fallout zones are always the authoritative crater source
+    game.falloutZones.forEach(zone => {
+        if (zone.endTime > now) {
+            const prev = craterCenters.get(zone.id) || 0;
+            craterCenters.set(zone.id, Math.max(prev, zone.radius));
+        }
+    });
+
+    craterCenters.forEach((radius, center) => {
+        const zoneCoords = getCoords(center);
+        for (let x = Math.max(0, zoneCoords.x - radius); x <= Math.min(19, zoneCoords.x + radius); x++) {
+            for (let y = Math.max(0, zoneCoords.y - radius); y <= Math.min(19, zoneCoords.y + radius); y++) {
+                if (Math.abs(x - zoneCoords.x) + Math.abs(y - zoneCoords.y) <= radius) {
                     const cell = grid.querySelector(`[data-id="${y * 20 + x}"]`);
                     if (cell) cell.classList.add('nuked-crater');
                 }
@@ -3651,7 +3664,7 @@ function updateFalloutVisualization() {
         }
     });
 
-    // Add fallout class to cells in active fallout zones
+    // Add fallout glow on top of crater cells for active fallout zones
     game.falloutZones.forEach(zone => {
         if (zone.endTime > now) {
             const zoneCoords = getCoords(zone.id);
