@@ -1018,10 +1018,13 @@ function registerHandlers(io, socket) {
                 const runPlayersRes = await db.query('SELECT player_id FROM run_players WHERE run_id = $1', [socket.runId]);
                 const toNotify = runPlayersRes.rows.map(r => r.player_id).filter(pid => !onlineIds.has(pid) && pid !== player.id);
                 for (const pid of toNotify) {
+                    // Look up email for this player
+                    const emailRes = await db.query('SELECT email FROM players WHERE id = $1', [pid]);
+                    const email = emailRes.rows[0]?.email || '';
                     await db.query(
-                        `INSERT INTO notifications (run_id, player_id, type, payload)
-                         VALUES ($1,$2,$3,$4)`,
-                        [socket.runId, pid, 'chat', JSON.stringify({ id, from: player.username, text: cleanText, ts: now })]
+                        `INSERT INTO notifications (run_id, player_id, email, type, payload)
+                         VALUES ($1,$2,$3,$4,$5)`,
+                        [socket.runId, pid, email, 'chat', JSON.stringify({ id, from: player.username, text: cleanText, ts: now })]
                     );
                 }
             } catch (err) {
