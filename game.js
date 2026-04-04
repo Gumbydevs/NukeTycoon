@@ -5289,8 +5289,7 @@ function initChatUI() {
             gifPicker.style.display = isOpen ? 'none' : 'flex';
             if (emojiPicker) emojiPicker.style.display = 'none';
             if (!isOpen) {
-                fetchGifs('reaction');
-                if (gifSearch) gifSearch.focus();
+                fetchGifs();
             }
         });
     }
@@ -5332,45 +5331,29 @@ function toggleChatPanel() {
     }
 }
 
-function fetchGifs(query) {
+function fetchGifs() {
     const results = document.getElementById('chatGifResults');
     if (!results) return;
-    results.innerHTML = '<div class="chat-gif-loading">Searching…</div>';
-    const safe = encodeURIComponent((query || 'reaction').slice(0, 80));
-    fetch(`${SERVER_URL}/api/gifs?q=${safe}`)
-        .then(r => r.json())
-        .then(data => {
-            if (!data.results || data.results.length === 0) {
-                results.innerHTML = '<div class="chat-gif-loading">No GIFs found.</div>';
-                return;
-            }
-            results.innerHTML = '';
-            data.results.forEach(item => {
-                const previewUrl = item.preview || '';
-                const fullUrl    = item.url || previewUrl;
-                if (!previewUrl) return;
-                // Only accept Tenor CDN URLs
-                if (!/^https:\/\/media\.tenor\.com\//i.test(previewUrl)) return;
-                const btn = document.createElement('button');
-                btn.className = 'chat-gif-item';
-                btn.type = 'button';
-                btn.dataset.gif = fullUrl;
-                btn.innerHTML = `<img src="${escapeHtml(previewUrl)}" alt="GIF" loading="lazy" />`;
-                btn.addEventListener('click', () => {
-                    if (!socket?.connected || !_authJWT) return;
-                    socket.emit('chat:message', { jwt: _authJWT, text: '', gifUrl: fullUrl });
-                    const gifPicker = document.getElementById('chatGifPicker');
-                    if (gifPicker) gifPicker.style.display = 'none';
-                });
-                results.appendChild(btn);
-            });
-            if (!results.children.length) {
-                results.innerHTML = '<div class="chat-gif-loading">No GIFs found.</div>';
-            }
-        })
-        .catch(() => {
-            if (results) results.innerHTML = '<div class="chat-gif-loading">Could not load GIFs.</div>';
+    const gifs = (window.CHAT_GIFS || []);
+    if (!gifs.length) {
+        results.innerHTML = '<div class="chat-gif-loading">No GIFs loaded.</div>';
+        return;
+    }
+    results.innerHTML = '';
+    gifs.forEach(url => {
+        if (!/^https:\/\/(media\.giphy\.com|media\.tenor\.com)\//i.test(url)) return;
+        const btn = document.createElement('button');
+        btn.className = 'chat-gif-item';
+        btn.type = 'button';
+        btn.innerHTML = `<img src="${escapeHtml(url)}" alt="GIF" loading="lazy" />`;
+        btn.addEventListener('click', () => {
+            if (!socket?.connected || !_authJWT) return;
+            socket.emit('chat:message', { jwt: _authJWT, text: '', gifUrl: url });
+            const gifPicker = document.getElementById('chatGifPicker');
+            if (gifPicker) gifPicker.style.display = 'none';
         });
+        results.appendChild(btn);
+    });
 }
 
 function scrollChatToBottom() {
@@ -5389,7 +5372,7 @@ function renderChatMessage(msg) {
     const avatarHtml = `<span class="chat-msg-avatar">${escapeHtml(msg.avatar || '☢️')}</span>`;
     const nameHtml = isSelf ? '' : `<span class="chat-msg-name">${escapeHtml(msg.username)}</span>`;
     let bodyHtml = '';
-    if (msg.gifUrl && /^https:\/\/media\.tenor\.com\//i.test(msg.gifUrl)) {
+    if (msg.gifUrl && /^https:\/\/(media\.giphy\.com|media\.tenor\.com)\//i.test(msg.gifUrl)) {
         bodyHtml += `<img src="${escapeHtml(msg.gifUrl)}" class="chat-msg-gif" alt="GIF" loading="lazy" />`;
     }
     if (msg.text) {
@@ -5407,7 +5390,7 @@ function renderChatMessage(msg) {
 function showChatToast(msg) {
     if (msg.playerId === getLocalPlayerId()) return;
     let content = '';
-    if (msg.gifUrl && /^https:\/\/media\.tenor\.com\//i.test(msg.gifUrl)) {
+    if (msg.gifUrl && /^https:\/\/(media\.giphy\.com|media\.tenor\.com)\//i.test(msg.gifUrl)) {
         content += `<img src="${escapeHtml(msg.gifUrl)}" class="chat-float-gif" alt="GIF" />`;
     }
     if (msg.text) {

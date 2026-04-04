@@ -398,9 +398,6 @@
         <div id="chatEmojiPicker" class="chat-emoji-picker" role="listbox" aria-label="Emoji picker"></div>
         <!-- GIF picker overlay -->
         <div id="chatGifPicker" class="chat-gif-picker">
-            <div class="chat-gif-search-bar">
-                <input id="chatGifSearch" type="text" placeholder="Search GIFs…" class="chat-gif-search-input" autocomplete="off" maxlength="80" />
-            </div>
             <div id="chatGifResults" class="chat-gif-results"></div>
         </div>
     </div>
@@ -412,6 +409,7 @@
 
     <!-- Socket.io client — must load before game.js -->
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="chat-gifs.js?v=1"></script>
     <script src="sounds.js?v=20260403a"></script>
     <script src="game.js?v=20260403p"></script>
 </body>

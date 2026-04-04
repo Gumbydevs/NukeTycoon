@@ -711,11 +711,10 @@ function registerHandlers(io, socket) {
             // Sanitise text
             const cleanText = (typeof text === 'string') ? text.trim().slice(0, 200) : '';
 
-            // Sanitise GIF URL — only allow https://media.tenor.com URLs (Tenor CDN)
+            // Sanitise GIF URL — only allow known GIF CDN hostnames (giphy or tenor)
             let cleanGifUrl = null;
             if (typeof gifUrl === 'string' && gifUrl.length < 500) {
-                // Only accept Tenor CDN media URLs to prevent SSRF/open-redirect abuse
-                if (/^https:\/\/media\.tenor\.com\/[A-Za-z0-9_\-/.]+\.gif$/i.test(gifUrl)) {
+                if (/^https:\/\/(media\.giphy\.com|media\.tenor\.com)\/[A-Za-z0-9_\-/.%?=&]+\.gif$/i.test(gifUrl)) {
                     cleanGifUrl = gifUrl;
                 }
             }
