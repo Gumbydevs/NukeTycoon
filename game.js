@@ -3383,6 +3383,8 @@ document.addEventListener('DOMContentLoaded', function() {
     if (econBtn) econBtn.addEventListener('click', showEconomyModal);
     const econCloseBtn = document.getElementById('econCloseBtn');
     if (econCloseBtn) econCloseBtn.addEventListener('click', closeEconomyModal);
+    const econFullDashBtn = document.getElementById('econFullDashBtn');
+    if (econFullDashBtn) econFullDashBtn.href = SERVER_URL + '/economy';
 
     // Economy tab switching
     const econTabsEl = document.getElementById('econTabs');
@@ -4764,7 +4766,7 @@ function _econBuildRulesTable() {
             <td>${ICONS[type] || ''} ${names[type] || type}</td>
             <td class="econ-num">${(r.cost || 0).toLocaleString()}</td>
             <td class="econ-num">${_fmtMs(r.constructionMs || 0)}</td>
-            <td class="econ-num red">${r.maintenanceCost || 0}/tick</td>
+            <td class="econ-num red">${r.maintenanceCost || 0} tokens</td>
         </tr>`
     ).join('');
 }
@@ -4791,11 +4793,23 @@ function refreshEconomyModal({ playerState, run, scores }) {
     const maxSt  = parseFloat(playerState?.max_storage || 5000);
     const dprod  = parseFloat(playerState?.daily_produced || 0);
 
-    _setText('ec-gross',  '+' + gross);
-    _setText('ec-maint',  '-' + totalMaint);
-    _setText('ec-net',    (net >= 0 ? '+' : '') + net);
-    _setText('ec-daily',  daily.toLocaleString());
-    _setText('ec-wallet', wallet.toLocaleString());
+    _setText('ec-gross',  gross.toLocaleString() + ' tokens');
+    _setText('ec-maint',  totalMaint.toLocaleString() + ' tokens');
+    _setText('ec-net',    (net >= 0 ? '+' : '') + net.toLocaleString() + ' tokens');
+    // Profit margin
+    const marginEl = document.getElementById('ec-margin');
+    if (marginEl) {
+        if (gross > 0) {
+            const pct = Math.round((net / gross) * 100);
+            marginEl.textContent = pct + '%';
+            marginEl.className = 'econ-stat-val ' + (pct >= 0 ? 'green' : 'red');
+        } else {
+            marginEl.textContent = '—';
+            marginEl.className = 'econ-stat-val';
+        }
+    }
+    _setText('ec-daily',  daily.toLocaleString() + ' tokens');
+    _setText('ec-wallet', wallet.toLocaleString() + ' tokens');
     _setText('ec-raw',    raw.toFixed(2));
     _setText('ec-refined', refined.toFixed(2));
     _setText('ec-stored', (raw + refined).toFixed(1) + ' / ' + (maxSt / 1000).toFixed(1) + 'K');
@@ -4822,7 +4836,7 @@ function refreshEconomyModal({ playerState, run, scores }) {
                 `<div class="econ-bldg-row">` +
                 `<span>${_ECON_BUILDING_ICONS[type] || ''} ${buildNames[type]}</span>` +
                 `<span class="econ-bldg-cnt">${cnt}${uc > 0 ? ` <span class="econ-uc">(+${uc} building)</span>` : ''}</span>` +
-                `<span class="red">-${mCost}/tick</span>` +
+                `<span class="red">-${mCost} ops</span>` +
                 `</div>`
             );
         });

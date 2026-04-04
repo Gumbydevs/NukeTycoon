@@ -413,7 +413,7 @@
             <div class="econ-header">
                 <div class="econ-title">📊 Economy Tracker</div>
                 <div class="econ-header-right">
-                    <a id="econFullDashBtn" href="/economy" target="_blank" class="btn" title="Open full dashboard" style="font-size:11px; padding:3px 8px;">Full Dashboard ↗</a>
+                    <a id="econFullDashBtn" href="#" target="_blank" class="btn" title="Open full dashboard" style="font-size:11px; padding:3px 8px;">Full Dashboard ↗</a>
                     <button class="btn econ-close-btn" id="econCloseBtn" aria-label="Close economy tracker">✕</button>
                 </div>
             </div>
@@ -430,24 +430,28 @@
                     <div class="econ-card">
                         <div class="econ-card-title">Income Breakdown</div>
                         <div class="econ-stat-row">
-                            <span class="econ-stat-label">Gross Income / tick</span>
+                            <span class="econ-stat-label">Gross Income</span>
                             <span class="econ-stat-val" id="ec-gross">0</span>
                         </div>
                         <div class="econ-stat-row">
-                            <span class="econ-stat-label">Maintenance / tick</span>
+                            <span class="econ-stat-label">Operating Costs</span>
                             <span class="econ-stat-val red" id="ec-maint">0</span>
                         </div>
                         <div class="econ-stat-row econ-divider">
-                            <span class="econ-stat-label">Net / tick</span>
+                            <span class="econ-stat-label">Net Profit</span>
                             <span class="econ-stat-val green" id="ec-net">0</span>
                         </div>
                         <div class="econ-stat-row">
-                            <span class="econ-stat-label">Daily Income (so far)</span>
+                            <span class="econ-stat-label">Total Earned Today</span>
                             <span class="econ-stat-val amber" id="ec-daily">0</span>
                         </div>
                         <div class="econ-stat-row">
                             <span class="econ-stat-label">Wallet Balance</span>
                             <span class="econ-stat-val" id="ec-wallet">0</span>
+                        </div>
+                        <div class="econ-stat-row">
+                            <span class="econ-stat-label">Effective Margin</span>
+                            <span class="econ-stat-val" id="ec-margin">—</span>
                         </div>
                     </div>
 
@@ -495,7 +499,7 @@
                     <div class="econ-card-title">Build Costs Reference</div>
                     <div style="overflow-x:auto;">
                         <table class="econ-table" id="ec-rules-table">
-                            <thead><tr><th>Building</th><th>Cost</th><th>Build Time</th><th>Maintenance/tick</th></tr></thead>
+                            <thead><tr><th>Building</th><th>Cost</th><th>Build Time</th><th>Operating Cost</th></tr></thead>
                             <tbody id="ec-rules-body"></tbody>
                         </table>
                     </div>
