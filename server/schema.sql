@@ -155,3 +155,21 @@ CREATE TABLE IF NOT EXISTS economy_snapshots (
     UNIQUE(run_id, run_day)
 );
 CREATE INDEX IF NOT EXISTS idx_economy_snapshots_run ON economy_snapshots(run_id, run_day);
+
+-- ── All-time market records (persist across runs) ─────────────────────────────
+CREATE TABLE IF NOT EXISTS alltime_market_records (
+    stat_key    TEXT PRIMARY KEY,
+    value       DOUBLE PRECISION NOT NULL DEFAULT 0,
+    run_number  INTEGER,
+    recorded_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ── All-time player bests (persist across runs) ───────────────────────────────
+CREATE TABLE IF NOT EXISTS alltime_player_bests (
+    player_id           UUID PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
+    best_balance        BIGINT DEFAULT 0,
+    best_daily_income   BIGINT DEFAULT 0,
+    best_rank           INTEGER DEFAULT 99999,
+    total_runs          INTEGER DEFAULT 0,
+    updated_at          TIMESTAMPTZ DEFAULT NOW()
+);

@@ -209,6 +209,42 @@
     #lastUpdated {
       font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums;
     }
+
+    /* ─── All-time records ───────────────────────────── */
+    .alltime-header {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 10px; margin-top: 4px;
+    }
+    .alltime-badge {
+      font-size: 10px; font-weight: 800; letter-spacing: 0.12em;
+      color: var(--amber); background: rgba(255,184,77,0.1);
+      border: 1px solid rgba(255,184,77,0.3); border-radius: 3px;
+      padding: 3px 8px; text-transform: uppercase;
+    }
+    .alltime-note { font-size: 10px; color: var(--muted); }
+    .alltime-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+      gap: 10px; margin-bottom: 24px;
+    }
+    .alltime-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px; padding: 12px 14px;
+      display: flex; flex-direction: column; gap: 3px;
+      position: relative; overflow: hidden;
+    }
+    .alltime-card::before {
+      content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+      width: 3px; background: var(--border); border-radius: 3px 0 0 3px;
+    }
+    .alltime-card.green::before { background: var(--green); }
+    .alltime-card.red::before   { background: var(--red); }
+    .alltime-card.amber::before { background: var(--amber); }
+    .alltime-card.blue::before  { background: var(--blue); }
+    .alltime-icon  { font-size: 16px; margin-bottom: 2px; }
+    .alltime-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .alltime-val   { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); }
+    .alltime-run   { font-size: 10px; color: #555; margin-top: 2px; }
   </style>
 </head>
 <body>
@@ -295,6 +331,10 @@ let buildingChart = null;
 let balanceChart = null;
 let _lastData = null;
 
+// ── All-time data (populated from API, used across renders) ───────────────────
+let _alltimeMarket  = {};
+let _alltimePlayers = [];
+
 // ── Live price history (client-side rolling buffer) ───────────────────────────
 const _livePrices = []; // { t, price } — filled from polls
 
@@ -357,28 +397,56 @@ function buildMarketChart(history, currentPrice) {
     const cfg = chartDefaults();
     cfg.plugins.tooltip.callbacks.label = (c) => ` $${c.raw}`;
 
+    // ATH / ATL flat-line reference datasets
+    const ath = _alltimeMarket.price_high?.value;
+    const atl = _alltimeMarket.price_low?.value;
+    const athData = ath != null && labels.length ? Array(labels.length).fill(Number(ath).toFixed(4)) : [];
+    const atlData = atl != null && labels.length ? Array(labels.length).fill(Number(atl).toFixed(4)) : [];
+
+    const datasets = [
+        {
+            label: 'Token Price',
+            data: prices,
+            borderColor: '#4caf50',
+            backgroundColor: 'rgba(76,175,80,0.08)',
+            tension: 0.35,
+            fill: true,
+            pointRadius: 3,
+            pointBackgroundColor: '#4caf50',
+            order: 1,
+        },
+    ];
+    if (athData.length) datasets.push({
+        label: `ATH $${Number(ath).toFixed(4)}`,
+        data: athData,
+        borderColor: 'rgba(255,184,77,0.55)',
+        borderDash: [5, 4],
+        borderWidth: 1.5,
+        pointRadius: 0,
+        fill: false,
+        order: 2,
+    });
+    if (atlData.length) datasets.push({
+        label: `ATL $${Number(atl).toFixed(4)}`,
+        data: atlData,
+        borderColor: 'rgba(255,107,107,0.55)',
+        borderDash: [5, 4],
+        borderWidth: 1.5,
+        pointRadius: 0,
+        fill: false,
+        order: 3,
+    });
+
     if (marketChart) {
         marketChart.data.labels = labels;
-        marketChart.data.datasets[0].data = prices;
+        marketChart.data.datasets = datasets;
         marketChart.update('none');
         return;
     }
 
     marketChart = new Chart(ctx, {
         type: 'line',
-        data: {
-            labels,
-            datasets: [{
-                label: 'Token Price',
-                data: prices,
-                borderColor: '#4caf50',
-                backgroundColor: 'rgba(76,175,80,0.08)',
-                tension: 0.35,
-                fill: true,
-                pointRadius: 3,
-                pointBackgroundColor: '#4caf50',
-            }],
-        },
+        data: { labels, datasets },
         options: {
             ...cfg,
             scales: {
@@ -523,6 +591,47 @@ function escHtml(s) {
     return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+// ── Render all-time records strip ─────────────────────────────────────────────
+function renderAlltimeSection(at) {
+    const set = (id, val, runNum) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val;
+        const runEl = document.getElementById(id + '-run');
+        if (runEl) runEl.textContent = runNum != null ? `Run #${runNum}` : '';
+    };
+    const r = (key) => at[key] || {};
+    set('at-price-high',        r('price_high').value       != null ? '$' + Number(r('price_high').value).toFixed(4)      : '—', r('price_high').run_number);
+    set('at-price-low',         r('price_low').value        != null ? '$' + Number(r('price_low').value).toFixed(4)       : '—', r('price_low').run_number);
+    set('at-prize-high',        r('prize_pool_high').value  != null ? fmt(r('prize_pool_high').value) + ' tokens'         : '—', r('prize_pool_high').run_number);
+    set('at-tokens-max',        r('tokens_issued_max').value != null ? fmt(r('tokens_issued_max').value)                  : '—', r('tokens_issued_max').run_number);
+    set('at-peak-players',      r('peak_players').value     != null ? fmt(r('peak_players').value)                        : '—', r('peak_players').run_number);
+    set('at-peak-bldg',         r('peak_buildings').value   != null ? fmt(r('peak_buildings').value)                      : '—', r('peak_buildings').run_number);
+}
+
+// ── Render Hall of Fame ───────────────────────────────────────────────────────
+function renderHallOfFame(alltimePlayers) {
+    const el = document.getElementById('hofTable');
+    if (!el) return;
+    if (!alltimePlayers || alltimePlayers.length === 0) {
+        el.innerHTML = '<tr><td colspan="7" style="color:#555;font-size:12px;padding:16px;text-align:center;">No all-time records yet — records are written at the end of each run.</td></tr>';
+        return;
+    }
+    el.innerHTML = alltimePlayers.map((p, i) => {
+        const rank = i + 1;
+        const rankClass = rank <= 3 ? `rank-${rank}` : 'rank-n';
+        const bestRankBadge = p.best_rank === 1 ? '🥇' : p.best_rank === 2 ? '🥈' : p.best_rank === 3 ? '🥉' : p.best_rank != null ? `#${p.best_rank}` : '—';
+        return `<tr>
+            <td><span class="rank-badge ${rankClass}">${rank}</span></td>
+            <td class="avatar-cell">${p.avatar || '☢️'}</td>
+            <td class="username-cell">${escHtml(p.username || 'Unknown')}</td>
+            <td class="balance-cell">${fmt(p.best_balance)}</td>
+            <td class="income-cell">+${fmt(p.best_daily_income)}/day</td>
+            <td style="font-size:16px;">${bestRankBadge}</td>
+            <td style="color:var(--muted);">${p.total_runs}</td>
+        </tr>`;
+    }).join('');
+}
+
 // ── Render main content ───────────────────────────────────────────────────────
 function renderContent(data) {
     const { run, scores, history, buildingCounts, players, buildingRules } = data;
@@ -549,6 +658,50 @@ function renderContent(data) {
           <div class="token-card"><div class="token-label">Pool Depletion</div><div class="token-val" id="tok-depletion">—</div></div>
         </div>
 
+        <!-- All-time records -->
+        <div class="alltime-header">
+          <span class="alltime-badge">ALL&#8209;TIME RECORDS</span>
+          <span class="alltime-note">Updated each day snapshot &amp; on run end</span>
+        </div>
+        <div class="alltime-strip" id="alltimeStrip">
+          <div class="alltime-card green">
+            <div class="alltime-icon">📈</div>
+            <div class="alltime-label">Price ATH</div>
+            <div class="alltime-val" id="at-price-high">—</div>
+            <div class="alltime-run" id="at-price-high-run"></div>
+          </div>
+          <div class="alltime-card red">
+            <div class="alltime-icon">📉</div>
+            <div class="alltime-label">Price ATL</div>
+            <div class="alltime-val" id="at-price-low">—</div>
+            <div class="alltime-run" id="at-price-low-run"></div>
+          </div>
+          <div class="alltime-card amber">
+            <div class="alltime-icon">🏆</div>
+            <div class="alltime-label">Largest Prize Pool</div>
+            <div class="alltime-val" id="at-prize-high">—</div>
+            <div class="alltime-run" id="at-prize-high-run"></div>
+          </div>
+          <div class="alltime-card blue">
+            <div class="alltime-icon">💰</div>
+            <div class="alltime-label">Peak Tokens Issued</div>
+            <div class="alltime-val" id="at-tokens-max">—</div>
+            <div class="alltime-run" id="at-tokens-max-run"></div>
+          </div>
+          <div class="alltime-card">
+            <div class="alltime-icon">👥</div>
+            <div class="alltime-label">Peak Commanders</div>
+            <div class="alltime-val" id="at-peak-players">—</div>
+            <div class="alltime-run" id="at-peak-players-run"></div>
+          </div>
+          <div class="alltime-card">
+            <div class="alltime-icon">🏗️</div>
+            <div class="alltime-label">Peak Buildings</div>
+            <div class="alltime-val" id="at-peak-bldg">—</div>
+            <div class="alltime-run" id="at-peak-bldg-run"></div>
+          </div>
+        </div>
+
         <!-- Charts row -->
         <div class="charts-row">
           <div class="card">
@@ -572,7 +725,7 @@ function renderContent(data) {
 
         <!-- Leaderboard table -->
         <div class="card">
-          <div class="card-title">Commander Leaderboard</div>
+          <div class="card-title">Commander Leaderboard <span class="badge">This Run</span></div>
           <div style="overflow-x:auto;">
             <table>
               <thead>
@@ -583,6 +736,23 @@ function renderContent(data) {
                 </tr>
               </thead>
               <tbody id="playerTable"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Hall of Fame -->
+        <div class="card" style="margin-top:24px;">
+          <div class="card-title">Hall of Fame <span class="badge">All-Time Bests</span></div>
+          <div style="overflow-x:auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th><th></th><th>Commander</th>
+                  <th>Best Balance</th><th>Best Daily Income</th>
+                  <th>Best Rank</th><th>Runs</th>
+                </tr>
+              </thead>
+              <tbody id="hofTable"></tbody>
             </table>
           </div>
         </div>`;
@@ -621,6 +791,10 @@ function renderContent(data) {
 
     // Leaderboard
     renderLeaderboard(players, scores, buildingRules);
+
+    // All-time records
+    renderAlltimeSection(_alltimeMarket);
+    renderHallOfFame(_alltimePlayers);
 }
 
 // ── Update ticker ─────────────────────────────────────────────────────────────
@@ -672,6 +846,10 @@ async function fetchAndUpdate() {
         const data = await resp.json();
         _lastData = data;
         _errorCount = 0;
+
+        // Cache alltime data globally (available even when no run)
+        if (data.alltimeMarket)  _alltimeMarket  = data.alltimeMarket;
+        if (data.alltimePlayers) _alltimePlayers = data.alltimePlayers;
 
         const loading = document.getElementById('loadingMsg');
         if (loading) loading.remove();

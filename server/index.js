@@ -6,7 +6,7 @@ const cors       = require('cors');
 const fs         = require('fs');
 const path       = require('path');
 const db         = require('./db');
-const { setupGameLoop, getActiveRun, createNewRun, setNextRunLength, getNextRunLength, BUILDING_RULES, setBuildingRules, saveBuildingRulesToDB, loadBuildingRulesFromDB, calculateScores } = require('./gameLoop');
+const { setupGameLoop, getActiveRun, createNewRun, setNextRunLength, getNextRunLength, BUILDING_RULES, setBuildingRules, saveBuildingRulesToDB, loadBuildingRulesFromDB, calculateScores, updateAlltimeMarketRecords } = require('./gameLoop');
 const { registerHandlers } = require('./socket/handlers');
 
 let dbReady = false;
@@ -175,8 +175,32 @@ app.get('/economy', (_req, res) => {
 app.get('/economy/api/data', async (_req, res) => {
     try {
         const run = await getActiveRun();
+
+        // Always fetch alltime data (even when no run is active)
+        const [alltimeMarketResult, alltimePlayersResult] = await Promise.all([
+            db.query('SELECT * FROM alltime_market_records'),
+            db.query(
+                `SELECT apb.player_id, apb.best_balance, apb.best_daily_income, apb.best_rank,
+                        apb.total_runs, apb.updated_at, p.username, p.avatar
+                 FROM alltime_player_bests apb
+                 JOIN players p ON p.id = apb.player_id
+                 ORDER BY apb.best_balance DESC LIMIT 25`
+            ),
+        ]);
+        const alltimeMarket  = alltimeMarketResult.rows.reduce((acc, r) => { acc[r.stat_key] = { value: Number(r.value), run_number: r.run_number, recorded_at: r.recorded_at }; return acc; }, {});
+        const alltimePlayers = alltimePlayersResult.rows.map((p) => ({
+            player_id:        p.player_id,
+            username:         p.username,
+            avatar:           p.avatar,
+            best_balance:     parseInt(p.best_balance, 10) || 0,
+            best_daily_income:parseInt(p.best_daily_income, 10) || 0,
+            best_rank:        p.best_rank === 99999 ? null : p.best_rank,
+            total_runs:       p.total_runs || 0,
+            updated_at:       p.updated_at,
+        }));
+
         if (!run) {
-            res.json({ run: null, scores: [], history: [], buildingCounts: {}, players: [], buildingRules: BUILDING_RULES, serverTime: new Date().toISOString() });
+            res.json({ run: null, scores: [], history: [], buildingCounts: {}, players: [], buildingRules: BUILDING_RULES, alltimeMarket, alltimePlayers, serverTime: new Date().toISOString() });
             return;
         }
 
@@ -205,6 +229,15 @@ app.get('/economy/api/data', async (_req, res) => {
                  WHERE rp.run_id = $1
                  ORDER BY COALESCE(rps.score, 0) DESC`,
                 [run.id]
+            ),
+            db.query('SELECT * FROM alltime_market_records'),
+            db.query(
+                `SELECT apb.player_id, apb.best_balance, apb.best_daily_income, apb.best_rank,
+                        apb.total_runs, apb.updated_at, p.username, p.avatar
+                 FROM alltime_player_bests apb
+                 JOIN players p ON p.id = apb.player_id
+                 ORDER BY apb.best_balance DESC
+                 LIMIT 25`
             ),
         ]);
 
@@ -240,8 +273,22 @@ app.get('/economy/api/data', async (_req, res) => {
                 uranium_refined: Number(p.uranium_refined || 0),
             })),
             buildingRules: BUILDING_RULES,
+            alltimeMarket,
+            alltimePlayers,
             serverTime: new Date().toISOString(),
         });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/admin/api/reset-alltime-stats', requireAdmin, async (_req, res) => {
+    try {
+        await Promise.all([
+            db.query('DELETE FROM alltime_market_records'),
+            db.query('DELETE FROM alltime_player_bests'),
+        ]);
+        res.json({ ok: true, message: 'All-time economy stats cleared.' });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

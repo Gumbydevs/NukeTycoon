@@ -223,6 +223,11 @@
           <p class="dz-desc">Deletes all ended runs and their associated per-run data — buildings, fallout, sabotage, enrollments. The active run is untouched.</p>
           <button class="danger" id="wipeOldRunsBtn">Wipe ended runs</button>
         </div>
+        <div class="dz-card">
+          <div class="dz-title">📊 Reset All-Time Economy Stats</div>
+          <p class="dz-desc">Clears all all-time market records (price ATH/ATL, peak prize pool, peak buildings, etc.) and all-time player bests. Does not affect the current run or player accounts.</p>
+          <button class="danger" id="resetAlltimeStatsBtn">Reset all-time stats</button>
+        </div>
       </div>
 
       <!-- Current Run -->
@@ -448,6 +453,12 @@
       dangerAction('/admin/api/wipe-old-runs',
         'Delete all ENDED runs and their associated data? The active run is untouched.',
         (d) => { setDangerMsg(`✅ Deleted ${d.deleted} ended run(s) and all their data.`, false); refreshStatus(); })
+    );
+
+    $('resetAlltimeStatsBtn').addEventListener('click', () =>
+      dangerAction('/admin/api/reset-alltime-stats',
+        'Clear ALL all-time economy records (price ATH/ATL, peak stats, player Hall of Fame)? This cannot be undone.',
+        (d) => setDangerMsg(`✅ ${d.message}`, false))
     );
 
     // Current run

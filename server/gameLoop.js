@@ -691,6 +691,73 @@ async function processRunEconomy(io, run) {
     await emitRunSnapshot(io, run.id, 'run:tick');
 }
 
+// ── All-time record helpers ───────────────────────────────────────────────────
+async function _upsertAlltimeRecord(key, value, runNumber, higher = true) {
+    const cmp  = higher ? 'GREATEST' : 'LEAST';
+    const cond = higher ? '>' : '<';
+    await db.query(
+        `INSERT INTO alltime_market_records (stat_key, value, run_number, recorded_at)
+         VALUES ($1, $2, $3, NOW())
+         ON CONFLICT (stat_key) DO UPDATE
+         SET value      = ${cmp}(alltime_market_records.value, EXCLUDED.value),
+             run_number = CASE WHEN EXCLUDED.value ${cond} alltime_market_records.value
+                               THEN EXCLUDED.run_number ELSE alltime_market_records.run_number END,
+             recorded_at = CASE WHEN EXCLUDED.value ${cond} alltime_market_records.value
+                                THEN NOW() ELSE alltime_market_records.recorded_at END`,
+        [key, value, runNumber]
+    );
+}
+
+async function updateAlltimeMarketRecords(run, totalBuildings) {
+    try {
+        await Promise.all([
+            _upsertAlltimeRecord('price_high',        Number(run.market_price),           run.run_number, true),
+            _upsertAlltimeRecord('price_low',         Number(run.market_price),           run.run_number, false),
+            _upsertAlltimeRecord('prize_pool_high',   parseInt(run.prize_pool, 10) || 0,  run.run_number, true),
+            _upsertAlltimeRecord('tokens_issued_max', parseInt(run.tokens_issued, 10) || 0, run.run_number, true),
+            _upsertAlltimeRecord('peak_buildings',    totalBuildings || 0,                run.run_number, true),
+        ]);
+    } catch (err) {
+        console.warn('[alltime] market record update failed:', err.message);
+    }
+}
+
+async function updateAlltimePlayerBests(run, scores) {
+    try {
+        // Grab post-payout balances
+        const balResult = await db.query(
+            'SELECT id, token_balance FROM players WHERE id = ANY($1)',
+            [scores.map((s) => s.player_id)]
+        );
+        const balances = {};
+        balResult.rows.forEach((r) => { balances[r.id] = parseInt(r.token_balance, 10) || 0; });
+
+        await _upsertAlltimeRecord('peak_players', scores.length, run.run_number, true);
+
+        for (let i = 0; i < scores.length; i++) {
+            const s = scores[i];
+            const balance = balances[s.player_id] || 0;
+            const income  = parseInt(s.daily_income, 10) || 0;
+            const rank    = i + 1;
+            await db.query(
+                `INSERT INTO alltime_player_bests
+                    (player_id, best_balance, best_daily_income, best_rank, total_runs, updated_at)
+                 VALUES ($1, $2, $3, $4, 1, NOW())
+                 ON CONFLICT (player_id) DO UPDATE
+                 SET best_balance      = GREATEST(alltime_player_bests.best_balance, EXCLUDED.best_balance),
+                     best_daily_income = GREATEST(alltime_player_bests.best_daily_income, EXCLUDED.best_daily_income),
+                     best_rank         = LEAST(alltime_player_bests.best_rank, EXCLUDED.best_rank),
+                     total_runs        = alltime_player_bests.total_runs + 1,
+                     updated_at        = NOW()`,
+                [s.player_id, balance, income, rank]
+            );
+        }
+        console.log(`[alltime] Player bests updated for run #${run.run_number}`);
+    } catch (err) {
+        console.warn('[alltime] player bests update failed:', err.message);
+    }
+}
+
 async function endRun(io, run) {
     const scores = await calculateScores(run.id);
     const shares = [0.50, 0.30, 0.20];
@@ -719,6 +786,9 @@ async function endRun(io, run) {
     }
 
     console.log(`🏁 Run #${run.run_number} ended. Awarded ${payouts.length} players.`);
+
+    // Update all-time player records (uses post-payout balances)
+    await updateAlltimePlayerBests(run, scores);
 
     io.to(`run:${run.id}`).emit('run:ended', {
         runNumber: run.run_number,
@@ -812,6 +882,8 @@ async function saveEconomySnapshot(runId, runDay) {
             ]
         );
         console.log(`[economy] Snapshot saved for run day ${runDay}`);
+        // Keep all-time market records up to date on every snapshot
+        await updateAlltimeMarketRecords(run, totalBuildings);
     } catch (err) {
         console.warn('[economy] Failed to save snapshot:', err.message);
     }
@@ -916,6 +988,8 @@ module.exports = {
     getRunSnapshot,
     emitRunSnapshot,
     saveEconomySnapshot,
+    updateAlltimeMarketRecords,
+    updateAlltimePlayerBests,
     BUILDING_RULES,
     BUILD_SLOTS,
     setBuildingRules,
