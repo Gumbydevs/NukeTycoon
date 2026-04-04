@@ -448,6 +448,24 @@ function registerHandlers(io, socket) {
             );
             const queueRes = await db.query('SELECT cell_id, type, queued_at, player_id FROM build_queue WHERE run_id = $1 ORDER BY queued_at ASC', [run.id]);
 
+            // Normalize DB rows to client-friendly keys (camelCase) so historical
+            // chat messages match the live `chat:message` payload shape.
+            const chatRows = (chatRes.rows || []).map((r) => ({
+                id: r.id,
+                run_id: r.run_id,
+                runId: r.run_id,
+                player_id: r.player_id,
+                playerId: r.player_id,
+                username: r.username,
+                avatar: r.avatar,
+                avatar_photo: r.avatar_photo,
+                avatarPhoto: r.avatar_photo || null,
+                text: r.text,
+                gif_url: r.gif_url,
+                gifUrl: r.gif_url,
+                ts: r.ts,
+            }));
+
             socket.emit('run:state', {
                 run: snapshot?.run,
                 buildings: snapshot?.buildings || [],
@@ -461,7 +479,7 @@ function registerHandlers(io, socket) {
                 serverTime: Date.now(),
                 terrain: snapshot?.terrain || null,
                 deposits: snapshot?.deposits || null,
-                chatMessages: chatRes.rows || [],
+                chatMessages: chatRows,
                 notifications: notesRes.rows || [],
                 buildQueue: queueRes.rows || [],
             });

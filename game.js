@@ -881,7 +881,8 @@ function connectSocket() {
     socket.on('chat:message', (msg) => {
         renderChatMessage(msg);
 
-        if (msg && msg.playerId && msg.playerId !== getLocalPlayerId()) {
+        const pid = msg.playerId || msg.player_id;
+        if (pid && pid !== getLocalPlayerId()) {
             const preview = msg.text ? `${msg.username}: ${msg.text}` : `${msg.username} sent a GIF`;
             addNotification('info', `💬 ${preview}`, { chatId: msg.id, from: msg.username, ts: msg.ts || Date.now() });
         }
@@ -6280,7 +6281,8 @@ function scrollChatToBottom() {
 function renderChatMessage(msg) {
     const msgs = document.getElementById('chatMessages');
     if (!msgs) return;
-    const isSelf = msg.playerId === getLocalPlayerId();
+    const pid = msg.playerId || msg.player_id;
+    const isSelf = pid === getLocalPlayerId();
     const div = document.createElement('div');
     div.className = 'chat-msg' + (isSelf ? ' chat-msg--self' : '');
     const ts = new Date(msg.ts);
@@ -6293,8 +6295,9 @@ function renderChatMessage(msg) {
         : `<span class="chat-msg-avatar">${escapeHtml(msg.avatar || '☢️')}</span>`;
     const nameHtml = isSelf ? '' : `<span class="chat-msg-name">${escapeHtml(msg.username)}</span>`;
     let bodyHtml = '';
-    if (msg.gifUrl && /^https:\/\/(media\.giphy\.com|media\.tenor\.com)\//i.test(msg.gifUrl)) {
-        bodyHtml += `<img src="${escapeHtml(msg.gifUrl)}" class="chat-msg-gif" alt="GIF" loading="lazy" />`;
+    const gif = msg.gifUrl || msg.gif_url || null;
+    if (gif && /^https:\/\/(media\.giphy\.com|media\.tenor\.com)\//i.test(gif)) {
+        bodyHtml += `<img src="${escapeHtml(gif)}" class="chat-msg-gif" alt="GIF" loading="lazy" />`;
     }
     if (msg.text) {
         bodyHtml += `<span class="chat-msg-text">${escapeHtml(msg.text)}</span>`;
@@ -6309,10 +6312,12 @@ function renderChatMessage(msg) {
 }
 
 function showChatToast(msg) {
-    if (msg.playerId === getLocalPlayerId()) return;
+    const pid = msg.playerId || msg.player_id;
+    if (pid === getLocalPlayerId()) return;
     let content = '';
-    if (msg.gifUrl && /^https:\/\/(media\.giphy\.com|media\.tenor\.com)\//i.test(msg.gifUrl)) {
-        content += `<img src="${escapeHtml(msg.gifUrl)}" class="chat-float-gif" alt="GIF" />`;
+    const gif = msg.gifUrl || msg.gif_url || null;
+    if (gif && /^https:\/\/(media\.giphy\.com|media\.tenor\.com)\//i.test(gif)) {
+        content += `<img src="${escapeHtml(gif)}" class="chat-float-gif" alt="GIF" />`;
     }
     if (msg.text) {
         content += `<span>${escapeHtml(msg.avatar || '☢️')} <strong>${escapeHtml(msg.username)}</strong>: ${escapeHtml(msg.text)}</span>`;
