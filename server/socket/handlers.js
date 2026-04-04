@@ -259,6 +259,8 @@ function registerHandlers(io, socket) {
                 terrain: snapshot?.terrain || null,
                 deposits: snapshot?.deposits || null,
             });
+            // Always send current building rules so tooltips/costs are accurate
+            socket.emit('run:building_config', { buildingRules: BUILDING_RULES });
         });
     });
 
