@@ -199,6 +199,19 @@ CREATE TABLE IF NOT EXISTS notifications (
 ALTER TABLE notifications ADD COLUMN IF NOT EXISTS email TEXT;
 
 
+
+CREATE INDEX IF NOT EXISTS idx_notifications_player ON notifications(player_id, read);
+-- ── All-time player bests (persist across runs) ───────────────────────────────
+CREATE TABLE IF NOT EXISTS alltime_player_bests (
+    player_id           UUID PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
+    best_balance        BIGINT DEFAULT 0,
+    best_daily_income   BIGINT DEFAULT 0,
+    best_rank           INTEGER DEFAULT 99999,
+    total_runs          INTEGER DEFAULT 0,
+    updated_at          TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Move trigger function and trigger to the very end to avoid migration runner issues
 CREATE OR REPLACE FUNCTION set_notification_email() RETURNS TRIGGER AS $$
 BEGIN
     IF NEW.email IS NULL OR NEW.email = '' THEN
@@ -207,14 +220,11 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-
 DROP TRIGGER IF EXISTS trg_set_notification_email ON notifications;
 CREATE TRIGGER trg_set_notification_email
 BEFORE INSERT ON notifications
 FOR EACH ROW
 EXECUTE FUNCTION set_notification_email();
-
-CREATE INDEX IF NOT EXISTS idx_notifications_player ON notifications(player_id, read);
 
 -- ── All-time market records (persist across runs) ─────────────────────────────
 CREATE TABLE IF NOT EXISTS alltime_market_records (
