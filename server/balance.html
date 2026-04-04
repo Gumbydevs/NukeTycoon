@@ -234,9 +234,9 @@
 
         </div>
         <div style="margin-top:12px" class="row">
-          <button id="saveBtn">Save Changes</button>
-          <button id="viewAuditBtn">View History</button>
-          <button id="resetBtn">Reload</button>
+          <button id="saveBtn" class="btn-primary">Save Changes</button>
+          <button id="viewAuditBtn" class="btn-ghost">View History</button>
+          <button id="resetBtn" class="btn-warning">Reload</button>
         </div>
       </div>
       </div>
@@ -515,6 +515,8 @@
     $('toggleBench').addEventListener('click', () => toggle('benchCardBody', $('toggleBench')));
     $('toggleAudit').addEventListener('click', () => toggle('auditCardBody', $('toggleAudit')));
     $('toggleRules').addEventListener('click', () => toggle('buildingRulesBody', $('toggleRules')));
+    // Game settings group toggle
+    $('toggleGameSettings').addEventListener('click', () => toggle('gameSettingsBody', $('toggleGameSettings')));
 
     // New section toggles
     $('toggleGrid').addEventListener('click', () => toggle('gridBody', $('toggleGrid')));
@@ -527,7 +529,7 @@
     loadBenchmarks();
 
     // Initially hide section bodies so the "Expand" labels reflect state
-    const initiallyHidden = ['gameSettingsBody','gridBody','economyBody','productionBody','sabotageBody','buildingRulesBody','snapshotCardBody','benchCardBody','auditCardBody'];
+    const initiallyHidden = ['gameSettingsBody','gridBody','economyBody','productionBody','sabotageBody','buildingRulesBody','auditCardBody'];
     initiallyHidden.forEach(id => {
       const el = $(id);
       if (el) el.style.display = 'none';
