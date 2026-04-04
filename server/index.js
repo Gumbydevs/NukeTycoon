@@ -419,7 +419,7 @@ app.get('/api/notifications', requireJwtPlayer, async (req, res) => {
     try {
         const player = req.player;
         const rows = await db.query(
-            'SELECT id, run_id, type, payload, read, created_at FROM notifications WHERE (email = $1 OR player_id = $2) ORDER BY created_at DESC LIMIT 200',
+            'SELECT id, run_id, type, payload, read, created_at FROM notifications WHERE (LOWER(email) = LOWER($1) OR player_id = $2) ORDER BY created_at DESC LIMIT 200',
             [player.email, player.id]
         );
         res.json({ notifications: rows.rows });
@@ -436,9 +436,9 @@ app.post('/api/notifications/mark_read', requireJwtPlayer, async (req, res) => {
         const all = !!req.body?.all;
         if (!all && (!ids || ids.length === 0)) return res.status(400).json({ error: 'Provide ids or set all=true.' });
         if (all) {
-            await db.query('UPDATE notifications SET read = TRUE WHERE (email = $1 OR player_id = $2)', [player.email, player.id]);
+            await db.query('UPDATE notifications SET read = TRUE WHERE (LOWER(email) = LOWER($1) OR player_id = $2)', [player.email, player.id]);
         } else {
-            await db.query('UPDATE notifications SET read = TRUE WHERE (email = $1 OR player_id = $2) AND id = ANY($3::uuid[])', [player.email, player.id, ids]);
+            await db.query('UPDATE notifications SET read = TRUE WHERE (LOWER(email) = LOWER($1) OR player_id = $2) AND id = ANY($3::uuid[])', [player.email, player.id, ids]);
         }
         res.json({ ok: true });
     } catch (err) {

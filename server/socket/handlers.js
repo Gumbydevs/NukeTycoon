@@ -407,13 +407,44 @@ function registerHandlers(io, socket) {
             const snapshot = await getRunSnapshot(run.id);
             const meState = isNewJoiner ? null : ((snapshot?.playerStates || []).find((row) => row.player_id === player.id) || null);
             const mePlayer = (snapshot?.players || []).find((row) => row.id === player.id);
+            const normalizedEmail = String(player.email || '').trim().toLowerCase();
 
-            // Fetch recent chat and notifications for this player (by email)
+            // Backfill missed chat notifications for anything that happened while this player was offline.
+            try {
+                await db.query(
+                    `INSERT INTO notifications (run_id, player_id, email, type, payload, read, created_at)
+                     SELECT $1, $2, $3, 'chat',
+                            jsonb_build_object(
+                                'id', cm.id,
+                                'from', COALESCE(cm.username, 'Unknown'),
+                                'text', COALESCE(cm.text, ''),
+                                'gifUrl', cm.gif_url,
+                                'ts', cm.ts
+                            ),
+                            FALSE,
+                            TO_TIMESTAMP(cm.ts / 1000.0)
+                     FROM chat_messages cm
+                     WHERE cm.run_id = $1
+                       AND cm.player_id <> $2
+                       AND TO_TIMESTAMP(cm.ts / 1000.0) > COALESCE($4::timestamptz, to_timestamp(0))
+                       AND NOT EXISTS (
+                           SELECT 1
+                           FROM notifications n
+                           WHERE n.player_id = $2
+                             AND n.type = 'chat'
+                             AND n.payload->>'id' = cm.id
+                       )`,
+                    [run.id, player.id, normalizedEmail, player.last_seen_at || null]
+                );
+            } catch (err) {
+                console.warn('notification backfill failed:', err.message);
+            }
+
+            // Fetch recent chat and notifications for this player.
             const chatRes = await db.query('SELECT * FROM chat_messages WHERE run_id = $1 ORDER BY ts ASC LIMIT 200', [run.id]);
-            // Fetch notifications by player email or player_id (cover legacy rows)
             const notesRes = await db.query(
-                'SELECT id, type, payload, created_at, read FROM notifications WHERE (email = $1 OR player_id = $2) ORDER BY created_at ASC',
-                [player.email, player.id]
+                'SELECT id, type, payload, created_at, read FROM notifications WHERE (LOWER(email) = LOWER($1) OR player_id = $2) ORDER BY created_at ASC',
+                [normalizedEmail, player.id]
             );
             const queueRes = await db.query('SELECT cell_id, type, queued_at, player_id FROM build_queue WHERE run_id = $1 ORDER BY queued_at ASC', [run.id]);
 
@@ -434,6 +465,7 @@ function registerHandlers(io, socket) {
                 notifications: notesRes.rows || [],
                 buildQueue: queueRes.rows || [],
             });
+            await db.query('UPDATE players SET last_seen_at = NOW() WHERE id = $1', [player.id]);
             // Always send current building rules so tooltips/costs are accurate
             socket.emit('run:building_config', { buildingRules: BUILDING_RULES });
         });
@@ -1014,21 +1046,18 @@ function registerHandlers(io, socket) {
 
             io.to(`run:${socket.runId}`).emit('chat:message', payload);
 
-            // Create offline notifications for run members not currently connected
+            // Persist chat notifications for every other run member so they still exist after relog.
             try {
-                const sockets = await io.in(`run:${socket.runId}`).fetchSockets();
-                const onlineIds = new Set(sockets.map(s => s.playerId).filter(Boolean));
                 const runPlayersRes = await db.query('SELECT player_id FROM run_players WHERE run_id = $1', [socket.runId]);
-                const toNotify = runPlayersRes.rows.map(r => r.player_id).filter(pid => !onlineIds.has(pid) && pid !== player.id);
+                const toNotify = runPlayersRes.rows.map(r => r.player_id).filter(pid => pid !== player.id);
                 for (const pid of toNotify) {
-                        // Look up email for this player and normalize to lowercase
-                        const emailRes = await db.query('SELECT email FROM players WHERE id = $1', [pid]);
-                        const email = (emailRes.rows[0]?.email || '').toLowerCase();
-                        await db.query(
-                            `INSERT INTO notifications (run_id, player_id, email, type, payload)
-                             VALUES ($1,$2,$3,$4,$5)`,
-                            [socket.runId, pid, email, 'chat', JSON.stringify({ id, from: player.username, text: cleanText, ts: now })]
-                        );
+                    const emailRes = await db.query('SELECT email FROM players WHERE id = $1', [pid]);
+                    const email = (emailRes.rows[0]?.email || '').toLowerCase();
+                    await db.query(
+                        `INSERT INTO notifications (run_id, player_id, email, type, payload)
+                         VALUES ($1,$2,$3,$4,$5)`,
+                        [socket.runId, pid, email, 'chat', { id, from: player.username, text: cleanText, gifUrl: cleanGifUrl, ts: now }]
+                    );
                 }
             } catch (err) {
                 console.warn('chat notify failed:', err.message);
@@ -1121,6 +1150,15 @@ function registerHandlers(io, socket) {
                 });
             }
         });
+    });
+
+    socket.on('disconnect', async () => {
+        if (!socket.playerId) return;
+        try {
+            await db.query('UPDATE players SET last_seen_at = NOW() WHERE id = $1', [socket.playerId]);
+        } catch (err) {
+            console.warn('last_seen update failed:', err.message);
+        }
     });
 }
 

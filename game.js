@@ -248,7 +248,7 @@ function connectSocket() {
     });
 
     // ── Run events ──────────────────────────────────────────────────────
-    socket.on('run:state', ({ run, buildings, players, scores, playerState, falloutZones, nuclearThreats, yourWallet, isNewJoiner, serverTime, terrain, deposits, chatMessages, notifications }) => {
+    socket.on('run:state', ({ run, buildings, players, scores, playerState, falloutZones, nuclearThreats, yourWallet, isNewJoiner, serverTime, terrain, deposits, chatMessages, notifications, buildQueue = [] }) => {
         // Store server clock for interpolation
         if (serverTime) {
             game._serverTime = serverTime;
@@ -350,7 +350,11 @@ function connectSocket() {
             game.notifications = (notifications || []).map(n => ({
                 id: n.id,
                 type: n.type || 'info',
-                message: (n.payload && typeof n.payload === 'object') ? (n.payload.text || JSON.stringify(n.payload)) : String(n.payload || ''),
+                message: (n.payload && typeof n.payload === 'object')
+                    ? (n.payload.from
+                        ? `💬 ${n.payload.from}: ${n.payload.text || 'sent a GIF'}`
+                        : (n.payload.text || JSON.stringify(n.payload)))
+                    : String(n.payload || ''),
                 timestamp: new Date(n.created_at).getTime(),
                 read: n.read === true, // preserve true/false from server
                 data: n.payload || null,
@@ -359,8 +363,8 @@ function connectSocket() {
         }
 
         // Server-side build queue (persisted)
-        if (Array.isArray(arguments[0].buildQueue)) {
-            const q = arguments[0].buildQueue || [];
+        if (Array.isArray(buildQueue)) {
+            const q = buildQueue || [];
             // Clear local queue and rebuild from server truth
             game._buildQueue = [];
             // Remove any queued ghosts first
@@ -879,6 +883,12 @@ function connectSocket() {
     // ── Chat ─────────────────────────────────────────────────────────────────
     socket.on('chat:message', (msg) => {
         renderChatMessage(msg);
+
+        if (msg && msg.playerId && msg.playerId !== getLocalPlayerId()) {
+            const preview = msg.text ? `${msg.username}: ${msg.text}` : `${msg.username} sent a GIF`;
+            addNotification('info', `💬 ${preview}`, { chatId: msg.id, from: msg.username, ts: msg.ts || Date.now() });
+        }
+
         const panel = document.getElementById('chatPanel');
         const isOpen = panel && panel.style.display !== 'none';
         if (isOpen) {
@@ -6401,7 +6411,8 @@ function renderNotifications() {
             success: '#4CAF50',
             danger:  '#ff6b6b',
             warning: '#ffb84d',
-            info:    '#7ec8e3'
+            info:    '#7ec8e3',
+            chat:    '#7ec8e3'
         };
         const color = typeColors[notif.type] || '#ccc';
         const timeStr = new Date(notif.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
