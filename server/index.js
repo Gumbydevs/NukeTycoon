@@ -200,7 +200,7 @@ app.get('/economy/api/data', async (_req, res) => {
         }));
 
         if (!run) {
-            res.json({ run: null, scores: [], history: [], buildingCounts: {}, players: [], buildingRules: BUILDING_RULES, alltimeMarket, alltimePlayers, serverTime: new Date().toISOString() });
+            res.json({ run: null, scores: [], history: [], buildingCounts: {}, players: [], buildingRules: BUILDING_RULES, tokensPerUSD: 2000, alltimeMarket, alltimePlayers, serverTime: new Date().toISOString() });
             return;
         }
 
@@ -273,6 +273,7 @@ app.get('/economy/api/data', async (_req, res) => {
                 uranium_refined: Number(p.uranium_refined || 0),
             })),
             buildingRules: BUILDING_RULES,
+            tokensPerUSD: 2000,
             alltimeMarket,
             alltimePlayers,
             serverTime: new Date().toISOString(),

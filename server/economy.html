@@ -81,6 +81,18 @@
     .ticker-change.down { color: var(--red); }
     .ticker-change.flat { color: var(--muted); }
 
+    /* ─── Prize pool hero display ────────────────────── */
+    .ticker-item-prize { border-left: 3px solid var(--amber) !important; background: rgba(255,184,77,0.04); }
+    .ticker-prize-usd {
+      display: block; font-size: 22px; font-weight: 800;
+      color: var(--amber); font-variant-numeric: tabular-nums;
+      line-height: 1.2; letter-spacing: -0.01em;
+    }
+    .ticker-prize-tokens {
+      display: block; font-size: 11px; color: var(--muted);
+      font-variant-numeric: tabular-nums; margin-top: 2px;
+    }
+
     /* ─── Main grid ──────────────────────────────────── */
     .main { max-width: 1240px; margin: 0 auto; padding: 24px; }
     .section-title {
@@ -272,9 +284,9 @@
       <div class="ticker-val" id="tkPrice">—</div>
       <div class="ticker-change flat" id="tkPriceChg">—</div>
     </div>
-    <div class="ticker-item">
-      <div class="ticker-label">Prize Pool</div>
-      <div class="ticker-val amber" id="tkPrize">—</div>
+    <div class="ticker-item ticker-item-prize">
+      <div class="ticker-label">💰 Prize Pool</div>
+      <div id="tkPrize">—</div>
     </div>
     <div class="ticker-item">
       <div class="ticker-label">Commanders</div>
@@ -334,6 +346,7 @@ let _lastData = null;
 // ── All-time data (populated from API, used across renders) ───────────────────
 let _alltimeMarket  = {};
 let _alltimePlayers = [];
+let _tokensPerUSD   = 2000;
 
 // ── Live price history (client-side rolling buffer) ───────────────────────────
 const _livePrices = []; // { t, price } — filled from polls
@@ -819,8 +832,13 @@ function updateTicker(data) {
         priceChg.textContent = sign(chgAbs) + ' (' + signPct(chgPct) + ')';
         priceChg.className = 'ticker-change ' + (chgAbs > 0 ? 'up' : chgAbs < 0 ? 'down' : 'flat');
     }
-    const prizeUsd = (Number(run.prize_pool) * Number(run.market_price)).toFixed(2);
-    if (prizeEl)   prizeEl.innerHTML = fmt(run.prize_pool) + '<br><span style="font-size:12px;color:var(--muted);">≈ $' + Number(prizeUsd).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) + ' USD</span>';
+    const _prizeUsd  = Number(run.prize_pool) / Math.max(1, _tokensPerUSD);
+    const _prizeUsdFmt = _prizeUsd >= 1000
+        ? '$' + _prizeUsd.toLocaleString(undefined, {maximumFractionDigits:0})
+        : '$' + _prizeUsd.toFixed(2);
+    if (prizeEl) prizeEl.innerHTML =
+        '<span class="ticker-prize-usd">' + _prizeUsdFmt + ' USDC</span>' +
+        '<span class="ticker-prize-tokens">' + fmt(run.prize_pool) + ' tokens</span>';
     if (playersEl) playersEl.textContent = (players?.length || 0) + ' active';
     if (dayEl)     dayEl.textContent     = `${run.current_day} / ${run.run_length}`;
 
@@ -851,6 +869,7 @@ async function fetchAndUpdate() {
         // Cache alltime data globally (available even when no run)
         if (data.alltimeMarket)  _alltimeMarket  = data.alltimeMarket;
         if (data.alltimePlayers) _alltimePlayers = data.alltimePlayers;
+        if (data.tokensPerUSD)   _tokensPerUSD   = data.tokensPerUSD;
 
         const loading = document.getElementById('loadingMsg');
         if (loading) loading.remove();

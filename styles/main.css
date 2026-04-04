@@ -1400,6 +1400,15 @@ body.mobile-menu-open .dropdown { display: none !important; }
 .econ-stat-val.red   { color: #ff6b6b; }
 .econ-stat-val.amber { color: #ffb84d; }
 .econ-stat-sub   { font-size: 10px; font-weight: 400; color: #666; }
+
+/* Prize pool hero block */
+.econ-prize-hero   {
+    background: rgba(255,184,77,0.06); border: 1px solid rgba(255,184,77,0.2);
+    border-radius: 5px; padding: 10px 12px; margin-bottom: 10px; text-align: center;
+}
+.econ-prize-label  { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; color: #ffb84d; text-transform: uppercase; margin-bottom: 4px; }
+.econ-prize-usd    { font-size: 22px; font-weight: 800; color: #ffb84d; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.econ-prize-tokens { font-size: 11px; color: #666; font-variant-numeric: tabular-nums; margin-top: 2px; }
 .econ-divider { border-top: 1px solid #2b3440; padding-top: 6px; margin-top: 2px; }
 .econ-chain {
     display: flex; align-items: center; gap: 6px;

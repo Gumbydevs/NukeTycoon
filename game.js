@@ -4858,9 +4858,15 @@ function refreshEconomyModal({ playerState, run, scores }) {
     }
 
     const _prizeTokens = (run?.prize_pool || 0);
-    const _prizeUsd = (_prizeTokens * Number(run?.market_price || 0)).toFixed(2);
-    const _prizeEl = document.getElementById('em-prize');
-    if (_prizeEl) _prizeEl.innerHTML = _prizeTokens.toLocaleString() + ' tokens<br><span class="econ-stat-sub">≈ $' + Number(_prizeUsd).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) + ' USD</span>';
+    const _rate = (game && game.tokensPerUSD) ? game.tokensPerUSD : 2000;
+    const _prizeUsd = _prizeTokens / Math.max(1, _rate);
+    const _prizeUsdFmt = _prizeUsd >= 1000
+        ? '$' + _prizeUsd.toLocaleString(undefined, { maximumFractionDigits: 0 }) + ' USDC'
+        : '$' + _prizeUsd.toFixed(2) + ' USDC';
+    const _prizeUsdEl = document.getElementById('em-prize-usd');
+    const _prizeTokEl = document.getElementById('em-prize-tokens');
+    if (_prizeUsdEl) _prizeUsdEl.textContent = _prizeUsdFmt;
+    if (_prizeTokEl) _prizeTokEl.textContent  = _prizeTokens.toLocaleString() + ' tokens';
     _setText('em-issued', (parseInt(run?.tokens_issued, 10) || 0).toLocaleString());
     _setText('em-pool',   Math.round(run?.market_token_pool || 0).toLocaleString());
     _setText('em-circulating', (parseInt(run?.tokens_issued, 10) || 0).toLocaleString());
