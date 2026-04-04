@@ -694,78 +694,9 @@ async function processRunEconomy(io, run) {
     }
 
     await emitRunSnapshot(io, run.id, 'run:tick');
-
-    try {
-        await processBuildQueue(io, run.id);
-    } catch (err) {
-        console.warn('[queue] processBuildQueue error:', err.message);
-    }
-
-    return snapshot;
-// ── All-time record helpers ───────────────────────────────────────────────────
-
-async function processBuildQueue(io, runId) {
-    if (!runId) return;
-    const client = await db.connect();
-    try {
-        await client.query('BEGIN');
-        const qRes = await client.query(
-            'SELECT * FROM build_queue WHERE run_id = $1 ORDER BY queued_at ASC FOR UPDATE SKIP LOCKED',
-            [runId]
-        );
-        if (qRes.rows.length === 0) {
-            await client.query('COMMIT');
-            return;
-        }
-
-        for (const entry of qRes.rows) {
-            const playerId = entry.player_id;
-            const type = entry.type;
-            const cellId = entry.cell_id;
-
-            const activeRes = await client.query(
-                `SELECT id FROM buildings WHERE run_id = $1 AND player_id = $2 AND is_active = TRUE AND construction_ends_at > NOW()`,
-                [runId, playerId]
-            );
-            if (activeRes.rows.length >= BUILD_SLOTS) {
-                continue;
-            }
-
-            const occ = await client.query(
-                'SELECT id FROM buildings WHERE run_id = $1 AND cell_id = $2 AND is_active = TRUE',
-                [runId, cellId]
-            );
-            if (occ.rows.length > 0) {
-                await client.query('DELETE FROM build_queue WHERE id = $1', [entry.id]);
-                const refund = Math.floor((BUILDING_RULES[type]?.cost || 0));
-                await client.query('UPDATE players SET token_balance = token_balance + $1 WHERE id = $2', [refund, playerId]);
-                continue;
-            }
-
-            const endsAt = new Date(Date.now() + (BUILDING_RULES[type]?.constructionMs || 0));
-            const ins = await client.query(
-                `INSERT INTO buildings (run_id, player_id, type, cell_id, construction_ends_at)
-                 VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-                [runId, playerId, type, cellId, endsAt]
-            );
-            await client.query('DELETE FROM build_queue WHERE id = $1', [entry.id]);
-
-            const b = ins.rows[0];
-            io.to(`run:${runId}`).emit('building:placed', {
-                building: b,
-                ownerName: null,
-                placedBy: playerId,
-            });
-        }
-
-        await client.query('COMMIT');
-    } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-    } finally {
-        client.release();
-    }
 }
+
+// ── All-time record helpers ───────────────────────────────────────────────────
 async function _upsertAlltimeRecord(key, value, runNumber, higher = true) {
     const cmp  = higher ? 'GREATEST' : 'LEAST';
     const cond = higher ? '>' : '<';
