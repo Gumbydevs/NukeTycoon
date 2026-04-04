@@ -351,7 +351,7 @@ function connectSocket() {
                 type: n.type || 'info',
                 message: (n.payload && typeof n.payload === 'object') ? (n.payload.text || JSON.stringify(n.payload)) : String(n.payload || ''),
                 timestamp: new Date(n.created_at).getTime(),
-                read: !!n.read, // preserve read state if present
+                read: n.read === true, // preserve true/false from server
                 data: n.payload || null,
             }));
             renderNotifications();
