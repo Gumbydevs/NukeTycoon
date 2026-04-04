@@ -6,7 +6,7 @@ const cors       = require('cors');
 const fs         = require('fs');
 const path       = require('path');
 const db         = require('./db');
-const { setupGameLoop, getActiveRun, createNewRun, endRun, setNextRunLength, getNextRunLength, BUILDING_RULES, setBuildingRules, saveBuildingRulesToDB, loadBuildingRulesFromDB, calculateScores, updateAlltimeMarketRecords } = require('./gameLoop');
+const { setupGameLoop, getActiveRun, createNewRun, endRun, setNextRunLength, getNextRunLength, BUILDING_RULES, setBuildingRules, saveBuildingRulesToDB, loadBuildingRulesFromDB, calculateScores, updateAlltimeMarketRecords, loadRuntimeConfigFromDB, getBalanceConfig } = require('./gameLoop');
 const { verifyJWT, verifyAdminKey, createAdminKey } = require('./auth');
 const { registerHandlers } = require('./socket/handlers');
 
@@ -54,6 +54,7 @@ async function initializeDatabase(io) {
 
     if (!gameLoopStarted) {
         await loadBuildingRulesFromDB();
+        await loadRuntimeConfigFromDB();
         setupGameLoop(io);
         gameLoopStarted = true;
     }
@@ -215,6 +216,58 @@ app.get('/admin', (_req, res) => {
 // ── Economy dashboard (public) ────────────────────────────────────────────────
 app.get('/economy', (_req, res) => {
     res.sendFile(path.join(__dirname, 'economy.html'));
+});
+
+// Separate Balance UI — limited scope admin page for tuning economy
+app.get('/balance', (_req, res) => {
+    res.sendFile(path.join(__dirname, 'balance.html'));
+});
+
+// Return consolidated balance config for the UI
+app.get('/admin/api/balance', requireAdmin, async (_req, res) => {
+    try {
+        const cfg = getBalanceConfig();
+        res.json({ ok: true, config: cfg });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Apply multiple balance config changes. Body: { changes: { 'key': value, ... } }
+app.post('/admin/api/balance', requireAdmin, async (req, res) => {
+    const changes = req.body?.changes && typeof req.body.changes === 'object' ? req.body.changes : (typeof req.body === 'object' ? req.body : null);
+    if (!changes || Object.keys(changes).length === 0) return res.status(400).json({ error: 'Provide changes object with keys.' });
+    const client = await db.connect();
+    try {
+        await client.query('BEGIN');
+        const applied = {};
+        for (const [key, rawVal] of Object.entries(changes)) {
+            const val = rawVal === null || rawVal === undefined ? null : String(rawVal);
+            const prev = await client.query('SELECT value FROM server_config WHERE key = $1', [key]);
+            const oldVal = prev.rows[0]?.value || null;
+            await client.query(
+                `INSERT INTO server_config (key, value, updated_at) VALUES ($1, $2, NOW())
+                 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+                [key, val]
+            );
+            await client.query(
+                `INSERT INTO server_config_audit (key, old_value, new_value, admin_key_id, admin_name)
+                 VALUES ($1,$2,$3,$4,$5)`,
+                [key, oldVal, val, req.admin?.id || null, req.admin?.name || req.admin?.created_by || req.admin?.source || null]
+            );
+            applied[key] = { old: oldVal, new: val };
+        }
+        await client.query('COMMIT');
+        // Reload runtime config into game loop and broadcast to clients
+        try { await loadBuildingRulesFromDB(); await loadRuntimeConfigFromDB(); } catch (e) { console.warn('Failed to reload runtime config:', e && e.message); }
+        io.emit('run:balance_update', { applied });
+        res.json({ ok: true, applied });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        res.status(500).json({ error: err.message });
+    } finally {
+        client.release();
+    }
 });
 
 // Economy data API — public, read-only, used by the web dashboard and in-game portal
@@ -665,6 +718,17 @@ app.get('/admin/api/admin-audit', requireAdmin, async (req, res) => {
     try {
         const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit, 10) || 200));
         const rows = await db.query('SELECT id, admin_key_id, admin_name, path, method, action, details, created_at FROM admin_audit ORDER BY created_at DESC LIMIT $1', [limit]);
+        res.json({ ok: true, audit: rows.rows });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Config audit history (per-key changes)
+app.get('/admin/api/config-audit', requireAdmin, async (req, res) => {
+    try {
+        const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit, 10) || 200));
+        const rows = await db.query('SELECT id, key, old_value, new_value, admin_key_id, admin_name, created_at FROM server_config_audit ORDER BY created_at DESC LIMIT $1', [limit]);
         res.json({ ok: true, audit: rows.rows });
     } catch (err) {
         res.status(500).json({ error: err.message });

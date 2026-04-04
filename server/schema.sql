@@ -163,6 +163,17 @@ CREATE TABLE IF NOT EXISTS admin_audit (
     created_at    TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- ── Server config audit (tracks per-key changes for balance tuning) ───────
+CREATE TABLE IF NOT EXISTS server_config_audit (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    key           TEXT NOT NULL,
+    old_value     TEXT,
+    new_value     TEXT,
+    admin_key_id  UUID REFERENCES admin_keys(id),
+    admin_name    TEXT,
+    created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ── Economy snapshots (one per game-day, used for historical charts) ──────────
 CREATE TABLE IF NOT EXISTS economy_snapshots (
     id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),

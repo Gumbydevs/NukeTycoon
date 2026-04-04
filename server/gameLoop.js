@@ -24,19 +24,20 @@ function getOrGenerateDeposits(runId) {
     }
     return _depositsCache.get(runId);
 }
-const BUY_IN = 20000;
-const BUILD_SLOTS = 1; // concurrent buildings under construction per player; raise via future mechanics
-const GRID_COLS = 20;
-const GRID_ROWS = 20;
-const PROXIMITY_RANGE = 2;
-const TOTAL_TOKEN_SUPPLY = 1000000000;
-const MARKET_BASE_PRICE = 1;
-const MARKET_TOKEN_POOL_INITIAL = 1000;
-const MARKET_POOL_BURN_RATE = 50;
-const MARKET_VOLATILITY = 0.03;
-const MARKET_PER_SECOND_VOL = MARKET_VOLATILITY / 60;
-const MARKET_BASE_DEMAND = 1000;
-const MARKET_DRIFT_FACTOR = 0.0002;
+// Runtime-configurable globals (can be updated from DB)
+let BUY_IN = Number(process.env.BUY_IN || 20000);
+let BUILD_SLOTS = Number(process.env.BUILD_SLOTS || 1); // concurrent buildings under construction per player
+let GRID_COLS = Number(process.env.GRID_COLS || 20);
+let GRID_ROWS = Number(process.env.GRID_ROWS || 20);
+let PROXIMITY_RANGE = Number(process.env.PROXIMITY_RANGE || 2);
+let TOTAL_TOKEN_SUPPLY = Number(process.env.TOTAL_TOKEN_SUPPLY || 1000000000);
+let MARKET_BASE_PRICE = Number(process.env.MARKET_BASE_PRICE || 1);
+let MARKET_TOKEN_POOL_INITIAL = Number(process.env.MARKET_TOKEN_POOL_INITIAL || 1000);
+let MARKET_POOL_BURN_RATE = Number(process.env.MARKET_POOL_BURN_RATE || 50);
+let MARKET_VOLATILITY = Number(process.env.MARKET_VOLATILITY || 0.03);
+let MARKET_PER_SECOND_VOL = MARKET_VOLATILITY / 60;
+let MARKET_BASE_DEMAND = Number(process.env.MARKET_BASE_DEMAND || 1000);
+let MARKET_DRIFT_FACTOR = Number(process.env.MARKET_DRIFT_FACTOR || 0.0002);
 const BUILDING_RULES = {
     mine:      { cost: 800,  constructionMs: 10000, maintenanceCost: 2 },
     processor: { cost: 1200, constructionMs: 15000, maintenanceCost: 3 },
@@ -63,10 +64,9 @@ async function loadBuildingRulesFromDB() {
             const [, type, field] = parts;
             if (!BUILDING_RULES[type]) return;
             const num = Number(value);
+            // Support numeric building fields generically (cost, constructionMs, maintenanceCost, basePower, storageBonus, etc.)
             if (!Number.isFinite(num)) return;
-            if (field === 'cost') BUILDING_RULES[type].cost = Math.floor(num);
-            if (field === 'constructionMs') BUILDING_RULES[type].constructionMs = Math.floor(num);
-            if (field === 'maintenanceCost') BUILDING_RULES[type].maintenanceCost = Math.floor(num);
+            BUILDING_RULES[type][field] = Math.floor(num);
         });
 
         // Always re-seed maintenanceCost from hardcoded defaults so stale DB values
@@ -87,6 +87,40 @@ async function loadBuildingRulesFromDB() {
         console.log('[config] Building rules loaded from DB:', JSON.stringify(BUILDING_RULES));
     } catch (err) {
         console.warn('[config] Could not load building rules from DB (table may not exist yet):', err.message);
+    }
+}
+
+// Load generic runtime server_config values into in-memory variables.
+async function loadRuntimeConfigFromDB() {
+    try {
+        const result = await db.query('SELECT key, value FROM server_config');
+        result.rows.forEach(({ key, value }) => {
+            if (typeof value !== 'string') return;
+            // Map known keys to variables
+            switch (key) {
+                case 'game.buy_in': BUY_IN = Number(value); break;
+                case 'game.build_slots': BUILD_SLOTS = Number(value); break;
+                case 'grid.cols': GRID_COLS = Number(value); break;
+                case 'grid.rows': GRID_ROWS = Number(value); break;
+                case 'game.proximity_range': PROXIMITY_RANGE = Number(value); break;
+                case 'economy.total_token_supply': TOTAL_TOKEN_SUPPLY = Number(value); break;
+                case 'market.base_price': MARKET_BASE_PRICE = Number(value); break;
+                case 'market.token_pool_initial': MARKET_TOKEN_POOL_INITIAL = Number(value); break;
+                case 'market.pool_burn_rate': MARKET_POOL_BURN_RATE = Number(value); break;
+                case 'market.volatility': MARKET_VOLATILITY = Number(value); break;
+                case 'market.base_demand': MARKET_BASE_DEMAND = Number(value); break;
+                case 'market.drift_factor': MARKET_DRIFT_FACTOR = Number(value); break;
+                default: {
+                    // building.* keys are handled by loadBuildingRulesFromDB earlier
+                    break;
+                }
+            }
+        });
+        // Recompute derived values
+        MARKET_PER_SECOND_VOL = MARKET_VOLATILITY / 60;
+        console.log('[config] Runtime config loaded from DB');
+    } catch (err) {
+        console.warn('[config] Could not load runtime config from DB:', err.message);
     }
 }
 
@@ -1142,12 +1176,35 @@ module.exports = {
     updateAlltimeMarketRecords,
     updateAlltimePlayerBests,
     BUILDING_RULES,
-    BUILD_SLOTS,
     setBuildingRules,
     saveBuildingRulesToDB,
     loadBuildingRulesFromDB,
     DAY_DURATION_MS,
-    BUY_IN,
+    // Runtime-config getters
+    getBuyIn: () => BUY_IN,
+    getBuildSlots: () => BUILD_SLOTS,
+    getMarketPoolBurnRate: () => MARKET_POOL_BURN_RATE,
+    getProximityRange: () => PROXIMITY_RANGE,
+    getGridSize: () => ({ cols: GRID_COLS, rows: GRID_ROWS }),
+    loadRuntimeConfigFromDB,
+    getBalanceConfig: () => ({
+        buyIn: BUY_IN,
+        buildSlots: BUILD_SLOTS,
+        gridCols: GRID_COLS,
+        gridRows: GRID_ROWS,
+        proximityRange: PROXIMITY_RANGE,
+        totalTokenSupply: TOTAL_TOKEN_SUPPLY,
+        market: {
+            basePrice: MARKET_BASE_PRICE,
+            tokenPoolInitial: MARKET_TOKEN_POOL_INITIAL,
+            poolBurnRate: MARKET_POOL_BURN_RATE,
+            volatility: MARKET_VOLATILITY,
+            perSecondVol: MARKET_PER_SECOND_VOL,
+            baseDemand: MARKET_BASE_DEMAND,
+            driftFactor: MARKET_DRIFT_FACTOR,
+        },
+        buildingRules: BUILDING_RULES,
+    }),
     setNextRunLength,
     getNextRunLength: () => _nextRunLength,
     getTerrainForRun: getOrGenerateTerrain,

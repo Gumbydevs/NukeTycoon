@@ -1,6 +1,6 @@
 const { sendOTP, verifyOTP, verifyJWT, generateJWT, signupWithPassword, loginWithPassword } = require('../auth');
 const db = require('../db');
-const { getActiveRun, getRunSnapshot, ensureRunPlayerState, BUILDING_RULES, BUILD_SLOTS, BUY_IN } = require('../gameLoop');
+const { getActiveRun, getRunSnapshot, ensureRunPlayerState, BUILDING_RULES, getBuyIn, getBuildSlots, getMarketPoolBurnRate } = require('../gameLoop');
 
 const DEFAULT_AVATAR = '☢️';
 const VALID_AVATARS = new Set(['☢️', '🧑‍🚀', '👩‍🔬', '👨‍🔬', '🤖', '🦊', '🐺', '🐉']);
@@ -10,7 +10,6 @@ const VALID_TYPES = Object.keys(BUILDING_RULES);
 // Do NOT snapshot costs here — always read BUILDING_RULES[type].cost live so
 // admin changes via /admin/api/set-building-config are reflected immediately.
 const STRIKE_LIMIT_PER_DAY = 999; // DEV: unlimited nukes for testing (restore to 1 before prod)
-const MARKET_POOL_BURN_RATE = 50;
 
 // Manhattan distance on a 20-column grid
 function gridDist(a, b) {
@@ -526,28 +525,28 @@ function registerHandlers(io, socket) {
             }
 
             // Deduct buy-in
-            if (parseInt(player.token_balance, 10) < BUY_IN) {
+            if (parseInt(player.token_balance, 10) < getBuyIn()) {
                 socket.emit('run:join_error', { message: 'Not enough tokens for the buy-in.' });
                 return;
             }
             await db.query(
                 'UPDATE players SET token_balance = token_balance - $1 WHERE id = $2',
-                [BUY_IN, player.id]
+                [getBuyIn(), player.id]
             );
             await db.query(
                 'INSERT INTO run_players (run_id, player_id) VALUES ($1, $2)',
                 [run.id, player.id]
             );
             // 80% of buy-in seeds prize pool
-            const prizeAdd = Math.floor(BUY_IN * 0.8);
-            const retained = Math.floor(BUY_IN * 0.2);
+            const prizeAdd = Math.floor(getBuyIn() * 0.8);
+            const retained = Math.floor(getBuyIn() * 0.2);
             await db.query(
                 `UPDATE runs
                  SET prize_pool = prize_pool + $1,
                      platform_fee_collected = COALESCE(platform_fee_collected,0) + $2,
                      market_token_pool = GREATEST(1, market_token_pool - $3)
                  WHERE id = $4`,
-                [prizeAdd, retained, Math.floor(BUY_IN * 0.2) / MARKET_POOL_BURN_RATE, run.id]
+                [prizeAdd, retained, Math.floor(getBuyIn() * 0.2) / getMarketPoolBurnRate(), run.id]
             );
 
             socket.runId = run.id;
@@ -654,7 +653,7 @@ function registerHandlers(io, socket) {
                    AND construction_ends_at > NOW()`,
                 [run.id, player.id]
             );
-            if (activeConstruction.rows.length >= BUILD_SLOTS) {
+            if (activeConstruction.rows.length >= getBuildSlots()) {
                 socket.emit('building:place_error', {
                     message: 'Construction slot busy — wait for the current build to finish.',
                     code: 'CONSTRUCTION_LIMIT',
@@ -689,7 +688,7 @@ function registerHandlers(io, socket) {
                          tokens_burned = tokens_burned + $2,
                          market_token_pool = GREATEST(1, market_token_pool - $3)
                      WHERE id = $4`,
-                    [prizeContribution, cost, cost / MARKET_POOL_BURN_RATE, run.id]
+                    [prizeContribution, cost, cost / getMarketPoolBurnRate(), run.id]
                 );
 
                 // Fetch authoritative wallet balance after deduction
@@ -790,7 +789,7 @@ function registerHandlers(io, socket) {
                      tokens_burned = tokens_burned + $2,
                      market_token_pool = GREATEST(1, market_token_pool - $3)
                  WHERE id = $4`,
-                [prizeContribution, cost, cost / MARKET_POOL_BURN_RATE, run.id]
+                [prizeContribution, cost, cost / getMarketPoolBurnRate(), run.id]
             );
 
             // Insert queue row
@@ -912,7 +911,7 @@ function registerHandlers(io, socket) {
                      tokens_burned = tokens_burned + $2,
                      market_token_pool = GREATEST(1, market_token_pool - $3)
                  WHERE id = $4`,
-                [prizeContribution, cost, cost / MARKET_POOL_BURN_RATE, run.id]
+                [prizeContribution, cost, cost / getMarketPoolBurnRate(), run.id]
             );
 
             // Log event

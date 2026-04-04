@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>NUKEWAR — Balance Tool</title>
+  <style>
+    :root{color-scheme:dark;--bg:#0b0d10;--panel:#14181d;--muted:#9fb0c3;--accent:#ffb84d}
+    body{font-family:Inter,system-ui,Arial;margin:0;background:linear-gradient(180deg,#0b0d10,#11161c);color:#f5f7fa}
+    .wrap{max-width:1100px;margin:24px auto;padding:18px}
+    h1{color:var(--accent);margin:0 0 8px}
+    .card{background:#0f1418;border:1px solid #1f2730;border-radius:10px;padding:14px;margin-bottom:12px}
+    .row{display:flex;gap:8px;align-items:center}
+    input,button{background:#111;border:1px solid #24313b;color:#f5f7fa;padding:8px;border-radius:6px}
+    label{color:var(--muted);font-size:13px}
+    table{width:100%;border-collapse:collapse;margin-top:8px}
+    th,td{padding:8px;border-bottom:1px solid #202934;text-align:left}
+    .muted{color:var(--muted)}
+    .section{margin-top:10px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>☢️ Balance Tool</h1>
+    <p class="muted">Dedicated balance page — only economy/game parameters. Requires an admin key.</p>
+
+    <div class="card">
+      <div style="display:flex;gap:8px;align-items:center">
+        <label for="adminKey">Admin Key</label>
+        <input id="adminKey" placeholder="Paste your admin key" style="width:420px" />
+        <button id="saveKeyBtn">Save Key</button>
+        <button id="loadBtn">Load</button>
+      </div>
+      <div id="msg" class="muted" style="margin-top:8px"></div>
+    </div>
+
+    <div class="card" id="controlsWrap">
+      <h3>Game Settings</h3>
+      <div class="row section">
+        <label style="width:160px">Buy-in (tokens)</label>
+        <input id="game_buy_in" type="number" />
+        <label style="width:160px;margin-left:20px">Build slots</label>
+        <input id="game_build_slots" type="number" style="width:80px" />
+        <label style="width:160px;margin-left:20px">Proximity range</label>
+        <input id="game_proximity" type="number" style="width:80px" />
+      </div>
+
+      <h3 class="section">Grid</h3>
+      <div class="row section">
+        <label style="width:160px">Cols</label>
+        <input id="grid_cols" type="number" style="width:80px" />
+        <label style="width:160px;margin-left:20px">Rows</label>
+        <input id="grid_rows" type="number" style="width:80px" />
+      </div>
+
+      <h3 class="section">Market</h3>
+      <div class="row section">
+        <label style="width:160px">Base price</label>
+        <input id="market_base_price" type="number" step="0.000001" />
+        <label style="width:160px;margin-left:20px">Token pool initial</label>
+        <input id="market_token_pool_initial" type="number" />
+      </div>
+      <div class="row section">
+        <label style="width:160px">Pool burn rate</label>
+        <input id="market_pool_burn_rate" type="number" />
+        <label style="width:160px;margin-left:20px">Volatility</label>
+        <input id="market_volatility" type="number" step="0.000001" />
+        <label style="width:160px;margin-left:20px">Base demand</label>
+        <input id="market_base_demand" type="number" />
+      </div>
+
+      <h3 class="section">Building Rules</h3>
+      <div id="buildingRulesWrap" style="margin-top:8px">
+        <table>
+          <thead>
+            <tr><th>Type</th><th>Cost</th><th>Build time (ms)</th><th>Op cost</th><th>Extra</th></tr>
+          </thead>
+          <tbody id="buildingRulesBody"><tr><td colspan="5" class="muted">Load to view building rules</td></tr></tbody>
+        </table>
+      </div>
+
+      <div style="margin-top:12px" class="row">
+        <button id="saveBtn">Save Changes</button>
+        <button id="viewAuditBtn">View History</button>
+        <button id="resetBtn">Reload</button>
+      </div>
+    </div>
+
+    <div id="auditWrap" style="display:none" class="card">
+      <h3>Config Audit</h3>
+      <pre id="auditPre" style="white-space:pre-wrap;max-height:360px;overflow:auto"></pre>
+    </div>
+  </div>
+
+  <script>
+    const $ = id => document.getElementById(id);
+    const API_BASE = (function(){ const qp = new URLSearchParams(location.search).get('api'); if (qp) return qp.replace(/\/$/, ''); if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') return 'http://localhost:3001'; return location.origin; })();
+
+    const savedKey = localStorage.getItem('nukwar_admin_key') || '';
+    $('adminKey').value = savedKey;
+    function getKey(){ return ($('adminKey').value||'').trim(); }
+    $('saveKeyBtn').addEventListener('click', () => { localStorage.setItem('nukwar_admin_key', getKey()); $('msg').textContent = 'Admin key saved.'; });
+
+    async function api(path, options={}){
+      const key = getKey();
+      const headers = Object.assign({'Content-Type':'application/json'}, options.headers || {});
+      if (key) headers['x-admin-key'] = key;
+      const url = API_BASE.replace(/\/$/, '') + path;
+      const res = await fetch(url, Object.assign({}, options, { headers }));
+      const data = await res.json().catch(()=>({}));
+      if (!res.ok) throw new Error(data.error || ('Request failed: ' + res.status));
+      return data;
+    }
+
+    async function loadAll(){
+      $('msg').textContent = 'Loading…';
+      try{
+        const data = await api('/admin/api/balance');
+        const cfg = data.config || {};
+        $('game_buy_in').value = cfg.buyIn || '';
+        $('game_build_slots').value = cfg.buildSlots || '';
+        $('game_proximity').value = cfg.proximityRange || '';
+        $('grid_cols').value = cfg.gridCols || '';
+        $('grid_rows').value = cfg.gridRows || '';
+        const m = cfg.market || {};
+        $('market_base_price').value = m.basePrice || '';
+        $('market_token_pool_initial').value = m.tokenPoolInitial || '';
+        $('market_pool_burn_rate').value = m.poolBurnRate || '';
+        $('market_volatility').value = m.volatility || '';
+        $('market_base_demand').value = m.baseDemand || '';
+
+        // Building rules
+        const rules = cfg.buildingRules || {};
+        const rows = Object.entries(rules).map(([type, r]) => {
+          return `<tr>
+            <td><strong>${type}</strong></td>
+            <td><input data-key="building.${type}.cost" value="${r.cost || 0}" type="number" style="width:110px" /></td>
+            <td><input data-key="building.${type}.constructionMs" value="${r.constructionMs || 0}" type="number" style="width:110px" /></td>
+            <td><input data-key="building.${type}.maintenanceCost" value="${r.maintenanceCost || 0}" type="number" style="width:110px" /></td>
+            <td>${JSON.stringify(r)}</td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="5" class="muted">No rules found</td></tr>';
+        $('buildingRulesBody').innerHTML = rows;
+        $('msg').textContent = 'Loaded.';
+      }catch(err){ $('msg').textContent = '❌ ' + err.message; }
+    }
+
+    $('loadBtn').addEventListener('click', loadAll);
+
+    $('resetBtn').addEventListener('click', loadAll);
+
+    $('saveBtn').addEventListener('click', async () => {
+      const changes = {};
+      changes['game.buy_in'] = Number($('game_buy_in').value) || 0;
+      changes['game.build_slots'] = Number($('game_build_slots').value) || 1;
+      changes['game.proximity_range'] = Number($('game_proximity').value) || 2;
+      changes['grid.cols'] = Number($('grid_cols').value) || 20;
+      changes['grid.rows'] = Number($('grid_rows').value) || 20;
+      changes['economy.total_token_supply'] = Number($('market_token_pool_initial').value) || Number($('market_token_pool_initial').value) || 1000; // noop fallback
+      changes['market.base_price'] = Number($('market_base_price').value) || 1;
+      changes['market.token_pool_initial'] = Number($('market_token_pool_initial').value) || 1000;
+      changes['market.pool_burn_rate'] = Number($('market_pool_burn_rate').value) || 50;
+      changes['market.volatility'] = Number($('market_volatility').value) || 0.03;
+      changes['market.base_demand'] = Number($('market_base_demand').value) || 1000;
+
+      // Building rows
+      document.querySelectorAll('#buildingRulesBody input[data-key]').forEach(inp => {
+        const k = inp.getAttribute('data-key');
+        const v = Number(inp.value);
+        changes[k] = v;
+      });
+
+      try{
+        $('msg').textContent = 'Saving…';
+        const res = await api('/admin/api/balance', { method: 'POST', body: JSON.stringify({ changes }) });
+        $('msg').textContent = 'Saved.';
+        loadAll();
+      }catch(err){ $('msg').textContent = '❌ ' + err.message; }
+    });
+
+    $('viewAuditBtn').addEventListener('click', async () => {
+      try{
+        const data = await api('/admin/api/config-audit');
+        $('auditPre').textContent = JSON.stringify(data.audit || [], null, 2);
+        $('auditWrap').style.display = 'block';
+      }catch(err){ alert('Failed to load audit: ' + err.message); }
+    });
+
+    // Auto-load
+    loadAll();
+  </script>
+</body>
+</html>
