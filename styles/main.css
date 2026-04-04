@@ -1164,7 +1164,7 @@ body.mobile-menu-open .dropdown { display: none !important; }
 
 .notif-time {
     font-size: 10px;
-    color: #444;
+    color: #aaa; /* brighter for better contrast */
     font-variant-numeric: tabular-nums;
 }
 
