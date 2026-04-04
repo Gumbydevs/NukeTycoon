@@ -658,6 +658,24 @@ function connectSocket() {
     socket.on('error', ({ message }) => {
         addNotification('warning', `⚠️ ${message}`);
     });
+
+    // ── Chat ─────────────────────────────────────────────────────────────────
+    socket.on('chat:message', (msg) => {
+        renderChatMessage(msg);
+        const panel = document.getElementById('chatPanel');
+        const isOpen = panel && panel.style.display !== 'none';
+        if (!isOpen) {
+            showChatToast(msg);
+            if (msg.playerId !== getLocalPlayerId()) {
+                game._chatUnread = (game._chatUnread || 0) + 1;
+                const badge = document.getElementById('chatToggleUnread');
+                if (badge) {
+                    badge.textContent = game._chatUnread > 9 ? '9+' : String(game._chatUnread);
+                    badge.style.display = 'inline-flex';
+                }
+            }
+        }
+    });
 }
 
 // Sync locally-earned income to the server every 60 seconds
@@ -1768,6 +1786,9 @@ function initMenu() {
         if (e.key === 'm' || e.key === 'M') {
             const expanded = actionsBtn && actionsBtn.getAttribute('aria-expanded') === 'true';
             setMenuOpen(!expanded);
+        }
+        if (e.key === 't' || e.key === 'T') {
+            toggleChatPanel();
         }
     });
 }
@@ -2904,6 +2925,11 @@ function startGame(serverMode) {
     startSimLoops();
     // attach button tooltips
     addButtonTooltips();
+    // Show chat toggle bubble
+    initChatUI();
+    const chatToggle = document.getElementById('chatToggleBtn');
+    if (chatToggle) chatToggle.style.display = 'flex';
+    game._inRun = true;
 }
 
 function authenticate() {
@@ -4257,6 +4283,12 @@ function returnToMenu() {
     
     // Show lobby for next run
     showLobby();
+    // Hide chat when returning to menu
+    const chatPanel = document.getElementById('chatPanel');
+    if (chatPanel) chatPanel.style.display = 'none';
+    const chatToggle = document.getElementById('chatToggleBtn');
+    if (chatToggle) chatToggle.style.display = 'none';
+    game._inRun = false;
 }
 
 /**
@@ -5160,6 +5192,242 @@ function _flashToast(message, type) {
     document.body.appendChild(el);
     // Remove from DOM after animation completes (3s)
     setTimeout(() => el.remove(), 3050);
+}
+
+// ── Chat UI ───────────────────────────────────────────────────────────────────
+
+const CHAT_EMOJIS = [
+    '😀','😂','😎','🤩','😡','😱','🤔','👍','👎','🔥','💥','☢️','💀','🏆',
+    '😏','🤬','😤','🙌','💪','❤️','💔','🎉','🚀','⚡','💣','🛡️','👀','🤯',
+    '😴','🥳','🤡','👻','💸','💰','🎯','🧨','⚔️','🌋','🐉','🦊','🐺','🤖',
+];
+
+function initChatUI() {
+    if (initChatUI._done) return;
+    initChatUI._done = true;
+
+    const panel       = document.getElementById('chatPanel');
+    const toggleBtn   = document.getElementById('chatToggleBtn');
+    const closeBtn    = document.getElementById('chatCloseBtn');
+    const input       = document.getElementById('chatInput');
+    const sendBtn     = document.getElementById('chatSendBtn');
+    const emojiBtn    = document.getElementById('chatEmojiBtn');
+    const gifBtn      = document.getElementById('chatGifBtn');
+    const emojiPicker = document.getElementById('chatEmojiPicker');
+    const gifPicker   = document.getElementById('chatGifPicker');
+    const gifSearch   = document.getElementById('chatGifSearch');
+
+    // Build emoji grid
+    if (emojiPicker) {
+        emojiPicker.innerHTML = CHAT_EMOJIS.map(e =>
+            `<button class="chat-emoji-item" data-emoji="${e}" type="button">${e}</button>`
+        ).join('');
+        emojiPicker.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-emoji]');
+            if (!btn || !input) return;
+            input.value += btn.dataset.emoji;
+            input.focus();
+            emojiPicker.style.display = 'none';
+        });
+    }
+
+    function openChat() {
+        if (!panel) return;
+        panel.style.display = 'flex';
+        if (toggleBtn) toggleBtn.style.display = 'none';
+        // clear unread badge
+        game._chatUnread = 0;
+        const badge = document.getElementById('chatToggleUnread');
+        if (badge) badge.style.display = 'none';
+        scrollChatToBottom();
+        setTimeout(() => { if (input) input.focus(); }, 40);
+    }
+
+    function closeChat() {
+        if (!panel) return;
+        panel.style.display = 'none';
+        if (emojiPicker) emojiPicker.style.display = 'none';
+        if (gifPicker)   gifPicker.style.display   = 'none';
+        if (toggleBtn && game._inRun) toggleBtn.style.display = 'flex';
+    }
+
+    if (toggleBtn) toggleBtn.addEventListener('click', openChat);
+    if (closeBtn)  closeBtn.addEventListener('click',  closeChat);
+
+    // Send
+    function doSend() {
+        if (!socket?.connected || !_authJWT) return;
+        const text = input ? input.value.trim() : '';
+        if (!text) return;
+        socket.emit('chat:message', { jwt: _authJWT, text });
+        if (input) input.value = '';
+    }
+    if (sendBtn) sendBtn.addEventListener('click', doSend);
+    if (input) {
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter')  { e.preventDefault(); doSend(); }
+            if (e.key === 'Escape') { e.stopPropagation(); closeChat(); }
+        });
+    }
+
+    // Emoji toggle
+    if (emojiBtn && emojiPicker) {
+        emojiBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = emojiPicker.style.display === 'grid';
+            emojiPicker.style.display = isOpen ? 'none' : 'grid';
+            if (gifPicker) gifPicker.style.display = 'none';
+        });
+    }
+
+    // GIF toggle
+    let _gifDebounce = null;
+    if (gifBtn && gifPicker) {
+        gifBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = gifPicker.style.display === 'flex';
+            gifPicker.style.display = isOpen ? 'none' : 'flex';
+            if (emojiPicker) emojiPicker.style.display = 'none';
+            if (!isOpen) {
+                fetchGifs('reaction');
+                if (gifSearch) gifSearch.focus();
+            }
+        });
+    }
+    if (gifSearch) {
+        gifSearch.addEventListener('input', () => {
+            clearTimeout(_gifDebounce);
+            _gifDebounce = setTimeout(() => fetchGifs(gifSearch.value.trim() || 'reaction'), 420);
+        });
+        gifSearch.addEventListener('keydown', (e) => e.stopPropagation());
+    }
+
+    // Close pickers on outside click
+    document.addEventListener('click', (e) => {
+        if (emojiPicker && emojiPicker.style.display !== 'none' &&
+            !emojiPicker.contains(e.target) && e.target !== emojiBtn) {
+            emojiPicker.style.display = 'none';
+        }
+        if (gifPicker && gifPicker.style.display !== 'none' &&
+            !gifPicker.contains(e.target) && e.target !== gifBtn) {
+            gifPicker.style.display = 'none';
+        }
+    });
+
+    game._openChat  = openChat;
+    game._closeChat = closeChat;
+}
+
+function toggleChatPanel() {
+    const panel = document.getElementById('chatPanel');
+    if (!panel) return;
+    const isOpen = panel.style.display === 'flex';
+    if (isOpen) {
+        if (game._closeChat) game._closeChat();
+        else panel.style.display = 'none';
+    } else {
+        initChatUI();
+        if (game._openChat) game._openChat();
+        else { panel.style.display = 'flex'; scrollChatToBottom(); }
+    }
+}
+
+function fetchGifs(query) {
+    const results = document.getElementById('chatGifResults');
+    if (!results) return;
+    results.innerHTML = '<div class="chat-gif-loading">Searching…</div>';
+    const safe = encodeURIComponent((query || 'reaction').slice(0, 80));
+    fetch(`https://api.tenor.com/v1/search?q=${safe}&key=LIVESAK&limit=12&media_filter=minimal&contentfilter=high`)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.results || data.results.length === 0) {
+                results.innerHTML = '<div class="chat-gif-loading">No GIFs found.</div>';
+                return;
+            }
+            results.innerHTML = '';
+            data.results.forEach(item => {
+                const media  = item.media && item.media[0];
+                if (!media) return;
+                const previewUrl = (media.tinygif || media.gif || {}).url || '';
+                const fullUrl    = (media.gif || media.tinygif || {}).url || previewUrl;
+                if (!previewUrl) return;
+                // Only accept Tenor CDN URLs
+                if (!/^https:\/\/media\.tenor\.com\//i.test(previewUrl)) return;
+                const btn = document.createElement('button');
+                btn.className = 'chat-gif-item';
+                btn.type = 'button';
+                btn.dataset.gif = fullUrl;
+                btn.innerHTML = `<img src="${escapeHtml(previewUrl)}" alt="GIF" loading="lazy" />`;
+                btn.addEventListener('click', () => {
+                    if (!socket?.connected || !_authJWT) return;
+                    socket.emit('chat:message', { jwt: _authJWT, text: '', gifUrl: fullUrl });
+                    const gifPicker = document.getElementById('chatGifPicker');
+                    if (gifPicker) gifPicker.style.display = 'none';
+                });
+                results.appendChild(btn);
+            });
+            if (!results.children.length) {
+                results.innerHTML = '<div class="chat-gif-loading">No GIFs found.</div>';
+            }
+        })
+        .catch(() => {
+            if (results) results.innerHTML = '<div class="chat-gif-loading">Could not load GIFs.</div>';
+        });
+}
+
+function scrollChatToBottom() {
+    const msgs = document.getElementById('chatMessages');
+    if (msgs) msgs.scrollTop = msgs.scrollHeight;
+}
+
+function renderChatMessage(msg) {
+    const msgs = document.getElementById('chatMessages');
+    if (!msgs) return;
+    const isSelf = msg.playerId === getLocalPlayerId();
+    const div = document.createElement('div');
+    div.className = 'chat-msg' + (isSelf ? ' chat-msg--self' : '');
+    const ts = new Date(msg.ts);
+    const timeStr = ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const avatarHtml = `<span class="chat-msg-avatar">${escapeHtml(msg.avatar || '☢️')}</span>`;
+    const nameHtml = isSelf ? '' : `<span class="chat-msg-name">${escapeHtml(msg.username)}</span>`;
+    let bodyHtml = '';
+    if (msg.gifUrl && /^https:\/\/media\.tenor\.com\//i.test(msg.gifUrl)) {
+        bodyHtml += `<img src="${escapeHtml(msg.gifUrl)}" class="chat-msg-gif" alt="GIF" loading="lazy" />`;
+    }
+    if (msg.text) {
+        bodyHtml += `<span class="chat-msg-text">${escapeHtml(msg.text)}</span>`;
+    }
+    if (!bodyHtml) return;
+    div.innerHTML = `${avatarHtml}<div class="chat-msg-body">${nameHtml}<div class="chat-msg-content">${bodyHtml}</div><span class="chat-msg-time">${timeStr}</span></div>`;
+    msgs.appendChild(div);
+    // Cap at 100 messages
+    const all = msgs.querySelectorAll('.chat-msg');
+    if (all.length > 100) all[0].remove();
+    scrollChatToBottom();
+}
+
+function showChatToast(msg) {
+    if (msg.playerId === getLocalPlayerId()) return;
+    let content = '';
+    if (msg.gifUrl && /^https:\/\/media\.tenor\.com\//i.test(msg.gifUrl)) {
+        content += `<img src="${escapeHtml(msg.gifUrl)}" class="chat-float-gif" alt="GIF" />`;
+    }
+    if (msg.text) {
+        content += `<span>${escapeHtml(msg.avatar || '☢️')} <strong>${escapeHtml(msg.username)}</strong>: ${escapeHtml(msg.text)}</span>`;
+    }
+    if (!content) return;
+    const toast = document.createElement('div');
+    toast.className = 'chat-float-toast';
+    toast.innerHTML = content;
+    document.body.appendChild(toast);
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => toast.classList.add('chat-float-toast--show'));
+    });
+    setTimeout(() => {
+        toast.classList.remove('chat-float-toast--show');
+        toast.classList.add('chat-float-toast--fade');
+        setTimeout(() => toast.remove(), 600);
+    }, 5000);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

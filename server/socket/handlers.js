@@ -690,6 +690,52 @@ function registerHandlers(io, socket) {
         return;
     });
 
+    // ── CHAT ─────────────────────────────────────────────────────────────────
+    socket.on('chat:message', async ({ jwt, text, gifUrl }) => {
+        await requireAuth(socket, jwt, async (decoded, player) => {
+            // Must be in a run to chat
+            if (!socket.runId) {
+                socket.emit('chat:error', { message: 'Join a run to chat.' });
+                return;
+            }
+
+            // Rate-limit: max 1 message per second per socket
+            const now = Date.now();
+            const last = socket._chatLastTs || 0;
+            if (now - last < 1000) {
+                socket.emit('chat:error', { message: 'Slow down.' });
+                return;
+            }
+            socket._chatLastTs = now;
+
+            // Sanitise text
+            const cleanText = (typeof text === 'string') ? text.trim().slice(0, 200) : '';
+
+            // Sanitise GIF URL — only allow https://media.tenor.com URLs (Tenor CDN)
+            let cleanGifUrl = null;
+            if (typeof gifUrl === 'string' && gifUrl.length < 500) {
+                // Only accept Tenor CDN media URLs to prevent SSRF/open-redirect abuse
+                if (/^https:\/\/media\.tenor\.com\/[A-Za-z0-9_\-/.]+\.gif$/i.test(gifUrl)) {
+                    cleanGifUrl = gifUrl;
+                }
+            }
+
+            if (!cleanText && !cleanGifUrl) return;
+
+            const payload = {
+                id: now.toString(36) + Math.random().toString(36).slice(2, 5),
+                playerId: player.id,
+                username: player.username,
+                avatar: player.avatar || DEFAULT_AVATAR,
+                text: cleanText,
+                gifUrl: cleanGifUrl,
+                ts: now,
+            };
+
+            io.to(`run:${socket.runId}`).emit('chat:message', payload);
+        });
+    });
+
     // ── USERNAME RENAME ───────────────────────────────────────────────────────
     socket.on('player:rename', async ({ jwt, username, avatar }) => {
         await requireAuth(socket, jwt, async (decoded, player) => {

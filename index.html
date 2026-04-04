@@ -381,6 +381,35 @@
         </div>
     </div>
 
+    <!-- ── Live Chat Panel ──────────────────────────────────────────────── -->
+    <div id="chatPanel" class="chat-panel" aria-label="Live chat" role="dialog" aria-modal="true">
+        <div class="chat-header">
+            <span class="chat-title">💬 COMMS</span>
+            <button class="chat-close-btn" id="chatCloseBtn" title="Close chat (T)">✕</button>
+        </div>
+        <div id="chatMessages" class="chat-messages"></div>
+        <div class="chat-input-bar">
+            <button class="chat-picker-btn" id="chatEmojiBtn" title="Emoji" type="button">😀</button>
+            <button class="chat-picker-btn chat-gif-label" id="chatGifBtn" title="GIF" type="button">GIF</button>
+            <input id="chatInput" class="chat-input" type="text" placeholder="Type a message… Enter to send" maxlength="200" autocomplete="off" spellcheck="false" />
+            <button class="chat-send-btn" id="chatSendBtn" type="button" title="Send">➤</button>
+        </div>
+        <!-- Emoji picker overlay (above input bar) -->
+        <div id="chatEmojiPicker" class="chat-emoji-picker" role="listbox" aria-label="Emoji picker"></div>
+        <!-- GIF picker overlay -->
+        <div id="chatGifPicker" class="chat-gif-picker">
+            <div class="chat-gif-search-bar">
+                <input id="chatGifSearch" type="text" placeholder="Search GIFs…" class="chat-gif-search-input" autocomplete="off" maxlength="80" />
+            </div>
+            <div id="chatGifResults" class="chat-gif-results"></div>
+        </div>
+    </div>
+    <!-- Chat toggle bubble (visible when chat panel is closed) -->
+    <button id="chatToggleBtn" class="chat-toggle-btn" type="button" title="Open chat (T)" aria-label="Open chat">
+        💬
+        <span id="chatToggleUnread" class="chat-unread-badge"></span>
+    </button>
+
     <!-- Socket.io client — must load before game.js -->
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script src="sounds.js?v=20260403a"></script>
