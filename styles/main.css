@@ -484,6 +484,16 @@ body.mobile-menu-open .dropdown { display: none !important; }
     border-color: rgba(76,175,80,0.9);
 }
 
+/* Queued-build ghost: dimmed, dashed border, slow pulse */
+.cell.queued-ghost {
+    border: 2px dashed rgba(255,184,77,0.7);
+    animation: queuedGhostPulse 2s ease-in-out infinite;
+}
+@keyframes queuedGhostPulse {
+    0%, 100% { opacity: 0.55; }
+    50%       { opacity: 0.85; }
+}
+
 .cell.owned-enemy {
     border-color: rgba(244,67,54,0.9);
 }

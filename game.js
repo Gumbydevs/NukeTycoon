@@ -427,11 +427,25 @@ function connectSocket() {
         pendingIds.forEach(cid => restoreEmptyCell(cid));
 
         if (code === 'CONSTRUCTION_LIMIT') {
-            // Server safety-net: construction slot was still busy. Re-queue the pending build.
+            // Server safety-net: construction slot was still busy. Re-queue and re-ghost.
             if (pendingBuildings.length > 0) {
                 const pb = pendingBuildings[0];
                 game._buildQueue = game._buildQueue || [];
                 game._buildQueue.unshift({ cellId: pb.id, type: pb.type });
+                const qPos = 1; // re-inserted at front
+                const _ghost = {
+                    id: pb.id,
+                    type: pb.type,
+                    owner: pb.owner,
+                    ownerId: pb.ownerId,
+                    ownerAvatar: pb.ownerAvatar,
+                    isUnderConstruction: false,
+                    constructionEndsAtMs: null,
+                    _queued: true,
+                    _queuePosition: qPos,
+                };
+                game.buildings.push(_ghost);
+                renderQueuedGhost(pb.id, pb.type, qPos);
                 addNotification('info', `⏳ ${displayNames[pb.type] || pb.type} re-queued — construction slot busy.`);
             }
         } else {
@@ -1954,6 +1968,20 @@ function placeOrSelect(id) {
                 game._buildQueue.push({ cellId: id, type: _type });
                 const qLen = game._buildQueue.length;
                 addNotification('info', `⏳ ${displayNames[_type] || _type} queued (${qLen}/${_maxQ}) — will start when current build finishes.`);
+                // Ghost: insert into game.buildings so the cell is claimed & shows a visual
+                const _ghost = {
+                    id,
+                    type: _type,
+                    owner: game.playerName || 'You',
+                    ownerId: getLocalPlayerId() || 'local',
+                    ownerAvatar: game.playerAvatar || DEFAULT_PLAYER_AVATAR,
+                    isUnderConstruction: false,
+                    constructionEndsAtMs: null,
+                    _queued: true,
+                    _queuePosition: qLen,
+                };
+                game.buildings.push(_ghost);
+                renderQueuedGhost(id, _type, qLen);
                 game.selectedMode = null;
                 return;
             }
@@ -3442,38 +3470,87 @@ function constructionAnimLoop() {
 }
 
 /**
+ * Render a ghost placeholder for a queued (not-yet-started) building.
+ * Shows a dimmed emoji + queue position badge. Cell is claimed so other
+ * clicks bounce off (innerHTML is non-empty).
+ */
+function renderQueuedGhost(cellId, type, queuePos) {
+    const cell = document.querySelector(`[data-id="${cellId}"]`);
+    if (!cell) return;
+    const emoji = buildingTypes[type]?.emoji || '🏗️';
+    cell.className = 'cell queued-ghost';
+    const terrain = game.terrain?.[cellId] || 'grass';
+    cell.classList.add('terrain-' + terrain);
+    if ((game.deposits || []).some(d => d.cellId === cellId)) cell.classList.add('has-deposit');
+    cell.innerHTML = `
+        <div style="position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;">
+            <span style="font-size:18px;opacity:0.4;">${emoji}</span>
+            <span style="position:absolute;bottom:1px;right:2px;font-size:9px;font-weight:700;
+                         color:#ffb84d;text-shadow:0 0 3px #000;line-height:1;">#${queuePos}</span>
+        </div>`;
+}
+
+/**
  * Dispatch the next entry from game._buildQueue.
  * Called automatically after a construction completes.
  */
 function dispatchQueuedBuild({ cellId, type }) {
     if (!socket?.connected || !_authJWT) return;
-    // Skip if the cell was taken while we waited
-    if (game.buildings.find(b => b.id === cellId) || game.enemyBuildings.find(b => b.id === cellId)) {
+    // Find the ghost entry that was placed when this build was queued
+    const _ghostIdx = game.buildings.findIndex(b => b.id === cellId && b._queued);
+    const _ghostEntry = _ghostIdx >= 0 ? game.buildings[_ghostIdx] : null;
+    // Skip if a REAL building (not our ghost) has taken the cell
+    const _realConflict = game.buildings.find(b => b.id === cellId && !b._queued)
+        || game.enemyBuildings.find(b => b.id === cellId);
+    if (_realConflict) {
         addNotification('warning', `⚠️ Queued ${displayNames[type] || type} cell was occupied — skipped.`);
+        if (_ghostEntry) {
+            game.buildings.splice(_ghostIdx, 1);
+            restoreEmptyCell(cellId);
+        }
         if (game._buildQueue && game._buildQueue.length > 0) {
             const _next = game._buildQueue.shift();
             setTimeout(() => dispatchQueuedBuild(_next), 200);
         }
         return;
     }
-    // Optimistic render
-    const _optimistic = {
-        id: cellId,
-        type,
-        owner: game.playerName || 'You',
-        ownerId: getLocalPlayerId() || 'local',
-        ownerAvatar: game.playerAvatar || DEFAULT_PLAYER_AVATAR,
-        constructionTimeRemaining: buildingTypes[type]?.constructionTime || 0,
-        constructionTimeRemainingMs: (buildingTypes[type]?.constructionTime || 0) * 10000,
-        constructionTotalMs: (buildingTypes[type]?.constructionTime || 0) * 10000,
-        constructionEndsAtMs: null,
-        _pendingServerConfirm: true,
-        isUnderConstruction: true,
-    };
-    game.buildings.push(_optimistic);
-    renderBuilding(cellId, type, true, _optimistic);
+    // Promote ghost → optimistic active build
+    if (_ghostEntry) {
+        _ghostEntry._queued = false;
+        _ghostEntry._pendingServerConfirm = true;
+        _ghostEntry.isUnderConstruction = true;
+        _ghostEntry.constructionTimeRemaining = buildingTypes[type]?.constructionTime || 0;
+        _ghostEntry.constructionTimeRemainingMs = (buildingTypes[type]?.constructionTime || 0) * 10000;
+        _ghostEntry.constructionTotalMs = (buildingTypes[type]?.constructionTime || 0) * 10000;
+        _ghostEntry.constructionEndsAtMs = null;
+        renderBuilding(cellId, type, true, _ghostEntry);
+    } else {
+        // Ghost missing (e.g. page reload) — create fresh optimistic entry
+        const _optimistic = {
+            id: cellId,
+            type,
+            owner: game.playerName || 'You',
+            ownerId: getLocalPlayerId() || 'local',
+            ownerAvatar: game.playerAvatar || DEFAULT_PLAYER_AVATAR,
+            constructionTimeRemaining: buildingTypes[type]?.constructionTime || 0,
+            constructionTimeRemainingMs: (buildingTypes[type]?.constructionTime || 0) * 10000,
+            constructionTotalMs: (buildingTypes[type]?.constructionTime || 0) * 10000,
+            constructionEndsAtMs: null,
+            _pendingServerConfirm: true,
+            isUnderConstruction: true,
+        };
+        game.buildings.push(_optimistic);
+        renderBuilding(cellId, type, true, _optimistic);
+    }
     showWorkersEnRouteFloat(cellId);
     socket.emit('building:place', { jwt: _authJWT, cellId, type });
+    // Re-number remaining ghosts
+    let _pos = 1;
+    (game._buildQueue || []).forEach(q => {
+        const _g = game.buildings.find(b => b.id === q.cellId && b._queued);
+        if (_g) { _g._queuePosition = _pos; renderQueuedGhost(q.cellId, q.type, _pos); }
+        _pos++;
+    });
     const remaining = (game._buildQueue || []).length;
     addNotification('info', `🔨 Starting queued ${displayNames[type] || type}${remaining > 0 ? ` (${remaining} still queued)` : ''}.`);
 }
@@ -4037,6 +4114,8 @@ function returnToMenu() {
     if (game._clockInterval)      { clearInterval(game._clockInterval);      game._clockInterval = null; }
     if (game._botInterval)        { clearInterval(game._botInterval);        game._botInterval = null; }
     game._constructionRAFRunning = false; // stops the rAF construction loop
+    // Clear ghost cells from DOM before wiping queue
+    (game.buildings || []).filter(b => b._queued).forEach(b => restoreEmptyCell(b.id));
     game._buildQueue = []; // clear stale queue on menu return
     game.buildQueueMax = 3; // reset to base limit on menu return
     game.buildSlots = 1;    // reset to base concurrent build limit on menu return
