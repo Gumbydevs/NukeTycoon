@@ -246,24 +246,32 @@ function connectSocket() {
         updateFalloutVisualization();
 
         // ── Per-building income/maintenance floats (server-authoritative path) ──
-        // Only show on ticks that carry meaningful economy data (not initial load).
-        if (playerState) {
-            const _tickIncome = parseInt(playerState.last_income, 10) || 0;
+        // Throttle: show floats every 5 ticks (~5 s) so they aren't spammy.
+        game._buildingFloatTick = (game._buildingFloatTick || 0) + 1;
+        if (playerState && game._buildingFloatTick >= 5) {
+            game._buildingFloatTick = 0;
+            // Accumulate income over the 5 ticks so the number shown is meaningful
+            const _tickIncome = (game._pendingBuildingIncome || 0);
+            game._pendingBuildingIncome = 0;
             const _completedBuildings = game.buildings.filter(b => !b.isUnderConstruction);
             const _activePlants = _completedBuildings.filter(b => b.type === 'plant');
             const _incomePerPlant = _activePlants.length > 0
                 ? Math.round(_tickIncome / _activePlants.length)
                 : 0;
             _completedBuildings.forEach((b, i) => {
-                const _delay = i * 60;
+                const _delay = i * 120; // wider stagger between buildings
                 if (b.type === 'plant' && _incomePerPlant > 0) {
                     setTimeout(() => showBuildingFloat(b.id, '+' + _incomePerPlant, '#4CAF50'), _delay);
                 }
-                const _mc = buildingTypes[b.type]?.maintenanceCost || 0;
+                const _mc = (buildingTypes[b.type]?.maintenanceCost || 0) * 5; // 5-tick total
                 if (_mc > 0) {
-                    setTimeout(() => showBuildingFloat(b.id, '-' + _mc, '#ff6b6b'), _delay + 300);
+                    setTimeout(() => showBuildingFloat(b.id, '-' + _mc, '#ff6b6b'), _delay + 400);
                 }
             });
+        } else if (playerState) {
+            // Accumulate income between display ticks
+            game._pendingBuildingIncome = (game._pendingBuildingIncome || 0)
+                + (parseInt(playerState.last_income, 10) || 0);
         }
         // ────────────────────────────────────────────────────────────────────────
     });
@@ -4826,28 +4834,26 @@ function showWorkersEnRouteFloat(cellId) {
 function showBuildingFloat(cellId, text, color) {
     const cell = document.querySelector('[data-id="' + cellId + '"]');
     if (!cell) return;
-    const rect = cell.getBoundingClientRect();
-    if (!rect.width && !rect.height) return;
-    const duration = 1800;
+    const duration = 2400;
     const el = document.createElement('div');
-    const glow = color + '99';
+    const glow = color + 'bb';
     el.style.cssText = [
-        'position:fixed',
+        'position:absolute',
+        'left:50%',
+        'top:50%',
         `color:${color}`,
-        'font-size:10px',
-        'font-weight:800',
+        'font-size:15px',
+        'font-weight:900',
         'pointer-events:none',
         'z-index:9999',
-        `animation:workersFloat ${duration}ms cubic-bezier(0.22,1,0.36,1) forwards`,
+        `animation:buildingFloat ${duration}ms ease-out forwards`,
         'font-family:monospace',
-        'letter-spacing:0.5px',
-        `text-shadow:0 0 6px ${glow}, 0 1px 3px #000c`,
+        'letter-spacing:1px',
+        `text-shadow:0 0 10px ${glow}, 0 0 4px #000, 0 2px 4px #000c`,
         'white-space:nowrap'
     ].join(';');
     el.textContent = text;
-    el.style.left = (rect.left + rect.width  / 2) + 'px';
-    el.style.top  = (rect.top  + rect.height / 2) + 'px';
-    document.body.appendChild(el);
+    cell.appendChild(el);
     setTimeout(() => el.remove(), duration);
 }
 
