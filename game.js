@@ -964,7 +964,7 @@ function escapeHtml(value) {
 
 function avatarBadge(avatar, size = 18, photo = null) {
     if (photo && (photo.startsWith('data:image/') || photo.startsWith('https://'))) {
-        return `<img src="${escapeHtml(photo)}" style="display:inline-block;width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;border:1px solid #333;vertical-align:middle;" alt="avatar" />`;
+        return `<img src="${escapeHtml(photo)}" style="display:inline-block;width:${size}px;height:${size}px;border-radius:3px;object-fit:cover;border:1px solid #333;vertical-align:middle;" alt="avatar" />`;
     }
     return `<span style="display:inline-flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;border-radius:50%;background:#1a1a1a;border:1px solid #333;font-size:${Math.max(12, size - 4)}px;line-height:1;vertical-align:middle;">${escapeHtml(avatar || DEFAULT_PLAYER_AVATAR)}</span>`;
 }

@@ -227,7 +227,7 @@ body.authenticated .container {
 .profile-photo-preview {
     width: 72px;
     height: 72px;
-    border-radius: 50%;
+    border-radius: 8px;
     background: #222;
     border: 1px solid #333;
     display: flex;
@@ -242,14 +242,14 @@ body.authenticated .container {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    border-radius: 50%;
+    border-radius: 8px;
 }
 
 /* Chat message photo avatar */
 .chat-msg-avatar--photo {
     width: 28px;
     height: 28px;
-    border-radius: 50%;
+    border-radius: 4px;
     object-fit: cover;
     border: 1px solid #333;
     flex-shrink: 0;
