@@ -446,6 +446,12 @@ function registerHandlers(io, socket) {
                 'SELECT id, type, payload, created_at, read FROM notifications WHERE (LOWER(email) = LOWER($1) OR player_id = $2) ORDER BY created_at ASC',
                 [normalizedEmail, player.id]
             );
+            try {
+                const sample = (notesRes.rows || []).slice(0, 8).map(r => ({ id: r.id, created_at: r.created_at, read: r.read, payloadType: typeof r.payload }));
+                console.log(`[run:join] notifications for player=${player.id} email=${normalizedEmail} count=${notesRes.rows.length} sample=`, sample);
+            } catch (e) {
+                console.warn('run:join notification log failed:', e && e.message);
+            }
             // Only return queued entries that do NOT have an active building at the same cell.
             const queueRes = await db.query(
                 `SELECT q.cell_id, q.type, q.queued_at, q.player_id

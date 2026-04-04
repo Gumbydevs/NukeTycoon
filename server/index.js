@@ -425,10 +425,16 @@ app.post('/admin/api/reset-run', requireAdmin, async (_req, res) => {
 app.get('/api/notifications', requireJwtPlayer, async (req, res) => {
     try {
         const player = req.player;
+        try {
+            console.log(`[api] /api/notifications requested by player=${player.id} email=${player.email}`);
+        } catch (e) {}
         const rows = await db.query(
             'SELECT id, run_id, type, payload, read, created_at FROM notifications WHERE (LOWER(email) = LOWER($1) OR player_id = $2) ORDER BY created_at DESC LIMIT 200',
             [player.email, player.id]
         );
+        try {
+            console.log(`[api] /api/notifications returning ${rows.rows.length} rows for player=${player.id}`);
+        } catch (e) {}
         res.json({ notifications: rows.rows });
     } catch (err) {
         res.status(500).json({ error: err.message });
