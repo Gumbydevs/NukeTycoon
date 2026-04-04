@@ -902,6 +902,13 @@ body.mobile-menu-open .dropdown { display: none !important; }
     100% { opacity: 0;   transform: translateX(-50%) translateY(-18px) scale(0.7); }
 }
 
+@keyframes workersFloat {
+    0%   { opacity: 0;   transform: translateX(-50%) translateY(-50%) scale(0.5); }
+    18%  { opacity: 1;   transform: translateX(-50%) translateY(-50%) scale(1.2); }
+    50%  { opacity: 1;   transform: translateX(-50%) translateY(-50%) scale(1.0); }
+    100% { opacity: 0;   transform: translateX(-50%) translateY(-50%) scale(1.8); }
+}
+
 /* Day transition overlay: fade in, hold, fade out */
 @keyframes fadeInOut {
     0%   { opacity: 0; }

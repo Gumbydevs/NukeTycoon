@@ -1901,12 +1901,12 @@ function placeOrSelect(id) {
                     constructionTimeRemainingMs: (buildingTypes[_type]?.constructionTime || 0) * 10000,
                     constructionTotalMs: (buildingTypes[_type]?.constructionTime || 0) * 10000,
                     constructionEndsAtMs: null,    // filled in by building:placed confirmation
-                    _pendingServerConfirm: true,   // show Workers En Route until server responds
-                    _workersEnRouteUntil: Date.now() + 6000, // 6s display window
+                    _pendingServerConfirm: true,   // awaiting server timing
                     isUnderConstruction: true,
                 };
                 game.buildings.push(_optimistic);
                 renderBuilding(id, _type, true, _optimistic);
+                showWorkersEnRouteFloat(id);
             }
             // Server validates, deducts wallet, and broadcasts building:placed back to all players
             socket.emit('building:place', { jwt: _authJWT, cellId: id, type: _type });
@@ -2375,12 +2375,6 @@ function renderBuilding(id, type, isPlayer, building) {
     if (!cell) return; // grid cell not in DOM (grid may have been rebuilt)
     cell.className = 'cell owned ' + type + (isPlayer ? ' owned-player' : ' owned-enemy');
 
-    // ── Workers En Route: hard override — nothing can bypass this ───────
-    if (building?._workersEnRouteUntil && Date.now() < building._workersEnRouteUntil) {
-        cell.innerHTML = `<span style="font-size:9px;color:#ccc;text-align:center;line-height:1.3;display:block;padding-top:2px;">Workers<br>En Route…</span>`;
-        return;
-    }
-
     // Use only the wall-clock end timestamp to decide construction state.
     // Uses serverNow() so we compare against server clock, not local clock.
     const now = serverNow();
@@ -2393,8 +2387,10 @@ function renderBuilding(id, type, isPlayer, building) {
     const pendingConfirm = !!(building?.isUnderConstruction && !endsAt);
 
     if (pendingConfirm) {
-        // No server timing yet — show flavor text
-        cell.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;"><span style="font-size:7px;color:#aaa;text-align:center;line-height:1.4;">Workers<br>En Route…</span></div>`;
+        // No server timing yet — show building emoji dimmed while awaiting confirmation
+        const _pendingEmoji = buildingTypes[type]?.emoji || '🏗️';
+        const _pendingTint = isPlayer ? PLAYER_COLOR : ENEMY_COLOR;
+        cell.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;"><span class="icon-emoji" style="font-size:20px;opacity:0.45;color:${_pendingTint};">${_pendingEmoji}</span></div>`;
     } else if (stillBuilding) {
         const elapsed = now - (endsAt - totalMs);
         const progress = totalMs > 0 ? Math.max(0.02, Math.min(1, elapsed / totalMs)) : 0;
@@ -3311,15 +3307,6 @@ function constructionAnimLoop() {
         for (let i = 0; i < buildings.length; i++) {
             const b = buildings[i];
             if (!b) continue;
-
-            // ── Workers En Route window: re-render at low rate, skip all other logic ──
-            if (b._workersEnRouteUntil && localNow < b._workersEnRouteUntil) {
-                if (!b._lastConstructionRender || (localNow - b._lastConstructionRender) >= 500) {
-                    b._lastConstructionRender = localNow;
-                    renderBuilding(b.id, b.type, isPlayerOwned, b);
-                }
-                continue;
-            }
 
             // ── Ensure constructionEndsAtMs is set for any under-construction building ──
             if (!b.constructionEndsAtMs && b.isUnderConstruction) {
@@ -4757,6 +4744,37 @@ function showFloatingText(text, color, anchorEl) {
 function showToast(text, color) {
     const typeMap = { '#4CAF50': 'success', '#ff6b6b': 'danger', '#ffb84d': 'warning' };
     addNotification(typeMap[color] || 'info', text);
+}
+
+/**
+ * Show a "Workers En Route…" floating label centered on a grid cell that
+ * zooms in, holds briefly, then scales up and fades away.
+ */
+function showWorkersEnRouteFloat(cellId) {
+    const cell = document.querySelector('[data-id="' + cellId + '"]');
+    if (!cell) return;
+    const rect = cell.getBoundingClientRect();
+    if (!rect.width && !rect.height) return;
+    const duration = 2400;
+    const el = document.createElement('div');
+    el.style.cssText = [
+        'position:fixed',
+        'color:#e0c97a',
+        'font-size:11px',
+        'font-weight:700',
+        'pointer-events:none',
+        'z-index:9999',
+        `animation:workersFloat ${duration}ms cubic-bezier(0.22,1,0.36,1) forwards`,
+        'font-family:monospace',
+        'letter-spacing:0.5px',
+        'text-shadow:0 0 8px #e0c97a88, 0 1px 3px #000c',
+        'white-space:nowrap'
+    ].join(';');
+    el.textContent = '🚧 Workers En Route…';
+    el.style.left = (rect.left + rect.width  / 2) + 'px';
+    el.style.top  = (rect.top  + rect.height / 2) + 'px';
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), duration);
 }
 
 /**
