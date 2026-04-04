@@ -976,9 +976,9 @@ const game = {
     tokensPerUSD: 2000,
     runEnded: false,              // flag to prevent multiple onRunEnd() calls
     siloStrikes: 0,               // number of strikes used this round
-    maxSilosPerRound: 999,        // DEV: unlimited for testing (restore to 1 before prod)
+    maxSilosPerRound: 3,        // DEV: unlimited for testing (restore to 1 before prod)
     lastStrikeTime: -999,         // track cooldown (ticks between strikes)
-    strikesCooldown: 20,          // minimum ticks between strikes
+    strikesCooldown: 200,          // minimum ticks between strikes
     falloutZones: [],             // { id, endTime } array for radiation zones
     nukeZones: [],               // { center, radius, expiresAt } crater visuals
     nuclearThreats: [],           // track players who used nukes for prestige
@@ -1080,7 +1080,7 @@ const buildingTypes = {
     processor: { cost: 1200, emoji: '🏭',  color: '#d98a3a', power: 0,   constructionTime: 1.5, maintenanceCost: 3 },
     storage:   { cost: 1000, emoji: '🗄️',  color: '#b08b4f', power: 0,   constructionTime: 2,   maintenanceCost: 2 },
     plant:     { cost: 1000, emoji: '☢️',  color: '#ffb84d', power: 100, constructionTime: 2.2, maintenanceCost: 10 },
-    silo:      { cost: 6000, emoji: '💥',  color: '#ff0000', power: 0,   constructionTime: 3.5, isWeapon: true, maintenanceCost: 25 }
+    silo:      { cost: 4000, emoji: '💥',  color: '#ff0000', power: 0,   constructionTime: 3.5, isWeapon: true, maintenanceCost: 25 }
 };
 // Expose building rules globally so the economy modal can read live costs
 window._gameBuildingRules = Object.fromEntries(

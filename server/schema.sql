@@ -59,6 +59,7 @@ ALTER TABLE runs ADD COLUMN IF NOT EXISTS tokens_issued BIGINT DEFAULT 0;
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS tokens_burned BIGINT DEFAULT 0;
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS total_token_supply BIGINT DEFAULT 1000000000;
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS day_duration_ms BIGINT DEFAULT 86400000;
+ALTER TABLE runs ADD COLUMN IF NOT EXISTS platform_fee_collected BIGINT DEFAULT 0;
 
 -- ── Players enrolled in a run ─────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS run_players (

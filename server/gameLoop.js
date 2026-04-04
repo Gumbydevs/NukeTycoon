@@ -118,6 +118,7 @@ function parseRunRow(row) {
         market_token_pool_initial: Number(row.market_token_pool_initial ?? MARKET_TOKEN_POOL_INITIAL),
         tokens_issued: parseInt(row.tokens_issued, 10) || 0,
         tokens_burned: parseInt(row.tokens_burned, 10) || 0,
+        platform_fee_collected: parseInt(row.platform_fee_collected, 10) || 0,
         total_token_supply: parseInt(row.total_token_supply, 10) || TOTAL_TOKEN_SUPPLY,
         day_duration_ms: parseInt(row.day_duration_ms, 10) || DAY_DURATION_MS,
     };
@@ -353,8 +354,9 @@ async function ensureRunPlayerStates(runId) {
     await Promise.all(result.rows.map((row) => ensureRunPlayerState(runId, row.player_id)));
 }
 
-async function calculateScores(runId) {
-    const result = await db.query(
+async function calculateScores(runId, client) {
+    const executor = client || db;
+    const result = await executor.query(
         `SELECT
             rp.player_id,
             p.username,
@@ -887,36 +889,54 @@ async function updateAlltimePlayerBests(run, scores) {
 }
 
 async function endRun(io, run) {
-    const scores = await calculateScores(run.id);
-    const shares = [0.50, 0.30, 0.20];
+    // Perform payout atomically using a DB transaction and a FOR UPDATE lock
+    const client = await db.connect();
+    let scores = [];
     const payouts = [];
+    try {
+        await client.query('BEGIN');
 
-    await db.query(
-        "UPDATE runs SET status = 'ended', ended_at = NOW() WHERE id = $1",
-        [run.id]
-    );
+        // Lock the run row and read the authoritative prize_pool
+        const rres = await client.query('SELECT prize_pool FROM runs WHERE id = $1 FOR UPDATE', [run.id]);
+        const prizePool = parseInt(rres.rows[0]?.prize_pool, 10) || 0;
 
-    for (let i = 0; i < Math.min(3, scores.length); i++) {
-        const p = scores[i];
-        const award = Math.floor((parseInt(run.prize_pool, 10) || 0) * shares[i]);
-        if (award > 0) {
-            await db.query(
-                'UPDATE players SET token_balance = token_balance + $1 WHERE id = $2',
-                [award, p.player_id]
+        // Calculate scores using the same client for a consistent snapshot
+        scores = await calculateScores(run.id, client);
+
+        const shares = [0.50, 0.30, 0.20];
+        for (let i = 0; i < Math.min(3, scores.length); i++) {
+            const p = scores[i];
+            const award = Math.floor(prizePool * shares[i]);
+            if (award > 0) {
+                await client.query('UPDATE players SET token_balance = token_balance + $1 WHERE id = $2', [award, p.player_id]);
+            }
+            await client.query(
+                `UPDATE run_players SET final_rank = $1, payout = $2
+                 WHERE run_id = $3 AND player_id = $4`,
+                [i + 1, award, run.id, p.player_id]
             );
+            payouts.push({ ...p, rank: i + 1, award, token_balance: (parseInt(p.token_balance, 10) || 0) + award });
         }
-        await db.query(
-            `UPDATE run_players SET final_rank = $1, payout = $2
-             WHERE run_id = $3 AND player_id = $4`,
-            [i + 1, award, run.id, p.player_id]
-        );
-        payouts.push({ ...p, rank: i + 1, award, token_balance: p.token_balance + award });
+
+        await client.query("UPDATE runs SET status = 'ended', ended_at = NOW() WHERE id = $1", [run.id]);
+
+        await client.query('COMMIT');
+    } catch (err) {
+        try { await client.query('ROLLBACK'); } catch (e) { /* ignore */ }
+        client.release();
+        throw err;
+    } finally {
+        try { client.release(); } catch (e) { /* ignore */ }
     }
 
     console.log(`🏁 Run #${run.run_number} ended. Awarded ${payouts.length} players.`);
 
     // Update all-time player records (uses post-payout balances)
-    await updateAlltimePlayerBests(run, scores);
+    try {
+        await updateAlltimePlayerBests(run, scores);
+    } catch (e) {
+        console.warn('[endRun] updateAlltimePlayerBests failed:', e && e.message);
+    }
 
     io.to(`run:${run.id}`).emit('run:ended', {
         runNumber: run.run_number,
@@ -1113,6 +1133,7 @@ module.exports = {
     setupGameLoop,
     getActiveRun,
     createNewRun,
+    endRun,
     calculateScores,
     ensureRunPlayerState,
     getRunSnapshot,

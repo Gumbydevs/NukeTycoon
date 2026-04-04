@@ -6,7 +6,7 @@ const cors       = require('cors');
 const fs         = require('fs');
 const path       = require('path');
 const db         = require('./db');
-const { setupGameLoop, getActiveRun, createNewRun, setNextRunLength, getNextRunLength, BUILDING_RULES, setBuildingRules, saveBuildingRulesToDB, loadBuildingRulesFromDB, calculateScores, updateAlltimeMarketRecords } = require('./gameLoop');
+const { setupGameLoop, getActiveRun, createNewRun, endRun, setNextRunLength, getNextRunLength, BUILDING_RULES, setBuildingRules, saveBuildingRulesToDB, loadBuildingRulesFromDB, calculateScores, updateAlltimeMarketRecords } = require('./gameLoop');
 const { verifyJWT } = require('./auth');
 const { registerHandlers } = require('./socket/handlers');
 
@@ -271,6 +271,7 @@ app.get('/economy/api/data', async (_req, res) => {
                 market_price: run.market_price,
                 market_prev_price: run.market_prev_price,
                 prize_pool: run.prize_pool,
+                platform_fee_collected: run.platform_fee_collected,
                 next_day_at: run.next_day_at,
                 status: run.status,
                 tokens_issued: run.tokens_issued,
@@ -415,6 +416,18 @@ app.post('/admin/api/reset-run', requireAdmin, async (_req, res) => {
         });
 
         res.json({ ok: true, newRun, status: await getAdminSnapshot() });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Force end the current run and distribute payouts (atomic)
+app.post('/admin/api/force-end-run', requireAdmin, async (_req, res) => {
+    try {
+        const run = await getActiveRun();
+        if (!run) { res.status(404).json({ error: 'No active run.' }); return; }
+        await endRun(io, run);
+        res.json({ ok: true, message: 'Run ended; payouts distributed.', status: await getAdminSnapshot() });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

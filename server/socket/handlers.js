@@ -539,12 +539,15 @@ function registerHandlers(io, socket) {
                 [run.id, player.id]
             );
             // 80% of buy-in seeds prize pool
+            const prizeAdd = Math.floor(BUY_IN * 0.8);
+            const retained = Math.floor(BUY_IN * 0.2);
             await db.query(
                 `UPDATE runs
                  SET prize_pool = prize_pool + $1,
-                     market_token_pool = GREATEST(1, market_token_pool - $2)
-                 WHERE id = $3`,
-                [Math.floor(BUY_IN * 0.8), Math.floor(BUY_IN * 0.2) / MARKET_POOL_BURN_RATE, run.id]
+                     platform_fee_collected = COALESCE(platform_fee_collected,0) + $2,
+                     market_token_pool = GREATEST(1, market_token_pool - $3)
+                 WHERE id = $4`,
+                [prizeAdd, retained, Math.floor(BUY_IN * 0.2) / MARKET_POOL_BURN_RATE, run.id]
             );
 
             socket.runId = run.id;

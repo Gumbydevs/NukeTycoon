@@ -136,6 +136,7 @@
           <button class="danger" id="clearCellBtn">Clear One Cell</button>
           <button class="danger" id="resetBuildingsBtn">Clear Active Buildings</button>
           <button class="success" id="freshRunBtn">Start Fresh Run</button>
+          <button class="primary" id="forceEndBtn">Force End (Pay winners)</button>
         </div>
         <p>Recommended for your stuck tile case: <strong>Clear One Cell</strong> first. If multiple stale placements exist, use <strong>Clear Active Buildings</strong>.</p>
         <div class="row" style="margin-top:14px; align-items:center;">
@@ -410,6 +411,16 @@
     $('clearCellBtn').addEventListener('click', clearCell);
     $('resetBuildingsBtn').addEventListener('click', resetBuildings);
     $('freshRunBtn').addEventListener('click', startFreshRun);
+    $('forceEndBtn').addEventListener('click', async () => {
+      if (!confirm('Force end the current run and distribute payouts to top players?')) return;
+      try {
+        const data = await api('/admin/api/force-end-run', { method: 'POST', body: '{}' });
+        $('msg').textContent = data.message || 'Run ended and payouts distributed.';
+        renderStatus(data.status);
+      } catch (err) {
+        $('msg').textContent = err.message;
+      }
+    });
 
     $('setRunLengthBtn').addEventListener('click', async () => {
       const len = parseInt($('runLengthInput').value, 10);
