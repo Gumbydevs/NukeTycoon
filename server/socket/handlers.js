@@ -1,6 +1,6 @@
 const { sendOTP, verifyOTP, verifyJWT, generateJWT, signupWithPassword, loginWithPassword } = require('../auth');
 const db = require('../db');
-const { getActiveRun, getRunSnapshot, ensureRunPlayerState, BUILDING_RULES, getBuyIn, getBuildSlots, getMarketPoolBurnRate } = require('../gameLoop');
+const { getActiveRun, getRunSnapshot, ensureRunPlayerState, BUILDING_RULES, getBuyIn, getBuildSlots, getMarketPoolBurnRate, getGridSize, getSabotageConfig, getProductionConfig } = require('../gameLoop');
 
 const DEFAULT_AVATAR = '☢️';
 const VALID_AVATARS = new Set(['☢️', '🧑‍🚀', '👩‍🔬', '👨‍🔬', '🤖', '🦊', '🐺', '🐉']);
@@ -9,11 +9,11 @@ const normalizeAvatar = (avatar) => VALID_AVATARS.has(avatar) ? avatar : DEFAULT
 const VALID_TYPES = Object.keys(BUILDING_RULES);
 // Do NOT snapshot costs here — always read BUILDING_RULES[type].cost live so
 // admin changes via /admin/api/set-building-config are reflected immediately.
-const STRIKE_LIMIT_PER_DAY = 999; // DEV: unlimited nukes for testing (restore to 1 before prod)
 
-// Manhattan distance on a 20-column grid
+// Manhattan distance using current grid columns (runtime-configurable)
 function gridDist(a, b) {
-    return Math.abs((a % 20) - (b % 20)) + Math.abs(Math.floor(a / 20) - Math.floor(b / 20));
+    const cols = (typeof getGridSize === 'function' && getGridSize().cols) ? getGridSize().cols : 20;
+    return Math.abs((a % cols) - (b % cols)) + Math.abs(Math.floor(a / cols) - Math.floor(b / cols));
 }
 
 // Authenticate every sensitive event with the JWT sent in the payload
@@ -103,8 +103,9 @@ function registerHandlers(io, socket) {
             const isUnderConstruction = building.construction_ends_at && new Date(building.construction_ends_at).getTime() > now;
             let refund = 0;
             if (isUnderConstruction) {
-                // Optional: partial refund for canceling construction
-                refund = Math.floor((BUILDING_RULES[building.type]?.cost || 0) * 0.75); // 75% refund
+                // Partial refund for canceling construction — configurable
+                const pct = (getSabotageConfig && getSabotageConfig().maintenanceRefundPct) || 0.75;
+                refund = Math.floor((BUILDING_RULES[building.type]?.cost || 0) * pct);
             }
             // Deactivate building
             await db.query(
@@ -197,7 +198,8 @@ function registerHandlers(io, socket) {
                 return;
             }
             // Refund most of the cost
-            const refund = Math.floor((BUILDING_RULES[building.type]?.cost || 0) * 0.75); // 75% refund
+            const pct = (getSabotageConfig && getSabotageConfig().maintenanceRefundPct) || 0.75;
+            const refund = Math.floor((BUILDING_RULES[building.type]?.cost || 0) * pct);
             // Deactivate building
             await db.query(
                 'UPDATE buildings SET is_active = FALSE, destroyed_at = NOW() WHERE id = $1',
@@ -857,12 +859,13 @@ function registerHandlers(io, socket) {
             }
             const target = targetResult.rows[0];
 
-            // Calculate cost
+            // Calculate cost (runtime-configurable via server_config)
             const bal = parseInt(player.token_balance, 10);
+            const sabotageCfg = (typeof getSabotageConfig === 'function') ? getSabotageConfig() : {};
             let cost;
-            if (attackType === 'disable') cost = 300;
-            else if (attackType === 'steal') cost = 500;
-            else cost = Math.floor(bal * 0.5); // nuke = 50% of wallet
+            if (attackType === 'disable') cost = Math.floor(sabotageCfg.disableCost || 300);
+            else if (attackType === 'steal') cost = Math.floor(sabotageCfg.stealCost || 500);
+            else cost = Math.floor(bal * (sabotageCfg.nukeCostPct || 0.5)); // nuke = pct of wallet
 
             if (bal < cost) {
                 socket.emit('error', { message: 'Not enough tokens for this attack.' });
@@ -877,8 +880,8 @@ function registerHandlers(io, socket) {
             const strikesUsedToday = parseInt(stateResult.rows[0]?.strikes_used_today, 10) || 0;
 
             if (attackType === 'nuke') {
-                if (strikesUsedToday >= STRIKE_LIMIT_PER_DAY) {
-                    socket.emit('error', { message: 'Only 1 nuclear strike is allowed per day.' });
+                if (strikesUsedToday >= (sabotageCfg.strikeLimitPerDay || 1)) {
+                    socket.emit('error', { message: 'Nuclear strike limit reached for today.' });
                     return;
                 }
 
@@ -920,8 +923,8 @@ function registerHandlers(io, socket) {
                 [run.id, player.id, cellId, attackType, cost]
             );
 
-            // 15 % chance the attack fizzles — cost is still lost
-            const attackFailed = Math.random() < 0.15;
+            // Failure chance (configurable)
+            const attackFailed = Math.random() < (sabotageCfg.failureChance || 0.15);
 
             const payload = {
                 attackType,
@@ -944,7 +947,7 @@ function registerHandlers(io, socket) {
             }
 
             if (attackType === 'disable') {
-                const disableUntil = new Date(Date.now() + 45000);
+                const disableUntil = new Date(Date.now() + (sabotageCfg.disableDurationMs || 45000));
                 await db.query(
                     'UPDATE buildings SET disabled_until = $1 WHERE id = $2',
                     [disableUntil, target.id]
@@ -998,14 +1001,15 @@ function registerHandlers(io, socket) {
                 payload.stolenAmount = stolenAmount;
 
             } else if (attackType === 'nuke') {
-                // Destroy all enemy buildings within Manhattan distance 4
+                // Destroy all enemy buildings within Manhattan distance equal to configured fallout radius
                 const allEnemyBuildings = await db.query(
                     'SELECT * FROM buildings WHERE run_id = $1 AND is_active = TRUE AND player_id != $2',
                     [run.id, player.id]
                 );
                 const destroyed = [];
+                const falloutRadius = sabotageCfg.nukeFalloutRadius || 4;
                 for (const b of allEnemyBuildings.rows) {
-                    if (gridDist(b.cell_id, cellId) <= 4) {
+                    if (gridDist(b.cell_id, cellId) <= falloutRadius) {
                         await db.query(
                             'UPDATE buildings SET is_active = FALSE, destroyed_at = NOW() WHERE id = $1',
                             [b.id]
@@ -1013,8 +1017,7 @@ function registerHandlers(io, socket) {
                         destroyed.push(b.cell_id);
                     }
                 }
-
-                const falloutDurationMs = 120000;
+                const falloutDurationMs = sabotageCfg.nukeFalloutDurationMs || 120000;
                 await db.query(
                     `INSERT INTO fallout_zones (run_id, created_by, center_cell_id, radius, multiplier, expires_at)
                      VALUES ($1, $2, $3, $4, $5, $6)`,
@@ -1030,7 +1033,7 @@ function registerHandlers(io, socket) {
                 );
 
                 payload.destroyedCells  = destroyed;
-                payload.falloutRadius   = 4;
+                payload.falloutRadius   = falloutRadius;
                 payload.falloutDuration = falloutDurationMs; // ms — clients animate fallout locally
             }
 

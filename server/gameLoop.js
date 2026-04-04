@@ -46,6 +46,24 @@ const BUILDING_RULES = {
     silo:      { cost: 6000, constructionMs: 35000, maintenanceCost: 25, isWeapon: true },
 };
 
+// Additional runtime-configurable economy/sabotage/production params
+let MINE_BASE_PRODUCTION = Number(process.env.MINE_BASE_PRODUCTION || 0.225);
+let PROCESSOR_CONVERT_RATE = Number(process.env.PROCESSOR_CONVERT_RATE || 0.15);
+let PLANT_BASE_POWER = Number(process.env.PLANT_BASE_POWER || 100);
+let INCOME_POWER_MULT = Number(process.env.INCOME_POWER_MULT || 0.1);
+let PROXIMITY_BONUS_PER_BUILDING = Number(process.env.PROXIMITY_BONUS_PER_BUILDING || 0.25);
+let PROXIMITY_BONUS_CAP = Number(process.env.PROXIMITY_BONUS_CAP || 3);
+
+let SABOTAGE_DISABLE_COST = Number(process.env.SABOTAGE_DISABLE_COST || 300);
+let SABOTAGE_STEAL_COST = Number(process.env.SABOTAGE_STEAL_COST || 500);
+let SABOTAGE_NUKE_COST_PCT = Number(process.env.SABOTAGE_NUKE_COST_PCT || 0.5);
+let SABOTAGE_FAILURE_CHANCE = Number(process.env.SABOTAGE_FAILURE_CHANCE || 0.15);
+let SABOTAGE_DISABLE_DURATION_MS = Number(process.env.SABOTAGE_DISABLE_DURATION_MS || 45000);
+let SABOTAGE_NUKE_FALLOUT_RADIUS = Number(process.env.SABOTAGE_NUKE_FALLOUT_RADIUS || 4);
+let SABOTAGE_NUKE_FALLOUT_DURATION_MS = Number(process.env.SABOTAGE_NUKE_FALLOUT_DURATION_MS || 120000);
+let STRIKE_LIMIT_PER_DAY = Number(process.env.STRIKE_LIMIT_PER_DAY || 1);
+let MAINTENANCE_REFUND_PCT = Number(process.env.MAINTENANCE_REFUND_PCT || 0.75);
+
 function setBuildingRules(type, cost, constructionMs, maintenanceCost) {
     if (!BUILDING_RULES[type]) return false;
     if (Number.isFinite(Number(cost)) && Number(cost) >= 0) BUILDING_RULES[type].cost = Math.floor(Number(cost));
@@ -110,6 +128,23 @@ async function loadRuntimeConfigFromDB() {
                 case 'market.volatility': MARKET_VOLATILITY = Number(value); break;
                 case 'market.base_demand': MARKET_BASE_DEMAND = Number(value); break;
                 case 'market.drift_factor': MARKET_DRIFT_FACTOR = Number(value); break;
+                // Production tuning
+                case 'production.mine.base': MINE_BASE_PRODUCTION = Number(value); break;
+                case 'production.processor.convert_rate': PROCESSOR_CONVERT_RATE = Number(value); break;
+                case 'production.plant.base_power': PLANT_BASE_POWER = Number(value); break;
+                case 'production.plant.income_mult': INCOME_POWER_MULT = Number(value); break;
+                case 'game.proximity_bonus_per_building': PROXIMITY_BONUS_PER_BUILDING = Number(value); break;
+                case 'game.proximity_bonus_cap': PROXIMITY_BONUS_CAP = Number(value); break;
+                // Sabotage / nuke tuning
+                case 'sabotage.disable_cost': SABOTAGE_DISABLE_COST = Number(value); break;
+                case 'sabotage.steal_cost': SABOTAGE_STEAL_COST = Number(value); break;
+                case 'sabotage.nuke_cost_pct': SABOTAGE_NUKE_COST_PCT = Number(value); break;
+                case 'sabotage.failure_chance': SABOTAGE_FAILURE_CHANCE = Number(value); break;
+                case 'sabotage.disable_duration_ms': SABOTAGE_DISABLE_DURATION_MS = Number(value); break;
+                case 'sabotage.nuke_fallout_radius': SABOTAGE_NUKE_FALLOUT_RADIUS = Number(value); break;
+                case 'sabotage.nuke_fallout_duration_ms': SABOTAGE_NUKE_FALLOUT_DURATION_MS = Number(value); break;
+                case 'sabotage.strike_limit_per_day': STRIKE_LIMIT_PER_DAY = Number(value); break;
+                case 'game.maintenance_refund_pct': MAINTENANCE_REFUND_PCT = Number(value); break;
                 default: {
                     // building.* keys are handled by loadBuildingRulesFromDB earlier
                     break;
@@ -365,10 +400,10 @@ function getBuildingOutputMultiplier(building, zones, now = Date.now()) {
 function calculatePlantPower(plant, playerBuildings, enemyBuildings, terrain, now = Date.now()) {
     const nearbyEnemies = (enemyBuildings || []).filter((enemy) => isBuildingComplete(enemy, now) && cellDistance(plant.cell_id, enemy.cell_id) <= PROXIMITY_RANGE).length;
     const samePlants = (playerBuildings || []).filter((other) => other.id !== plant.id && other.type === 'plant' && isBuildingComplete(other, now) && cellDistance(plant.cell_id, other.cell_id) <= PROXIMITY_RANGE).length;
-    const base = 100 - (nearbyEnemies * 20);
+    const base = PLANT_BASE_POWER - (nearbyEnemies * 20);
     const jitter = Math.sin((now / 1000) + Number(plant.cell_id || 0)) * 2;
     const roadMult = cellHasRoadNeighbor(plant.cell_id, terrain) ? 1.4 : 1;
-    const plantProxMult = 1 + (Math.min(samePlants, 3) * 0.25);
+    const plantProxMult = 1 + (Math.min(samePlants, PROXIMITY_BONUS_CAP) * PROXIMITY_BONUS_PER_BUILDING);
     return Math.max(0, base + jitter) * roadMult * plantProxMult;
 }
 
@@ -651,10 +686,10 @@ async function processRunEconomy(io, run) {
             const activeMines = completedBuildings.filter((building) => building.type === 'mine');
             let produced = 0;
             activeMines.forEach((mine) => {
-                let amount = 0.225;
+                let amount = MINE_BASE_PRODUCTION;
                 amount *= getDepositBonus(mine.cell_id, deposits);
                 const sameMines = activeMines.filter((other) => other.id !== mine.id && cellDistance(mine.cell_id, other.cell_id) <= PROXIMITY_RANGE).length;
-                amount *= (1 + (Math.min(sameMines, 3) * 0.25));
+                amount *= 1 + (Math.min(sameMines, PROXIMITY_BONUS_CAP) * PROXIMITY_BONUS_PER_BUILDING);
                 amount *= getBuildingOutputMultiplier(mine, activeFallout, now);
                 produced += amount;
             });
@@ -668,7 +703,7 @@ async function processRunEconomy(io, run) {
             const processors = completedBuildings.filter((building) => building.type === 'processor');
             let converted = 0;
             processors.forEach((processor) => {
-                converted += 0.15 * getBuildingOutputMultiplier(processor, activeFallout, now);
+                converted += PROCESSOR_CONVERT_RATE * getBuildingOutputMultiplier(processor, activeFallout, now);
             });
             const actualConverted = Math.min(uraniumRaw, converted);
             uraniumRaw -= actualConverted;
@@ -688,7 +723,7 @@ async function processRunEconomy(io, run) {
                 fuelConsumed = Math.min(requiredFuel, uraniumRefined);
                 uraniumRefined -= fuelConsumed;
                 const powerFraction = requiredFuel > 0 ? (fuelConsumed / requiredFuel) : 0;
-                income = Math.floor(totalPower * powerFraction * 0.1); // was * 0.3
+                income = Math.floor(totalPower * powerFraction * INCOME_POWER_MULT);
             }
 
             // Deduct maintenance cost for every completed building
@@ -1204,6 +1239,44 @@ module.exports = {
             driftFactor: MARKET_DRIFT_FACTOR,
         },
         buildingRules: BUILDING_RULES,
+        production: {
+            mineBaseProduction: MINE_BASE_PRODUCTION,
+            processorConvertRate: PROCESSOR_CONVERT_RATE,
+            plantBasePower: PLANT_BASE_POWER,
+            incomePowerMult: INCOME_POWER_MULT,
+            proximityBonusPerBuilding: PROXIMITY_BONUS_PER_BUILDING,
+            proximityBonusCap: PROXIMITY_BONUS_CAP,
+        },
+        sabotage: {
+            disableCost: SABOTAGE_DISABLE_COST,
+            stealCost: SABOTAGE_STEAL_COST,
+            nukeCostPct: SABOTAGE_NUKE_COST_PCT,
+            failureChance: SABOTAGE_FAILURE_CHANCE,
+            disableDurationMs: SABOTAGE_DISABLE_DURATION_MS,
+            nukeFalloutRadius: SABOTAGE_NUKE_FALLOUT_RADIUS,
+            nukeFalloutDurationMs: SABOTAGE_NUKE_FALLOUT_DURATION_MS,
+            strikeLimitPerDay: STRIKE_LIMIT_PER_DAY,
+            maintenanceRefundPct: MAINTENANCE_REFUND_PCT,
+        },
+    }),
+    getProductionConfig: () => ({
+        mineBaseProduction: MINE_BASE_PRODUCTION,
+        processorConvertRate: PROCESSOR_CONVERT_RATE,
+        plantBasePower: PLANT_BASE_POWER,
+        incomePowerMult: INCOME_POWER_MULT,
+        proximityBonusPerBuilding: PROXIMITY_BONUS_PER_BUILDING,
+        proximityBonusCap: PROXIMITY_BONUS_CAP,
+    }),
+    getSabotageConfig: () => ({
+        disableCost: SABOTAGE_DISABLE_COST,
+        stealCost: SABOTAGE_STEAL_COST,
+        nukeCostPct: SABOTAGE_NUKE_COST_PCT,
+        failureChance: SABOTAGE_FAILURE_CHANCE,
+        disableDurationMs: SABOTAGE_DISABLE_DURATION_MS,
+        nukeFalloutRadius: SABOTAGE_NUKE_FALLOUT_RADIUS,
+        nukeFalloutDurationMs: SABOTAGE_NUKE_FALLOUT_DURATION_MS,
+        strikeLimitPerDay: STRIKE_LIMIT_PER_DAY,
+        maintenanceRefundPct: MAINTENANCE_REFUND_PCT,
     }),
     setNextRunLength,
     getNextRunLength: () => _nextRunLength,

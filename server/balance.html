@@ -5,18 +5,23 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>NUKEWAR — Balance Tool</title>
   <style>
-    :root{color-scheme:dark;--bg:#0b0d10;--panel:#14181d;--muted:#9fb0c3;--accent:#ffb84d}
-    body{font-family:Inter,system-ui,Arial;margin:0;background:linear-gradient(180deg,#0b0d10,#11161c);color:#f5f7fa}
+    :root{color-scheme:dark;--bg:#0b0d10;--panel:#0f1418;--panel-2:#11151a;--muted:#9fb0c3;--accent:#ffb84d;--card-border:#1f2730}
+    body{font-family:Inter,system-ui,Arial;margin:0;background:linear-gradient(180deg,#0b0d10,#0f151a);color:#f5f7fa}
     .wrap{max-width:1100px;margin:24px auto;padding:18px}
     h1{color:var(--accent);margin:0 0 8px}
-    .card{background:#0f1418;border:1px solid #1f2730;border-radius:10px;padding:14px;margin-bottom:12px}
+    .card{background:var(--panel);border:1px solid var(--card-border);border-radius:10px;padding:14px;margin-bottom:12px}
     .row{display:flex;gap:8px;align-items:center}
-    input,button{background:#111;border:1px solid #24313b;color:#f5f7fa;padding:8px;border-radius:6px}
+    input,button,select{background:var(--panel-2);border:1px solid #24313b;color:#f5f7fa;padding:8px;border-radius:8px}
     label{color:var(--muted);font-size:13px}
     table{width:100%;border-collapse:collapse;margin-top:8px}
     th,td{padding:8px;border-bottom:1px solid #202934;text-align:left}
     .muted{color:var(--muted)}
     .section{margin-top:10px}
+    .two-col{display:grid;grid-template-columns:1fr 380px;gap:12px}
+    .small{font-size:13px;padding:6px}
+    .kbd{background:#071018;padding:6px 8px;border-radius:6px;border:1px solid #21323a;color:#9fb0c3}
+    .audit-row{border-bottom:1px solid #182025;padding:8px 6px}
+    .audit-row time{color:#7f98a8;font-size:12px}
   </style>
 </head>
 <body>
@@ -34,62 +39,137 @@
       <div id="msg" class="muted" style="margin-top:8px"></div>
     </div>
 
-    <div class="card" id="controlsWrap">
-      <h3>Game Settings</h3>
-      <div class="row section">
-        <label style="width:160px">Buy-in (tokens)</label>
-        <input id="game_buy_in" type="number" />
-        <label style="width:160px;margin-left:20px">Build slots</label>
-        <input id="game_build_slots" type="number" style="width:80px" />
-        <label style="width:160px;margin-left:20px">Proximity range</label>
-        <input id="game_proximity" type="number" style="width:80px" />
+    <div class="card two-col" id="controlsWrap">
+      <div>
+        <h3>Game Settings</h3>
+        <div class="row section">
+          <label style="width:160px">Buy-in (tokens)</label>
+          <input id="game_buy_in" type="number" class="small" />
+          <label style="width:160px;margin-left:12px">Build slots</label>
+          <input id="game_build_slots" type="number" style="width:80px" class="small" />
+          <label style="width:140px;margin-left:12px">Proximity range</label>
+          <input id="game_proximity" type="number" style="width:80px" class="small" />
+        </div>
+
+        <h4 class="section">Grid</h4>
+        <div class="row section">
+          <label style="width:160px">Cols</label>
+          <input id="grid_cols" type="number" style="width:80px" class="small" />
+          <label style="width:160px;margin-left:20px">Rows</label>
+          <input id="grid_rows" type="number" style="width:80px" class="small" />
+        </div>
+
+        <h4 class="section">Economy / Market</h4>
+        <div class="row section">
+          <label style="width:160px">Base price</label>
+          <input id="market_base_price" type="number" step="0.000001" class="small" />
+          <label style="width:140px;margin-left:12px">Token pool initial</label>
+          <input id="market_token_pool_initial" type="number" class="small" />
+        </div>
+        <div class="row section">
+          <label style="width:160px">Pool burn rate</label>
+          <input id="market_pool_burn_rate" type="number" class="small" />
+          <label style="width:160px;margin-left:20px">Volatility</label>
+          <input id="market_volatility" type="number" step="0.000001" class="small" />
+          <label style="width:140px;margin-left:12px">Drift factor</label>
+          <input id="market_drift_factor" type="number" step="0.000001" class="small" />
+        </div>
+        <div class="row section">
+          <label style="width:160px">Base demand</label>
+          <input id="market_base_demand" type="number" class="small" />
+        </div>
+        <div class="row section">
+          <label style="width:160px">Total token supply</label>
+          <input id="economy_total_token_supply" type="number" class="small" />
+        </div>
+
+        <h4 class="section">Production</h4>
+        <div class="row section">
+          <label style="width:160px">Mine base (per tick)</label>
+          <input id="prod_mine_base" type="number" step="0.0001" class="small" />
+          <label style="width:160px;margin-left:12px">Processor convert %</label>
+          <input id="prod_processor_rate" type="number" step="0.0001" class="small" />
+        </div>
+        <div class="row section">
+          <label style="width:160px">Plant base power</label>
+          <input id="prod_plant_base" type="number" class="small" />
+          <label style="width:160px;margin-left:12px">Plant income mult</label>
+          <input id="prod_plant_income_mult" type="number" step="0.0001" class="small" />
+        </div>
+        <div class="row section">
+          <label style="width:160px">Prox bonus / build</label>
+          <input id="prod_prox_bonus" type="number" step="0.01" class="small" style="width:100px" />
+          <label style="width:160px;margin-left:12px">Prox bonus cap</label>
+          <input id="prod_prox_cap" type="number" class="small" style="width:80px" />
+        </div>
+
+        <h4 class="section">Sabotage / Nukes</h4>
+        <div class="row section">
+          <label style="width:160px">Disable cost</label>
+          <input id="sabotage_disable_cost" type="number" class="small" />
+          <label style="width:140px;margin-left:12px">Steal cost</label>
+          <input id="sabotage_steal_cost" type="number" class="small" />
+        </div>
+        <div class="row section">
+          <label style="width:160px">Nuke cost % of wallet</label>
+          <input id="sabotage_nuke_cost_pct" type="number" step="0.01" class="small" style="width:100px" />
+          <label style="width:160px;margin-left:12px">Failure chance</label>
+          <input id="sabotage_failure_chance" type="number" step="0.01" class="small" style="width:100px" />
+        </div>
+        <div class="row section">
+          <label style="width:160px">Disable duration (ms)</label>
+          <input id="sabotage_disable_duration_ms" type="number" class="small" />
+          <label style="width:160px;margin-left:12px">Nuke radius</label>
+          <input id="sabotage_nuke_fallout_radius" type="number" class="small" style="width:80px" />
+          <label style="width:160px;margin-left:12px">Nuke fallout (ms)</label>
+          <input id="sabotage_nuke_fallout_duration_ms" type="number" class="small" />
+        </div>
+        <div class="row section">
+          <label style="width:160px">Strike limit / day</label>
+          <input id="sabotage_strike_limit_per_day" type="number" class="small" style="width:100px" />
+        </div>
+        <div class="row section">
+          <label style="width:160px">Maintenance refund %</label>
+          <input id="sabotage_maintenance_refund_pct" type="number" step="0.01" class="small" style="width:100px" />
+        </div>
+
+        <h4 class="section">Building Rules</h4>
+        <div id="buildingRulesWrap" style="margin-top:8px">
+          <table>
+            <thead>
+              <tr><th>Type</th><th>Cost</th><th>Build time (ms)</th><th>Op cost</th><th>Extra</th></tr>
+            </thead>
+            <tbody id="buildingRulesBody"><tr><td colspan="5" class="muted">Load to view building rules</td></tr></tbody>
+          </table>
+        </div>
+
+        <div style="margin-top:12px" class="row">
+          <button id="saveBtn">Save Changes</button>
+          <button id="viewAuditBtn">View History</button>
+          <button id="resetBtn">Reload</button>
+        </div>
       </div>
 
-      <h3 class="section">Grid</h3>
-      <div class="row section">
-        <label style="width:160px">Cols</label>
-        <input id="grid_cols" type="number" style="width:80px" />
-        <label style="width:160px;margin-left:20px">Rows</label>
-        <input id="grid_rows" type="number" style="width:80px" />
+      <div>
+        <div class="card">
+          <h4>Run Benchmarks</h4>
+          <div class="row" style="align-items:center;gap:10px;margin-bottom:8px;">
+            <button id="loadBenchmarksBtn" class="small">Load Benchmarks</button>
+            <div class="muted" id="benchMsg">Loaded: —</div>
+          </div>
+          <pre id="benchmarksPre" style="white-space:pre-wrap;max-height:320px;overflow:auto;background:#071018;padding:10px;border-radius:6px;border:1px solid #162028;margin:0;">No data</pre>
+        </div>
+
+        <div id="auditWrap" style="display:none;margin-top:12px;">
+          <div class="card">
+            <h4>Config Audit</h4>
+            <div id="auditList" style="max-height:420px;overflow:auto;padding:6px;background:#071018;border-radius:6px;border:1px solid #162028;"></div>
+            <div style="margin-top:8px"><button id="closeAuditBtn" class="small">Close</button></div>
+          </div>
+        </div>
       </div>
 
-      <h3 class="section">Market</h3>
-      <div class="row section">
-        <label style="width:160px">Base price</label>
-        <input id="market_base_price" type="number" step="0.000001" />
-        <label style="width:160px;margin-left:20px">Token pool initial</label>
-        <input id="market_token_pool_initial" type="number" />
-      </div>
-      <div class="row section">
-        <label style="width:160px">Pool burn rate</label>
-        <input id="market_pool_burn_rate" type="number" />
-        <label style="width:160px;margin-left:20px">Volatility</label>
-        <input id="market_volatility" type="number" step="0.000001" />
-        <label style="width:160px;margin-left:20px">Base demand</label>
-        <input id="market_base_demand" type="number" />
-      </div>
-
-      <h3 class="section">Building Rules</h3>
-      <div id="buildingRulesWrap" style="margin-top:8px">
-        <table>
-          <thead>
-            <tr><th>Type</th><th>Cost</th><th>Build time (ms)</th><th>Op cost</th><th>Extra</th></tr>
-          </thead>
-          <tbody id="buildingRulesBody"><tr><td colspan="5" class="muted">Load to view building rules</td></tr></tbody>
-        </table>
-      </div>
-
-      <div style="margin-top:12px" class="row">
-        <button id="saveBtn">Save Changes</button>
-        <button id="viewAuditBtn">View History</button>
-        <button id="resetBtn">Reload</button>
-      </div>
-    </div>
-
-    <div id="auditWrap" style="display:none" class="card">
-      <h3>Config Audit</h3>
-      <pre id="auditPre" style="white-space:pre-wrap;max-height:360px;overflow:auto"></pre>
-    </div>
+    
   </div>
 
   <script>
@@ -128,6 +208,29 @@
         $('market_pool_burn_rate').value = m.poolBurnRate || '';
         $('market_volatility').value = m.volatility || '';
         $('market_base_demand').value = m.baseDemand || '';
+        $('market_drift_factor').value = m.driftFactor || '';
+        $('economy_total_token_supply').value = cfg.totalTokenSupply || '';
+
+        // Production
+        const prod = cfg.production || {};
+        $('prod_mine_base').value = prod.mineBaseProduction ?? '';
+        $('prod_processor_rate').value = prod.processorConvertRate ?? '';
+        $('prod_plant_base').value = prod.plantBasePower ?? '';
+        $('prod_plant_income_mult').value = prod.incomePowerMult ?? '';
+        $('prod_prox_bonus').value = prod.proximityBonusPerBuilding ?? '';
+        $('prod_prox_cap').value = prod.proximityBonusCap ?? '';
+
+        // Sabotage
+        const sb = cfg.sabotage || {};
+        $('sabotage_disable_cost').value = sb.disableCost ?? '';
+        $('sabotage_steal_cost').value = sb.stealCost ?? '';
+        $('sabotage_nuke_cost_pct').value = sb.nukeCostPct ?? '';
+        $('sabotage_failure_chance').value = sb.failureChance ?? '';
+        $('sabotage_disable_duration_ms').value = sb.disableDurationMs ?? '';
+        $('sabotage_nuke_fallout_radius').value = sb.nukeFalloutRadius ?? '';
+        $('sabotage_nuke_fallout_duration_ms').value = sb.nukeFalloutDurationMs ?? '';
+        $('sabotage_strike_limit_per_day').value = sb.strikeLimitPerDay ?? '';
+        $('sabotage_maintenance_refund_pct').value = sb.maintenanceRefundPct ?? '';
 
         // Building rules
         const rules = cfg.buildingRules || {};
@@ -146,8 +249,29 @@
     }
 
     $('loadBtn').addEventListener('click', loadAll);
-
     $('resetBtn').addEventListener('click', loadAll);
+
+    async function loadBenchmarks(){
+      $('benchMsg').textContent = 'Loading…';
+      try{
+        // Public snapshot (no admin key required)
+        const res = await fetch(API_BASE.replace(/\/$/, '') + '/economy/api/data');
+        const data = await res.json();
+        const run = data.run || {};
+        const out = [];
+        out.push(`Run: ${run.run_number || 'N/A'}  Day: ${run.current_day || '-'} / ${run.run_length || '-'}`);
+        out.push(`Market price: ${run.market_price || '-'}  Prev: ${run.market_prev_price || '-'}  Prize pool: ${run.prize_pool || 0}`);
+        out.push(`Market token pool: ${run.market_token_pool || '-'}  Initial pool: ${run.market_token_pool_initial || '-'}  Tokens issued: ${run.tokens_issued || 0}`);
+        out.push(`Total token supply (server): ${run.total_token_supply || '-'}`);
+        out.push('');
+        out.push('Top players:');
+        (data.alltimePlayers || []).slice(0,10).forEach(p => out.push(` • ${p.username} — best_balance: ${p.best_balance}`));
+        $('benchmarksPre').textContent = out.join('\n');
+        $('benchMsg').textContent = 'Loaded.';
+      }catch(err){ $('benchmarksPre').textContent = 'Failed to load benchmarks: ' + (err.message || err); $('benchMsg').textContent = 'Error'; }
+    }
+
+    $('loadBenchmarksBtn').addEventListener('click', loadBenchmarks);
 
     $('saveBtn').addEventListener('click', async () => {
       const changes = {};
@@ -156,12 +280,32 @@
       changes['game.proximity_range'] = Number($('game_proximity').value) || 2;
       changes['grid.cols'] = Number($('grid_cols').value) || 20;
       changes['grid.rows'] = Number($('grid_rows').value) || 20;
-      changes['economy.total_token_supply'] = Number($('market_token_pool_initial').value) || Number($('market_token_pool_initial').value) || 1000; // noop fallback
+      changes['economy.total_token_supply'] = Number($('economy_total_token_supply').value) || 1000000;
       changes['market.base_price'] = Number($('market_base_price').value) || 1;
       changes['market.token_pool_initial'] = Number($('market_token_pool_initial').value) || 1000;
       changes['market.pool_burn_rate'] = Number($('market_pool_burn_rate').value) || 50;
       changes['market.volatility'] = Number($('market_volatility').value) || 0.03;
       changes['market.base_demand'] = Number($('market_base_demand').value) || 1000;
+      changes['market.drift_factor'] = Number($('market_drift_factor').value) || 0.0002;
+
+      // Production
+      changes['production.mine.base'] = Number($('prod_mine_base').value) || 0.225;
+      changes['production.processor.convert_rate'] = Number($('prod_processor_rate').value) || 0.15;
+      changes['production.plant.base_power'] = Number($('prod_plant_base').value) || 100;
+      changes['production.plant.income_mult'] = Number($('prod_plant_income_mult').value) || 0.1;
+      changes['game.proximity_bonus_per_building'] = Number($('prod_prox_bonus').value) || 0.25;
+      changes['game.proximity_bonus_cap'] = Number($('prod_prox_cap').value) || 3;
+
+      // Sabotage
+      changes['sabotage.disable_cost'] = Number($('sabotage_disable_cost').value) || 300;
+      changes['sabotage.steal_cost'] = Number($('sabotage_steal_cost').value) || 500;
+      changes['sabotage.nuke_cost_pct'] = Number($('sabotage_nuke_cost_pct').value) || 0.5;
+      changes['sabotage.failure_chance'] = Number($('sabotage_failure_chance').value) || 0.15;
+      changes['sabotage.disable_duration_ms'] = Number($('sabotage_disable_duration_ms').value) || 45000;
+      changes['sabotage.nuke_fallout_radius'] = Number($('sabotage_nuke_fallout_radius').value) || 4;
+      changes['sabotage.nuke_fallout_duration_ms'] = Number($('sabotage_nuke_fallout_duration_ms').value) || 120000;
+      changes['sabotage.strike_limit_per_day'] = Number($('sabotage_strike_limit_per_day').value) || 1;
+      changes['game.maintenance_refund_pct'] = Number($('sabotage_maintenance_refund_pct').value) || 0.75;
 
       // Building rows
       document.querySelectorAll('#buildingRulesBody input[data-key]').forEach(inp => {
@@ -174,20 +318,32 @@
         $('msg').textContent = 'Saving…';
         const res = await api('/admin/api/balance', { method: 'POST', body: JSON.stringify({ changes }) });
         $('msg').textContent = 'Saved.';
-        loadAll();
+        await loadAll();
+        loadBenchmarks();
       }catch(err){ $('msg').textContent = '❌ ' + err.message; }
     });
 
     $('viewAuditBtn').addEventListener('click', async () => {
       try{
         const data = await api('/admin/api/config-audit');
-        $('auditPre').textContent = JSON.stringify(data.audit || [], null, 2);
+        const rows = data.audit || [];
+        const el = $('auditList');
+        el.innerHTML = rows.map(r => {
+          const when = new Date(r.created_at).toLocaleString();
+          const who = r.admin_name || r.admin_key_id || 'unknown';
+          const oldv = r.old_value === null ? 'NULL' : r.old_value;
+          const newv = r.new_value === null ? 'NULL' : r.new_value;
+          return `<div class="audit-row"><div><strong>${r.key}</strong> — ${oldv} → ${newv}</div><div class="muted">by ${who} · <time>${when}</time></div></div>`;
+        }).join('') || '<div class="muted">No audit entries</div>';
         $('auditWrap').style.display = 'block';
       }catch(err){ alert('Failed to load audit: ' + err.message); }
     });
 
+    $('closeAuditBtn').addEventListener('click', () => { $('auditWrap').style.display = 'none'; });
+
     // Auto-load
     loadAll();
+    loadBenchmarks();
   </script>
 </body>
 </html>
