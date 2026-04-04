@@ -201,6 +201,7 @@
     <div class="container">
         <div class="top-bar">
             <div class="top-bar-title">NUKEWAR <span id="connIndicator" class="conn-indicator" title="Server connection status">☢️</span></div>
+            <div id="appVersion" class="app-version" title="App version">v?</div>
 
                 <!-- Compact stats for small-screen mobile view (populated by JS) -->
                 <div id="mobileStatsCompact" class="mobile-stats-compact"></div>
@@ -266,7 +267,7 @@
                     <div class="menu-section">
                         <button class="menu-item" id="soundToggleMenuItem">🔊 Toggle Sound</button>
                     </div>
-                    <div id="appVersion" class="app-version" title="App version">v?</div>
+                    <!-- Version display moved into main top-bar (see below) -->
                 </div>
                 <!-- Changelog modal -->
                 <div id="changelogModal" class="modal" style="display:none; position:fixed; left:0; top:0; right:0; bottom:0; background:rgba(0,0,0,0.7); z-index:200; align-items:center; justify-content:center;">

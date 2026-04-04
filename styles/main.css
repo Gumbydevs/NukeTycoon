@@ -203,6 +203,8 @@ body.authenticated .container {
     transform-origin: center;
     position: relative;
     z-index: 9999; /* keep above header elements */
+    background: transparent; /* ensure no background box */
+    padding: 0; /* no internal padding to avoid box */
 }
 .conn-indicator.off {
     box-shadow: 0 0 6px rgba(255,60,60,0.95);
@@ -233,9 +235,9 @@ body.authenticated .container {
     align-self: center;
     padding: 4px 6px;
     border-radius: 4px;
-    background: rgba(0,0,0,0.3);
+    background: rgba(255,255,255,0.02); /* very subtle, not a solid black box */
     position: absolute;
-    right: 10px;
+    right: 12px;
     top: 8px;
     z-index: 10001;
 }
