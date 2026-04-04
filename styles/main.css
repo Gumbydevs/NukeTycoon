@@ -894,6 +894,19 @@ body.mobile-menu-open .dropdown { display: none !important; }
 
 /* Ensure legend toggle does not show a blinking text caret when focused */
 .legend-toggle { caret-color: transparent; }
+
+/* Nuke blast crater — grey scorched zone */
+.cell.nuked-crater {
+    background-color: #4a4a4a !important;
+    filter: saturate(0.1) brightness(0.7);
+    border-color: rgba(80, 80, 80, 0.5) !important;
+    animation: craterPulse 3s ease-in-out infinite;
+}
+@keyframes craterPulse {
+    0%, 100% { filter: saturate(0.1) brightness(0.7); }
+    50%       { filter: saturate(0.15) brightness(0.75); }
+}
+
 .btn.nuclear {
     position: relative;
 }

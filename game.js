@@ -550,8 +550,17 @@ function connectSocket() {
                 const oIdx = game.buildings.findIndex(b => b.id === cId);
                 if (oIdx !== -1) game.buildings.splice(oIdx, 1);
                 const cell = document.querySelector(`[data-id="${cId}"]`);
-                if (cell) { cell.innerHTML = ''; cell.className = cell.className.replace(/building.*/, '').trim(); }
+                if (cell) {
+                    cell.innerHTML = '';
+                    cell.classList.remove('owned', 'owned-player', 'owned-enemy',
+                        'mine', 'processor', 'storage', 'plant', 'silo', 'queued-ghost');
+                }
             });
+            // Store crater zone for radius visualization
+            const blastRadius = falloutRadius || 4;
+            const expiresAt = Date.now() + (falloutDuration || 120000);
+            game.nukeZones.push({ center: cellId, radius: blastRadius, expiresAt });
+            updateFalloutVisualization();
         }
 
         // ── Notifications ─────────────────────────────────────────────────
@@ -719,6 +728,7 @@ const game = {
     lastStrikeTime: -999,         // track cooldown (ticks between strikes)
     strikesCooldown: 20,          // minimum ticks between strikes
     falloutZones: [],             // { id, endTime } array for radiation zones
+    nukeZones: [],               // { center, radius, expiresAt } crater visuals
     nuclearThreats: [],           // track players who used nukes for prestige
 
     // ── Buy-in / run entry ───────────────────────────────────────────────────
@@ -3620,10 +3630,27 @@ function dispatchQueuedBuild({ cellId, type }) {
 function updateFalloutVisualization() {
     const grid = document.getElementById('gameGrid');
     const now = Date.now();
-    
-    // Remove all existing fallout indicators
-    grid.querySelectorAll('.cell').forEach(cell => cell.classList.remove('in-fallout'));
-    
+
+    // Remove all existing fallout/crater indicators
+    grid.querySelectorAll('.cell').forEach(cell => {
+        cell.classList.remove('in-fallout', 'nuked-crater');
+    });
+
+    // Grey crater circle for nuke blast zones (Manhattan distance)
+    game.nukeZones = game.nukeZones.filter(z => z.expiresAt > now);
+    game.nukeZones.forEach(zone => {
+        const zoneCoords = getCoords(zone.center);
+        for (let x = Math.max(0, zoneCoords.x - zone.radius); x <= Math.min(19, zoneCoords.x + zone.radius); x++) {
+            for (let y = Math.max(0, zoneCoords.y - zone.radius); y <= Math.min(19, zoneCoords.y + zone.radius); y++) {
+                // Use Manhattan distance for a more circular look
+                if (Math.abs(x - zoneCoords.x) + Math.abs(y - zoneCoords.y) <= zone.radius) {
+                    const cell = grid.querySelector(`[data-id="${y * 20 + x}"]`);
+                    if (cell) cell.classList.add('nuked-crater');
+                }
+            }
+        }
+    });
+
     // Add fallout class to cells in active fallout zones
     game.falloutZones.forEach(zone => {
         if (zone.endTime > now) {
