@@ -245,6 +245,17 @@ function connectSocket() {
         updateUI();
         updateFalloutVisualization();
 
+        // ── Track market price history for economy modal chart ────────────────
+        if (run && Number.isFinite(Number(run.market_price))) {
+            if (!game._marketHistory) game._marketHistory = [];
+            game._marketHistory.push({ t: Date.now(), price: Number(run.market_price) });
+            if (game._marketHistory.length > 120) game._marketHistory.shift();
+        }
+        // ── Keep economy modal live if open ───────────────────────────────────
+        if (game._econModalOpen && playerState && run) {
+            refreshEconomyModal({ playerState, run, scores });
+        }
+
         // ── Per-building income/maintenance floats (server-authoritative path) ──
         // Throttle: show floats every 5 ticks (~5 s) so they aren't spammy.
         game._buildingFloatTick = (game._buildingFloatTick || 0) + 1;
@@ -493,6 +504,7 @@ function connectSocket() {
     // Building cost/time config pushed from admin panel
     socket.on('run:building_config', ({ buildingRules }) => {
         if (!buildingRules || typeof buildingRules !== 'object') return;
+        window._gameBuildingRules = buildingRules;  // expose for economy modal
         Object.entries(buildingRules).forEach(([type, rules]) => {
             if (!buildingTypes[type]) return;
             if (Number.isFinite(Number(rules.cost))) buildingTypes[type].cost = Number(rules.cost);
@@ -845,6 +857,12 @@ const buildingTypes = {
     plant:     { cost: 1000, emoji: '☢️',  color: '#ffb84d', power: 100, constructionTime: 2.2, maintenanceCost: 10 },
     silo:      { cost: 6000, emoji: '💥',  color: '#ff0000', power: 0,   constructionTime: 3.5, isWeapon: true, maintenanceCost: 25 }
 };
+// Expose building rules globally so the economy modal can read live costs
+window._gameBuildingRules = Object.fromEntries(
+    Object.entries(buildingTypes).map(([type, r]) => [type, {
+        cost: r.cost, constructionMs: r.constructionTime * 10000, maintenanceCost: r.maintenanceCost,
+    }])
+);
 
 // Display names used in UI (keep keys stable in logic)
 const displayNames = {
@@ -3360,6 +3378,34 @@ document.addEventListener('DOMContentLoaded', function() {
     const prizeInfoBtn = document.getElementById('prizeInfoBtn');
     if (prizeInfoBtn) prizeInfoBtn.addEventListener('click', showConversionModal);
 
+    // Economy tracker button
+    const econBtn = document.getElementById('economyBtn');
+    if (econBtn) econBtn.addEventListener('click', showEconomyModal);
+    const econCloseBtn = document.getElementById('econCloseBtn');
+    if (econCloseBtn) econCloseBtn.addEventListener('click', closeEconomyModal);
+
+    // Economy tab switching
+    const econTabsEl = document.getElementById('econTabs');
+    if (econTabsEl) {
+        econTabsEl.addEventListener('click', (e) => {
+            const btn = e.target.closest('.econ-tab');
+            if (!btn) return;
+            econTabsEl.querySelectorAll('.econ-tab').forEach(t => t.classList.remove('active'));
+            btn.classList.add('active');
+            document.querySelectorAll('.econ-tab-content').forEach(c => { c.style.display = 'none'; c.classList.remove('active'); });
+            const panel = document.getElementById('econTab-' + btn.dataset.tab);
+            if (panel) { panel.style.display = 'block'; panel.classList.add('active'); }
+        });
+    }
+
+    // Close economy modal when clicking backdrop
+    const econModal = document.getElementById('economyModal');
+    if (econModal) {
+        econModal.addEventListener('click', (e) => {
+            if (e.target === econModal) closeEconomyModal();
+        });
+    }
+
     // Sound toggle button
     const soundToggleBtn = document.getElementById('soundToggleBtn');
     if (soundToggleBtn) {
@@ -4651,6 +4697,330 @@ function closeEndOfDay() {
     if (!modal) return;
     modal.style.display = 'none';
 }
+
+// ── Economy Modal ──────────────────────────────────────────────────────────────
+
+const _ECON_BUILDING_ICONS = { mine: '⛏️', processor: '🏭', storage: '📦', plant: '☢️', silo: '⚛️' };
+let _econMarketChart = null;
+let _econBalanceChart = null;
+
+function showEconomyModal() {
+    const modal = document.getElementById('economyModal');
+    if (!modal) return;
+    game._econModalOpen = true;
+    modal.style.display = 'flex';
+    modal.removeAttribute('aria-hidden');
+
+    // Build rules table (static)
+    _econBuildRulesTable();
+
+    // Initial refresh
+    refreshEconomyModal({
+        playerState: {
+            uranium_raw: game.uraniumRaw,
+            uranium_refined: game.uraniumRefined,
+            max_storage: game.maxStorage,
+            daily_produced: game.dailyProduced,
+            daily_income: game.dailyIncome,
+            last_income: game.lastIncome,
+            score: game._serverScore || 0,
+        },
+        run: {
+            market_price: game.market?.price,
+            market_prev_price: game.market?.prevPrice,
+            prize_pool: game.prizePool,
+            tokens_issued: game.tokensIssued,
+            market_token_pool: game.market?.tokenPool,
+            market_token_pool_initial: game.market?.tokenPoolInitial,
+            current_day: game.time?.day,
+            run_length: game.runLength,
+            run_number: game._currentRunNumber,
+            next_day_at: game._nextDayAt ? new Date(game._nextDayAt).toISOString() : null,
+        },
+        scores: game.players || [],
+    });
+}
+
+function closeEconomyModal() {
+    const modal = document.getElementById('economyModal');
+    if (!modal) return;
+    game._econModalOpen = false;
+    modal.style.display = 'none';
+    modal.setAttribute('aria-hidden', 'true');
+    // Destroy charts so they recreate cleanly on next open
+    if (_econMarketChart) { _econMarketChart.destroy(); _econMarketChart = null; }
+    if (_econBalanceChart) { _econBalanceChart.destroy(); _econBalanceChart = null; }
+}
+
+function _econBuildRulesTable() {
+    const tbody = document.getElementById('ec-rules-body');
+    if (!tbody || tbody.dataset.built) return;
+    tbody.dataset.built = '1';
+    const ICONS = _ECON_BUILDING_ICONS;
+    const rules = window._gameBuildingRules || {};
+    const names = { mine: 'Mine', processor: 'Processor', storage: 'Storage', plant: 'Reactor', silo: 'Silo' };
+    tbody.innerHTML = Object.entries(rules).map(([type, r]) =>
+        `<tr>
+            <td>${ICONS[type] || ''} ${names[type] || type}</td>
+            <td class="econ-num">${(r.cost || 0).toLocaleString()}</td>
+            <td class="econ-num">${_fmtMs(r.constructionMs || 0)}</td>
+            <td class="econ-num red">${r.maintenanceCost || 0}/tick</td>
+        </tr>`
+    ).join('');
+}
+
+function _fmtMs(ms) {
+    const s = Math.round(ms / 1000);
+    if (s < 60) return s + 's';
+    return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
+}
+
+function refreshEconomyModal({ playerState, run, scores }) {
+    if (!game._econModalOpen) return;
+
+    // ── My Economy tab ────────────────────────────────────────────────────────
+    const completedBuildings  = (game.buildings || []).filter(b => !b.isUnderConstruction && !b._queued);
+    const rules = window._gameBuildingRules || {};
+    const totalMaint = completedBuildings.reduce((sum, b) => sum + (rules[b.type]?.maintenanceCost || 0), 0);
+    const gross  = (parseInt(playerState?.last_income,  10) || 0) + totalMaint;
+    const net    = parseInt(playerState?.last_income, 10) || 0;
+    const daily  = parseInt(playerState?.daily_income, 10) || 0;
+    const wallet = game.playerWallet || 0;
+    const raw    = parseFloat(playerState?.uranium_raw    || 0);
+    const refined = parseFloat(playerState?.uranium_refined || 0);
+    const maxSt  = parseFloat(playerState?.max_storage || 5000);
+    const dprod  = parseFloat(playerState?.daily_produced || 0);
+
+    _setText('ec-gross',  '+' + gross);
+    _setText('ec-maint',  '-' + totalMaint);
+    _setText('ec-net',    (net >= 0 ? '+' : '') + net);
+    _setText('ec-daily',  daily.toLocaleString());
+    _setText('ec-wallet', wallet.toLocaleString());
+    _setText('ec-raw',    raw.toFixed(2));
+    _setText('ec-refined', refined.toFixed(2));
+    _setText('ec-stored', (raw + refined).toFixed(1) + ' / ' + (maxSt / 1000).toFixed(1) + 'K');
+    _setText('ec-dprod',  dprod.toFixed(2));
+    _setLocalPlayerScore();
+
+    // Buildings list breakdown
+    const blist = document.getElementById('ec-buildings-list');
+    if (blist) {
+        const counts = {};
+        completedBuildings.forEach(b => { counts[b.type] = (counts[b.type] || 0) + 1; });
+        const under  = (game.buildings || []).filter(b => b.isUnderConstruction);
+        under.forEach(b => { counts[b.type + '_uc'] = (counts[b.type + '_uc'] || 0) + 1; });
+
+        const lines = [];
+        const buildNames = { mine: 'Mine', processor: 'Processor', storage: 'Storage', plant: 'Reactor', silo: 'Silo' };
+        ['mine','processor','storage','plant','silo'].forEach(type => {
+            const cnt    = counts[type] || 0;
+            const uc     = counts[type + '_uc'] || 0;
+            const r      = rules[type] || {};
+            const mCost  = (r.maintenanceCost || 0) * cnt;
+            if (cnt + uc === 0) return;
+            lines.push(
+                `<div class="econ-bldg-row">` +
+                `<span>${_ECON_BUILDING_ICONS[type] || ''} ${buildNames[type]}</span>` +
+                `<span class="econ-bldg-cnt">${cnt}${uc > 0 ? ` <span class="econ-uc">(+${uc} building)</span>` : ''}</span>` +
+                `<span class="red">-${mCost}/tick</span>` +
+                `</div>`
+            );
+        });
+        blist.innerHTML = lines.length ? lines.join('') : '<div style="color:#555; font-size:12px;">No completed buildings yet.</div>';
+    }
+
+    // ── Market tab ────────────────────────────────────────────────────────────
+    const price     = Number(run?.market_price || 1);
+    const prevPrice = Number(run?.market_prev_price || price);
+    const chgAbs    = price - prevPrice;
+    const chgPct    = prevPrice > 0 ? (chgAbs / prevPrice) * 100 : 0;
+
+    _setText('em-price', '$' + price.toFixed(4));
+    const chgEl = document.getElementById('em-priceChg');
+    if (chgEl) {
+        chgEl.textContent = (chgAbs >= 0 ? '+' : '') + chgAbs.toFixed(4) + ' (' + (chgAbs >= 0 ? '+' : '') + chgPct.toFixed(2) + '%)';
+        chgEl.className = 'econ-price-chg ' + (chgAbs > 0 ? 'up' : chgAbs < 0 ? 'down' : '');
+    }
+
+    _setText('em-prize',  (run?.prize_pool || 0).toLocaleString() + ' tokens');
+    _setText('em-issued', (parseInt(run?.tokens_issued, 10) || 0).toLocaleString());
+    _setText('em-pool',   Math.round(run?.market_token_pool || 0).toLocaleString());
+    _setText('em-circulating', (parseInt(run?.tokens_issued, 10) || 0).toLocaleString());
+    _setText('em-day',    `${run?.current_day || 1} / ${run?.run_length || 3}`);
+    _setText('em-runNum', '#' + (run?.run_number || 1));
+    _setText('em-players', (game.players || []).length);
+
+    // Day progress
+    const dayPct = run?.run_length > 0 ? Math.min(100, ((run.current_day || 1) / run.run_length) * 100) : 0;
+    const fill = document.getElementById('em-dayFill');
+    if (fill) fill.style.width = dayPct + '%';
+
+    // Countdown
+    if (run?.next_day_at || game._nextDayAt) {
+        const target = run?.next_day_at ? new Date(run.next_day_at).getTime() : game._nextDayAt;
+        const ms = target - Date.now();
+        _setText('em-nextDay', 'Next day in ' + _fmtMs(Math.max(0, ms)));
+    }
+
+    // Market chart
+    _econUpdateMarketChart();
+
+    // ── Commanders tab ────────────────────────────────────────────────────────
+    _econRenderLeaderboard(scores);
+    _econUpdateBalanceChart(scores);
+}
+
+function _setText(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val;
+}
+
+function _setLocalPlayerScore() {
+    const meScores = (game.players || []).find(p => p.isLocal);
+    const score = meScores?.score || 0;
+    _setText('ec-score', Math.round(score).toLocaleString());
+}
+
+function _econUpdateMarketChart() {
+    const ctx = document.getElementById('ec-marketCanvas');
+    if (!ctx || typeof Chart === 'undefined') return;
+
+    const history = game._marketHistory || [];
+    if (history.length < 2) return;
+
+    // Use last 60 points max
+    const pts = history.slice(-60);
+    const labels = pts.map((p, i) => i % 10 === 0 ? new Date(p.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '');
+    const prices = pts.map(p => p.price.toFixed(4));
+
+    if (_econMarketChart) {
+        _econMarketChart.data.labels = labels;
+        _econMarketChart.data.datasets[0].data = prices;
+        _econMarketChart.update('none');
+        return;
+    }
+
+    _econMarketChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Price',
+                data: prices,
+                borderColor: '#4caf50',
+                backgroundColor: 'rgba(76,175,80,0.08)',
+                borderWidth: 1.5,
+                tension: 0.35,
+                fill: true,
+                pointRadius: 0,
+            }],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 200 },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: '#14181d', borderColor: '#2b3440', borderWidth: 1,
+                    titleColor: '#f5f7fa', bodyColor: '#9fb0c3', padding: 8,
+                    callbacks: { label: (c) => ` $${c.raw}` },
+                },
+            },
+            scales: {
+                x: { grid: { color: 'rgba(43,52,64,0.5)' }, ticks: { color: '#666', maxTicksLimit: 6, maxRotation: 0 } },
+                y: {
+                    grid: { color: 'rgba(43,52,64,0.5)' }, ticks: { color: '#9fb0c3' },
+                    title: { display: true, text: 'Price ($)', color: '#9fb0c3', font: { size: 10 } },
+                },
+            },
+        },
+    });
+}
+
+function _econUpdateBalanceChart(scores) {
+    const ctx = document.getElementById('ec-balanceCanvas');
+    if (!ctx || typeof Chart === 'undefined') return;
+
+    const sorted = [...(scores || [])].sort((a, b) => (b.token_balance || 0) - (a.token_balance || 0)).slice(0, 8);
+    const labels = sorted.map(p => p.username || '?');
+    const vals   = sorted.map(p => parseInt(p.token_balance, 10) || 0);
+
+    if (_econBalanceChart) {
+        _econBalanceChart.data.labels = labels;
+        _econBalanceChart.data.datasets[0].data = vals;
+        _econBalanceChart.data.datasets[0].backgroundColor = vals.map((_, i) => i === 0 ? '#ffb84d' : 'rgba(76,175,80,0.45)');
+        _econBalanceChart.data.datasets[0].borderColor      = vals.map((_, i) => i === 0 ? '#ffb84d' : '#4caf50');
+        _econBalanceChart.update('none');
+        return;
+    }
+
+    _econBalanceChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Balance',
+                data: vals,
+                backgroundColor: vals.map((_, i) => i === 0 ? '#ffb84d' : 'rgba(76,175,80,0.45)'),
+                borderColor:     vals.map((_, i) => i === 0 ? '#ffb84d' : '#4caf50'),
+                borderWidth: 1, borderRadius: 2,
+            }],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 200 },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: '#14181d', borderColor: '#2b3440', borderWidth: 1,
+                    titleColor: '#f5f7fa', bodyColor: '#9fb0c3', padding: 8,
+                    callbacks: { label: (c) => ` ${Number(c.raw).toLocaleString()} tokens` },
+                },
+            },
+            scales: {
+                x: { grid: { display: false }, ticks: { color: '#9fb0c3' } },
+                y: { grid: { color: 'rgba(43,52,64,0.5)' }, ticks: { color: '#9fb0c3' } },
+            },
+        },
+    });
+}
+
+function _econRenderLeaderboard(scores) {
+    const tbody = document.getElementById('ec-leaderboard-body');
+    if (!tbody) return;
+
+    const rows = [...(scores || [])].sort((a, b) => (b.score || 0) - (a.score || 0));
+    const maxBal = Math.max(...rows.map(r => parseInt(r.token_balance, 10) || 0), 1);
+    tbody.innerHTML = rows.map((r, i) => {
+        const rank     = i + 1;
+        const balance  = parseInt(r.token_balance, 10) || 0;
+        const income   = parseInt(r.daily_income, 10) || 0;
+        const score    = Math.round(Number(r.score || 0));
+        const pct      = Math.max(4, (balance / maxBal) * 60);
+        const isMe     = r.player_id === getLocalPlayerId();
+        const rowStyle = isMe ? 'background:rgba(255,184,77,0.05);' : '';
+        const rankBadge = rank <= 3
+            ? `<span class="econ-rank rank-${rank}">${rank}</span>`
+            : `<span class="econ-rank rank-n">${rank}</span>`;
+        return `<tr style="${rowStyle}">
+            <td>${rankBadge}</td>
+            <td></td>
+            <td style="font-weight:${isMe ? 700 : 400}; color:${isMe ? '#ffb84d' : '#f5f7fa'};">${_escHtmlEcon(r.username || '?')}</td>
+            <td class="econ-num amber">${balance.toLocaleString()}<span class="econ-bar" style="width:${pct}px;"></span></td>
+            <td class="econ-num green">+${income.toLocaleString()}</td>
+            <td class="econ-num">${r.mine_count || 0}⛏️ ${r.processor_count || 0}🏭 ${r.plant_count || 0}☢️</td>
+            <td class="econ-num blue">${score.toLocaleString()}</td>
+        </tr>`;
+    }).join('');
+}
+
+function _escHtmlEcon(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+
 
 /**
  * Add hover tooltips to top-bar buttons.

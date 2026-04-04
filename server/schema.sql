@@ -136,3 +136,22 @@ CREATE TABLE IF NOT EXISTS server_config (
     value  TEXT NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- ── Economy snapshots (one per game-day, used for historical charts) ──────────
+CREATE TABLE IF NOT EXISTS economy_snapshots (
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    run_id            UUID NOT NULL REFERENCES runs(id),
+    run_day           INTEGER NOT NULL,
+    snapshot_at       TIMESTAMPTZ DEFAULT NOW(),
+    market_price      DOUBLE PRECISION,
+    market_prev_price DOUBLE PRECISION,
+    prize_pool        BIGINT,
+    total_players     INTEGER,
+    total_buildings   INTEGER,
+    tokens_issued     BIGINT,
+    market_token_pool DOUBLE PRECISION,
+    building_counts   JSONB DEFAULT '{}',
+    player_snapshots  JSONB DEFAULT '[]',
+    UNIQUE(run_id, run_day)
+);
+CREATE INDEX IF NOT EXISTS idx_economy_snapshots_run ON economy_snapshots(run_id, run_day);

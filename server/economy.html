@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NUKEWAR — Economy Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg:      #0b0d10;
+      --surface: #14181d;
+      --surface2:#1b222b;
+      --border:  #2b3440;
+      --text:    #f5f7fa;
+      --muted:   #9fb0c3;
+      --green:   #4caf50;
+      --amber:   #ffb84d;
+      --red:     #ff6b6b;
+      --blue:    #4fc3f7;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', monospace, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ─── Header ─────────────────────────────────────── */
+    header {
+      background: linear-gradient(90deg, rgba(11,13,16,0.98) 0%, rgba(27,34,43,0.98) 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      position: sticky; top: 0; z-index: 100;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand-icon { font-size: 22px; }
+    .brand-name { font-size: 18px; font-weight: 800; color: var(--amber); letter-spacing: 0.08em; }
+    .brand-sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
+    .live-dot {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 11px; color: var(--green); font-weight: 600;
+    }
+    .live-dot::before {
+      content: ''; width: 7px; height: 7px; border-radius: 50%;
+      background: var(--green);
+      animation: pulse 1.6s infinite;
+    }
+    @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:0.3 } }
+
+    .header-actions { display: flex; align-items: center; gap: 10px; }
+    .header-run-info { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
+    .btn-join {
+      background: var(--amber); color: #000; border: none; padding: 8px 18px;
+      font-weight: 700; font-size: 13px; cursor: pointer; border-radius: 4px;
+      text-decoration: none; display: inline-block;
+    }
+    .btn-join:hover { filter: brightness(1.1); }
+
+    /* ─── Ticker bar ─────────────────────────────────── */
+    .ticker {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      display: flex; gap: 0; overflow-x: auto;
+    }
+    .ticker::-webkit-scrollbar { display: none; }
+    .ticker-item {
+      flex-shrink: 0; padding: 10px 22px; border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    .ticker-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .ticker-val { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); }
+    .ticker-val.green { color: var(--green); }
+    .ticker-val.amber { color: var(--amber); }
+    .ticker-val.red   { color: var(--red); }
+    .ticker-change { font-size: 11px; font-variant-numeric: tabular-nums; }
+    .ticker-change.up   { color: var(--green); }
+    .ticker-change.down { color: var(--red); }
+    .ticker-change.flat { color: var(--muted); }
+
+    /* ─── Main grid ──────────────────────────────────── */
+    .main { max-width: 1240px; margin: 0 auto; padding: 24px; }
+    .section-title {
+      font-size: 11px; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.1em;
+      margin-bottom: 12px;
+    }
+    .charts-row {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    @media (max-width: 800px) { .charts-row { grid-template-columns: 1fr; } }
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px; padding: 16px;
+    }
+    .card-title {
+      font-size: 12px; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.08em;
+      margin-bottom: 14px; display: flex; align-items: center; gap: 8px;
+    }
+    .card-title .badge {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 3px; padding: 1px 6px; font-size: 10px; color: var(--amber);
+    }
+    canvas { width: 100% !important; }
+
+    /* ─── Leaderboard ────────────────────────────────── */
+    .board-header {
+      font-size: 11px; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.1em;
+      margin-bottom: 12px;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead th {
+      padding: 6px 10px; text-align: left; font-size: 10px; font-weight: 700;
+      color: var(--muted); text-transform: uppercase; letter-spacing: 0.07em;
+      border-bottom: 1px solid var(--border); white-space: nowrap;
+    }
+    tbody tr { border-bottom: 1px solid rgba(43,52,64,0.6); }
+    tbody tr:hover { background: rgba(255,255,255,0.02); }
+    tbody td { padding: 9px 10px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .rank-badge {
+      width: 22px; height: 22px; border-radius: 3px;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700;
+    }
+    .rank-1 { background: rgba(255,184,77,0.2); color: var(--amber); }
+    .rank-2 { background: rgba(255,255,255,0.08); color: #ccc; }
+    .rank-3 { background: rgba(200,100,60,0.2); color: #cd7f32; }
+    .rank-n { background: var(--surface2); color: var(--muted); }
+    .avatar-cell { font-size: 18px; }
+    .username-cell { font-weight: 600; color: var(--text); }
+    .balance-cell { color: var(--amber); font-weight: 700; }
+    .income-cell  { color: var(--green); }
+    .score-cell   { color: var(--blue); font-weight: 600; }
+    .bar-mini {
+      display: inline-block; height: 4px; border-radius: 2px;
+      background: var(--green); min-width: 4px; vertical-align: middle;
+      margin-left: 4px;
+    }
+
+    /* ─── Building counts strip ──────────────────────── */
+    .building-strip {
+      display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 24px;
+    }
+    .bcount-card {
+      flex: 1; min-width: 120px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px; padding: 12px 16px;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .bcount-icon { font-size: 20px; }
+    .bcount-label { font-size: 10px; color: var(--muted); text-transform: uppercase; }
+    .bcount-val { font-size: 22px; font-weight: 700; color: var(--text); }
+
+    /* ─── Day progress bar ───────────────────────────── */
+    .day-progress-wrap { margin-top: 6px; }
+    .progress-bar-bg {
+      background: var(--surface2); border-radius: 4px; height: 6px; overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%; background: var(--amber);
+      border-radius: 4px; transition: width 0.4s ease;
+    }
+    .progress-label {
+      font-size: 11px; color: var(--muted); margin-top: 4px;
+      display: flex; justify-content: space-between;
+    }
+
+    /* ─── Token economics strip ──────────────────────── */
+    .token-strip {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px; margin-bottom: 24px;
+    }
+    .token-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px; padding: 12px 16px;
+    }
+    .token-label { font-size: 10px; color: var(--muted); text-transform: uppercase; margin-bottom: 4px; }
+    .token-val   { font-size: 16px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+
+    /* ─── Footer ─────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--border); padding: 24px;
+      text-align: center; display: flex; flex-direction: column; gap: 8px;
+    }
+    footer p { font-size: 12px; color: var(--muted); }
+    .cta-row { display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap; }
+    .cta-text { font-size: 14px; font-weight: 600; color: var(--text); }
+
+    /* ─── Loading / error states ─────────────────────── */
+    .state-msg {
+      text-align: center; padding: 60px 24px; color: var(--muted); font-size: 14px;
+    }
+    .spinner {
+      width: 28px; height: 28px; border: 3px solid var(--border);
+      border-top-color: var(--amber); border-radius: 50%;
+      animation: spin 0.8s linear infinite; display: inline-block; margin-bottom: 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─── Last updated pill ──────────────────────────── */
+    #lastUpdated {
+      font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="brand-icon">☢️</div>
+      <div>
+        <div class="brand-name">NUKEWAR</div>
+        <div class="brand-sub">Economy Dashboard</div>
+      </div>
+      <span class="live-dot" id="liveIndicator" style="margin-left:14px;">LIVE</span>
+    </div>
+    <div class="header-actions">
+      <div class="header-run-info" id="headerRunInfo">Loading…</div>
+      <span id="lastUpdated"></span>
+    </div>
+  </header>
+
+  <!-- Ticker bar -->
+  <div class="ticker" id="tickerBar">
+    <div class="ticker-item">
+      <div class="ticker-label">Market Price</div>
+      <div class="ticker-val" id="tkPrice">—</div>
+      <div class="ticker-change flat" id="tkPriceChg">—</div>
+    </div>
+    <div class="ticker-item">
+      <div class="ticker-label">Prize Pool</div>
+      <div class="ticker-val amber" id="tkPrize">—</div>
+    </div>
+    <div class="ticker-item">
+      <div class="ticker-label">Commanders</div>
+      <div class="ticker-val" id="tkPlayers">—</div>
+    </div>
+    <div class="ticker-item">
+      <div class="ticker-label">Day</div>
+      <div class="ticker-val" id="tkDay">—</div>
+    </div>
+    <div class="ticker-item">
+      <div class="ticker-label">Next Day In</div>
+      <div class="ticker-val" id="tkNextDay">—</div>
+    </div>
+    <div class="ticker-item">
+      <div class="ticker-label">Total Buildings</div>
+      <div class="ticker-val" id="tkBuildings">—</div>
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <div class="main" id="mainContent">
+    <div class="state-msg" id="loadingMsg">
+      <div class="spinner"></div><br>Fetching run data…
+    </div>
+  </div>
+
+  <footer>
+    <div class="cta-row">
+      <div class="cta-text">☢️ Join the arms race</div>
+      <a class="btn-join" href="/" target="_blank">Play NUKEWAR</a>
+    </div>
+    <p>Data refreshes every 5 seconds • Server-authoritative • NUKEWAR Economy Dashboard</p>
+  </footer>
+
+<script>
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const fmt   = (n, d = 0) => Number(n).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+const fmtP  = (n) => '$' + Number(n).toFixed(4);
+const sign  = (n) => (n > 0 ? '+' : '') + Number(n).toFixed(4);
+const signPct = (n) => (n >= 0 ? '+' : '') + (n * 100).toFixed(2) + '%';
+const fmtMs = (ms) => {
+    if (ms <= 0) return 'now';
+    const s = Math.floor(ms / 1000);
+    const m = Math.floor(s / 60);
+    const h = Math.floor(m / 60);
+    if (h > 0) return `${h}h ${m % 60}m`;
+    if (m > 0) return `${m}m ${s % 60}s`;
+    return `${s}s`;
+};
+
+// ── Chart state ───────────────────────────────────────────────────────────────
+let marketChart = null;
+let buildingChart = null;
+let balanceChart = null;
+let _lastData = null;
+
+// ── Live price history (client-side rolling buffer) ───────────────────────────
+const _livePrices = []; // { t, price } — filled from polls
+
+// ── Chart defaults ────────────────────────────────────────────────────────────
+Chart.defaults.color = '#9fb0c3';
+Chart.defaults.font.family = "Consolas, 'Courier New', monospace";
+Chart.defaults.font.size = 11;
+const GRID_COLOR = 'rgba(43,52,64,0.6)';
+const BORDER_COLOR = '#2b3440';
+
+function chartDefaults() {
+    return {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 400 },
+        plugins: {
+            legend: {
+                position: 'bottom',
+                labels: { boxWidth: 10, padding: 12, color: '#9fb0c3' },
+            },
+            tooltip: {
+                backgroundColor: '#14181d',
+                borderColor: '#2b3440',
+                borderWidth: 1,
+                titleColor: '#f5f7fa',
+                bodyColor: '#9fb0c3',
+                padding: 10,
+                callbacks: {},
+            },
+        },
+        scales: {
+            x: {
+                grid: { color: GRID_COLOR },
+                ticks: { color: '#9fb0c3' },
+            },
+            y: {
+                grid: { color: GRID_COLOR },
+                ticks: { color: '#9fb0c3' },
+            },
+        },
+    };
+}
+
+// ── Build / update charts ─────────────────────────────────────────────────────
+function buildMarketChart(history, currentPrice) {
+    const ctx = document.getElementById('marketChartCanvas');
+    if (!ctx) return;
+
+    // Merge DB history snapshots + live poll buffer
+    const snapLabels = history.map((s) => `Day ${s.run_day}`);
+    const snapPrices = history.map((s) => Number(s.market_price).toFixed(4));
+
+    // Append live ticks (since last snapshot)
+    const liveLabels = _livePrices.map((p, i) => i === _livePrices.length - 1 ? 'Now' : '');
+    const livePrices = _livePrices.map((p) => p.price.toFixed(4));
+
+    const labels  = [...snapLabels, ...liveLabels];
+    const prices  = [...snapPrices, ...livePrices];
+
+    const cfg = chartDefaults();
+    cfg.plugins.tooltip.callbacks.label = (c) => ` $${c.raw}`;
+
+    if (marketChart) {
+        marketChart.data.labels = labels;
+        marketChart.data.datasets[0].data = prices;
+        marketChart.update('none');
+        return;
+    }
+
+    marketChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Token Price',
+                data: prices,
+                borderColor: '#4caf50',
+                backgroundColor: 'rgba(76,175,80,0.08)',
+                tension: 0.35,
+                fill: true,
+                pointRadius: 3,
+                pointBackgroundColor: '#4caf50',
+            }],
+        },
+        options: {
+            ...cfg,
+            scales: {
+                x: { grid: { color: GRID_COLOR }, ticks: { maxTicksLimit: 10, color: '#9fb0c3' } },
+                y: {
+                    grid: { color: GRID_COLOR }, ticks: { color: '#9fb0c3' },
+                    title: { display: true, text: 'Price ($)', color: '#9fb0c3', font: { size: 10 } },
+                },
+            },
+        },
+    });
+}
+
+function buildBuildingChart(buildingCounts) {
+    const ctx = document.getElementById('buildingChartCanvas');
+    if (!ctx) return;
+
+    const labels = ['Mine ⛏️', 'Processor 🏭', 'Storage 📦', 'Reactor ☢️', 'Silo ⚛️'];
+    const keys   = ['mine', 'processor', 'storage', 'plant', 'silo'];
+    const vals   = keys.map((k) => buildingCounts[k] || 0);
+    const colors = ['#4caf50', '#4fc3f7', '#ffb84d', '#ff6b6b', '#ce93d8'];
+
+    if (buildingChart) {
+        buildingChart.data.datasets[0].data = vals;
+        buildingChart.update('none');
+        return;
+    }
+
+    const cfg = chartDefaults();
+    delete cfg.scales;
+
+    buildingChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: { labels, datasets: [{ data: vals, backgroundColor: colors, borderColor: '#14181d', borderWidth: 2 }] },
+        options: {
+            ...cfg,
+            cutout: '62%',
+            plugins: {
+                ...cfg.plugins,
+                tooltip: {
+                    ...cfg.plugins.tooltip,
+                    callbacks: { label: (c) => ` ${c.label}: ${c.raw}` },
+                },
+            },
+        },
+    });
+}
+
+function buildBalanceChart(players) {
+    const ctx = document.getElementById('balanceChartCanvas');
+    if (!ctx) return;
+
+    const top = players.slice(0, 8);
+    const labels = top.map((p) => p.username || p.avatar || '?');
+    const vals   = top.map((p) => parseInt(p.token_balance, 10) || 0);
+    const maxVal = Math.max(...vals, 1);
+
+    if (balanceChart) {
+        balanceChart.data.labels = labels;
+        balanceChart.data.datasets[0].data = vals;
+        balanceChart.update('none');
+        return;
+    }
+
+    const cfg = chartDefaults();
+    cfg.plugins.tooltip.callbacks.label = (c) => ` ${fmt(c.raw)} tokens`;
+
+    balanceChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Token Balance',
+                data: vals,
+                backgroundColor: vals.map((v, i) => i === 0 ? '#ffb84d' : 'rgba(76,175,80,0.5)'),
+                borderColor:     vals.map((v, i) => i === 0 ? '#ffb84d' : '#4caf50'),
+                borderWidth: 1,
+                borderRadius: 3,
+            }],
+        },
+        options: {
+            ...cfg,
+            scales: {
+                x: { grid: { display: false }, ticks: { color: '#9fb0c3' } },
+                y: {
+                    grid: { color: GRID_COLOR }, ticks: { color: '#9fb0c3' },
+                    title: { display: true, text: 'Tokens', color: '#9fb0c3', font: { size: 10 } },
+                },
+            },
+        },
+    });
+}
+
+// ── Day countdown ─────────────────────────────────────────────────────────────
+function startDayCountdown(nextDayAt) {
+    clearInterval(startDayCountdown._t);
+    function tick() {
+        const el = document.getElementById('tkNextDay');
+        if (!el) return;
+        const ms = new Date(nextDayAt).getTime() - Date.now();
+        el.textContent = fmtMs(ms);
+    }
+    tick();
+    startDayCountdown._t = setInterval(tick, 1000);
+}
+
+// ── Render leaderboard ────────────────────────────────────────────────────────
+function renderLeaderboard(players, scores, buildingRules) {
+    const el = document.getElementById('playerTable');
+    if (!el) return;
+
+    // Merge building counts from scores into players
+    const scoresById = new Map((scores || []).map((s) => [String(s.player_id), s]));
+
+    const rows = players.map((p, idx) => {
+        const s = scoresById.get(String(p.id)) || {};
+        const balance = parseInt(p.token_balance, 10) || 0;
+        const income  = parseInt(p.daily_income, 10) || 0;
+        const score   = Number(p.score || s.score || 0);
+        const totalB  = (s.mine_count || 0) + (s.processor_count || 0) + (s.plant_count || 0) + (s.total_buildings || 0 - (s.mine_count || 0) - (s.processor_count || 0) - (s.plant_count || 0));
+        const tb      = Number(s.total_buildings || 0);
+        return { ...p, balance, income, score, total_buildings: tb, mine_count: s.mine_count || 0, processor_count: s.processor_count || 0, plant_count: s.plant_count || 0, idx };
+    }).sort((a, b) => b.score - a.score);
+
+    el.innerHTML = rows.map((p, i) => {
+        const rank = i + 1;
+        const rankClass = rank <= 3 ? `rank-${rank}` : 'rank-n';
+        const pct = rows[0].balance > 0 ? (p.balance / rows[0].balance) * 100 : 0;
+        return `<tr>
+            <td><span class="rank-badge ${rankClass}">${rank}</span></td>
+            <td class="avatar-cell">${p.avatar || '☢️'}</td>
+            <td class="username-cell">${escHtml(p.username || 'Unknown')}</td>
+            <td class="balance-cell">${fmt(p.balance)}<span class="bar-mini" style="width:${Math.max(4,pct*0.8)}px;"></span></td>
+            <td class="income-cell">+${fmt(p.daily_income)}/day</td>
+            <td>${p.mine_count}⛏️&nbsp;${p.processor_count}🏭&nbsp;${p.plant_count}☢️</td>
+            <td class="score-cell">${fmt(p.score)}</td>
+        </tr>`;
+    }).join('');
+}
+
+function escHtml(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Render main content ───────────────────────────────────────────────────────
+function renderContent(data) {
+    const { run, scores, history, buildingCounts, players, buildingRules } = data;
+    const main = document.getElementById('mainContent');
+
+    // First render: build the skeleton HTML
+    if (!main.querySelector('#playerTable')) {
+        const totalBuildings = Object.values(buildingCounts).reduce((s, v) => s + v, 0);
+        main.innerHTML = `
+        <!-- Building type counts -->
+        <div class="building-strip" id="buildingStrip">
+          <div class="bcount-card"><div class="bcount-icon">⛏️</div><div class="bcount-label">Mines</div><div class="bcount-val" id="bc-mine">0</div></div>
+          <div class="bcount-card"><div class="bcount-icon">🏭</div><div class="bcount-label">Processors</div><div class="bcount-val" id="bc-processor">0</div></div>
+          <div class="bcount-card"><div class="bcount-icon">📦</div><div class="bcount-label">Storage</div><div class="bcount-val" id="bc-storage">0</div></div>
+          <div class="bcount-card"><div class="bcount-icon">☢️</div><div class="bcount-label">Reactors</div><div class="bcount-val" id="bc-plant">0</div></div>
+          <div class="bcount-card"><div class="bcount-icon">⚛️</div><div class="bcount-label">Silos</div><div class="bcount-val" id="bc-silo">0</div></div>
+        </div>
+
+        <!-- Token economics -->
+        <div class="token-strip" id="tokenStrip">
+          <div class="token-card"><div class="token-label">Tokens Issued</div><div class="token-val" id="tok-issued">—</div></div>
+          <div class="token-card"><div class="token-label">Market Pool Remaining</div><div class="token-val" id="tok-pool">—</div></div>
+          <div class="token-card"><div class="token-label">Token Supply</div><div class="token-val" id="tok-supply">—</div></div>
+          <div class="token-card"><div class="token-label">Pool Depletion</div><div class="token-val" id="tok-depletion">—</div></div>
+        </div>
+
+        <!-- Charts row -->
+        <div class="charts-row">
+          <div class="card">
+            <div class="card-title">
+              Market Price History
+              <span class="badge" id="historyBadge">from day snapshots</span>
+            </div>
+            <div style="height:220px;"><canvas id="marketChartCanvas"></canvas></div>
+          </div>
+          <div class="card">
+            <div class="card-title">Building Distribution</div>
+            <div style="height:220px;"><canvas id="buildingChartCanvas"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Balance bar chart -->
+        <div class="card" style="margin-bottom:24px;">
+          <div class="card-title">Token Balances — Top Commanders</div>
+          <div style="height:180px;"><canvas id="balanceChartCanvas"></canvas></div>
+        </div>
+
+        <!-- Leaderboard table -->
+        <div class="card">
+          <div class="card-title">Commander Leaderboard</div>
+          <div style="overflow-x:auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th><th></th><th>Commander</th>
+                  <th>Balance</th><th>Daily Income</th>
+                  <th>Buildings</th><th>Score</th>
+                </tr>
+              </thead>
+              <tbody id="playerTable"></tbody>
+            </table>
+          </div>
+        </div>`;
+    }
+
+    // Update building counts
+    ['mine', 'processor', 'storage', 'plant', 'silo'].forEach((t) => {
+        const el = document.getElementById(`bc-${t}`);
+        if (el) el.textContent = buildingCounts[t] || 0;
+    });
+
+    // Token strip
+    const tokIssued     = document.getElementById('tok-issued');
+    const tokPool       = document.getElementById('tok-pool');
+    const tokSupply     = document.getElementById('tok-supply');
+    const tokDepletion  = document.getElementById('tok-depletion');
+    if (tokIssued)    tokIssued.textContent = run ? fmt(run.tokens_issued) : '—';
+    if (tokPool)      tokPool.textContent   = run ? fmt(run.market_token_pool, 0) : '—';
+    if (tokSupply)    tokSupply.textContent = run ? fmt(run.total_token_supply) : '—';
+    if (tokDepletion && run && run.market_token_pool_initial > 0) {
+        const pct = (1 - run.market_token_pool / run.market_token_pool_initial) * 100;
+        tokDepletion.textContent = pct.toFixed(1) + '%';
+    }
+
+    // Day progress
+    if (run) {
+        const dayPct = run.run_length > 0 ? Math.min(100, (run.current_day / run.run_length) * 100) : 0;
+        const fill = document.getElementById('dayProgressFill');
+        if (fill) fill.style.width = dayPct + '%';
+    }
+
+    // Charts
+    buildMarketChart(history, run?.market_price);
+    buildBuildingChart(buildingCounts);
+    buildBalanceChart(players);
+
+    // Leaderboard
+    renderLeaderboard(players, scores, buildingRules);
+}
+
+// ── Update ticker ─────────────────────────────────────────────────────────────
+function updateTicker(data) {
+    const { run, players, buildingCounts } = data;
+    if (!run) return;
+
+    const priceEl   = document.getElementById('tkPrice');
+    const priceChg  = document.getElementById('tkPriceChg');
+    const prizeEl   = document.getElementById('tkPrize');
+    const playersEl = document.getElementById('tkPlayers');
+    const dayEl     = document.getElementById('tkDay');
+    const buildEl   = document.getElementById('tkBuildings');
+
+    const price     = Number(run.market_price).toFixed(4);
+    const prevPrice = Number(run.market_prev_price) || Number(run.market_price);
+    const chgAbs    = run.market_price - prevPrice;
+    const chgPct    = prevPrice > 0 ? chgAbs / prevPrice : 0;
+
+    if (priceEl) { priceEl.textContent = '$' + price; priceEl.className = 'ticker-val ' + (chgAbs >= 0 ? 'green' : 'red'); }
+    if (priceChg) {
+        priceChg.textContent = sign(chgAbs) + ' (' + signPct(chgPct) + ')';
+        priceChg.className = 'ticker-change ' + (chgAbs > 0 ? 'up' : chgAbs < 0 ? 'down' : 'flat');
+    }
+    if (prizeEl)   prizeEl.textContent   = fmt(run.prize_pool) + ' tokens';
+    if (playersEl) playersEl.textContent = (players?.length || 0) + ' active';
+    if (dayEl)     dayEl.textContent     = `${run.current_day} / ${run.run_length}`;
+
+    const totalB = Object.values(buildingCounts).reduce((s, v) => s + v, 0);
+    if (buildEl) buildEl.textContent = fmt(totalB);
+
+    const headerInfo = document.getElementById('headerRunInfo');
+    if (headerInfo) headerInfo.textContent = `Run #${run.run_number} · Day ${run.current_day}/${run.run_length}`;
+
+    startDayCountdown(run.next_day_at);
+
+    // Push into live price buffer
+    _livePrices.push({ t: Date.now(), price: run.market_price });
+    if (_livePrices.length > 60) _livePrices.shift();
+}
+
+// ── Fetch + update loop ───────────────────────────────────────────────────────
+let _errorCount = 0;
+
+async function fetchAndUpdate() {
+    try {
+        const resp = await fetch('/economy/api/data');
+        if (!resp.ok) throw new Error(resp.status);
+        const data = await resp.json();
+        _lastData = data;
+        _errorCount = 0;
+
+        const loading = document.getElementById('loadingMsg');
+        if (loading) loading.remove();
+
+        if (!data.run) {
+            document.getElementById('mainContent').innerHTML = '<div class="state-msg">No active run. A new run will start shortly…</div>';
+            document.getElementById('liveIndicator').textContent = 'WAITING';
+            return;
+        }
+
+        updateTicker(data);
+        renderContent(data);
+
+        const tsEl = document.getElementById('lastUpdated');
+        if (tsEl) tsEl.textContent = 'Updated ' + new Date().toLocaleTimeString();
+    } catch (err) {
+        _errorCount++;
+        const ind = document.getElementById('liveIndicator');
+        if (ind && _errorCount > 2) { ind.textContent = 'OFFLINE'; ind.style.color = 'var(--red)'; }
+    }
+}
+
+fetchAndUpdate();
+setInterval(fetchAndUpdate, 5000);
+</script>
+</body>
+</html>

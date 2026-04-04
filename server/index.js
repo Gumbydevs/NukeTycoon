@@ -6,7 +6,7 @@ const cors       = require('cors');
 const fs         = require('fs');
 const path       = require('path');
 const db         = require('./db');
-const { setupGameLoop, getActiveRun, createNewRun, setNextRunLength, getNextRunLength, BUILDING_RULES, setBuildingRules, saveBuildingRulesToDB, loadBuildingRulesFromDB } = require('./gameLoop');
+const { setupGameLoop, getActiveRun, createNewRun, setNextRunLength, getNextRunLength, BUILDING_RULES, setBuildingRules, saveBuildingRulesToDB, loadBuildingRulesFromDB, calculateScores } = require('./gameLoop');
 const { registerHandlers } = require('./socket/handlers');
 
 let dbReady = false;
@@ -164,6 +164,87 @@ app.get('/status', async (_req, res) => {
 
 app.get('/admin', (_req, res) => {
     res.sendFile(path.join(__dirname, 'admin.html'));
+});
+
+// ── Economy dashboard (public) ────────────────────────────────────────────────
+app.get('/economy', (_req, res) => {
+    res.sendFile(path.join(__dirname, 'economy.html'));
+});
+
+// Economy data API — public, read-only, used by the web dashboard and in-game portal
+app.get('/economy/api/data', async (_req, res) => {
+    try {
+        const run = await getActiveRun();
+        if (!run) {
+            res.json({ run: null, scores: [], history: [], buildingCounts: {}, players: [], buildingRules: BUILDING_RULES, serverTime: new Date().toISOString() });
+            return;
+        }
+
+        const [scores, historyResult, buildingsResult, playersResult] = await Promise.all([
+            calculateScores(run.id),
+            db.query(
+                'SELECT * FROM economy_snapshots WHERE run_id = $1 ORDER BY run_day ASC',
+                [run.id]
+            ),
+            db.query(
+                'SELECT type, COUNT(*)::int AS count FROM buildings WHERE run_id = $1 AND is_active = TRUE GROUP BY type',
+                [run.id]
+            ),
+            db.query(
+                `SELECT p.id, p.username, p.avatar, p.token_balance,
+                        COALESCE(rps.score, 0) AS score,
+                        COALESCE(rps.uranium_raw, 0) AS uranium_raw,
+                        COALESCE(rps.uranium_refined, 0) AS uranium_refined,
+                        COALESCE(rps.last_income, 0) AS last_income,
+                        COALESCE(rps.daily_income, 0) AS daily_income,
+                        COALESCE(rps.daily_produced, 0) AS daily_produced
+                 FROM run_players rp
+                 JOIN players p ON p.id = rp.player_id
+                 LEFT JOIN run_player_state rps
+                        ON rps.run_id = rp.run_id AND rps.player_id = rp.player_id
+                 WHERE rp.run_id = $1
+                 ORDER BY COALESCE(rps.score, 0) DESC`,
+                [run.id]
+            ),
+        ]);
+
+        const buildingCounts = {};
+        buildingsResult.rows.forEach((r) => { buildingCounts[r.type] = r.count; });
+
+        res.json({
+            run: {
+                id: run.id,
+                run_number: run.run_number,
+                current_day: run.current_day,
+                run_length: run.run_length,
+                market_price: run.market_price,
+                market_prev_price: run.market_prev_price,
+                prize_pool: run.prize_pool,
+                next_day_at: run.next_day_at,
+                status: run.status,
+                tokens_issued: run.tokens_issued,
+                market_token_pool: run.market_token_pool,
+                market_token_pool_initial: run.market_token_pool_initial,
+                total_token_supply: run.total_token_supply,
+            },
+            scores,
+            history: historyResult.rows,
+            buildingCounts,
+            players: playersResult.rows.map((p) => ({
+                ...p,
+                token_balance: parseInt(p.token_balance, 10) || 0,
+                score: Number(p.score || 0),
+                last_income: parseInt(p.last_income, 10) || 0,
+                daily_income: parseInt(p.daily_income, 10) || 0,
+                uranium_raw: Number(p.uranium_raw || 0),
+                uranium_refined: Number(p.uranium_refined || 0),
+            })),
+            buildingRules: BUILDING_RULES,
+            serverTime: new Date().toISOString(),
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 app.get('/admin/api/status', requireAdmin, async (_req, res) => {

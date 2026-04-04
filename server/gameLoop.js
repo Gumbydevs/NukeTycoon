@@ -739,8 +739,89 @@ async function endRun(io, run) {
     }, 8000);
 }
 
+async function saveEconomySnapshot(runId, runDay) {
+    try {
+        const [runResult, playersResult, buildingsResult] = await Promise.all([
+            db.query('SELECT * FROM runs WHERE id = $1 LIMIT 1', [runId]),
+            db.query(
+                `SELECT p.id, p.username, p.token_balance,
+                        COALESCE(rps.score, 0) AS score,
+                        COALESCE(rps.daily_income, 0) AS daily_income,
+                        COALESCE(rps.daily_produced, 0) AS daily_produced
+                 FROM run_players rp
+                 JOIN players p ON p.id = rp.player_id
+                 LEFT JOIN run_player_state rps
+                        ON rps.run_id = rp.run_id AND rps.player_id = rp.player_id
+                 WHERE rp.run_id = $1`,
+                [runId]
+            ),
+            db.query(
+                `SELECT type, COUNT(*) AS count
+                 FROM buildings WHERE run_id = $1 AND is_active = TRUE
+                 GROUP BY type`,
+                [runId]
+            ),
+        ]);
+
+        const run = parseRunRow(runResult.rows[0]);
+        if (!run) return;
+
+        const playerSnapshots = playersResult.rows.map((p) => ({
+            player_id: p.id,
+            username: p.username,
+            token_balance: parseInt(p.token_balance, 10) || 0,
+            score: Number(p.score || 0),
+            daily_income: parseInt(p.daily_income, 10) || 0,
+            daily_produced: Number(p.daily_produced || 0),
+        }));
+
+        const buildingCounts = {};
+        let totalBuildings = 0;
+        buildingsResult.rows.forEach((row) => {
+            buildingCounts[row.type] = parseInt(row.count, 10);
+            totalBuildings += parseInt(row.count, 10);
+        });
+
+        await db.query(
+            `INSERT INTO economy_snapshots
+                (run_id, run_day, market_price, market_prev_price, prize_pool,
+                 total_players, total_buildings, tokens_issued, market_token_pool,
+                 building_counts, player_snapshots)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+             ON CONFLICT (run_id, run_day) DO UPDATE
+             SET market_price      = EXCLUDED.market_price,
+                 market_prev_price = EXCLUDED.market_prev_price,
+                 prize_pool        = EXCLUDED.prize_pool,
+                 total_players     = EXCLUDED.total_players,
+                 total_buildings   = EXCLUDED.total_buildings,
+                 tokens_issued     = EXCLUDED.tokens_issued,
+                 market_token_pool = EXCLUDED.market_token_pool,
+                 building_counts   = EXCLUDED.building_counts,
+                 player_snapshots  = EXCLUDED.player_snapshots,
+                 snapshot_at       = NOW()`,
+            [
+                runId, runDay,
+                run.market_price, run.market_prev_price,
+                run.prize_pool,
+                playersResult.rows.length,
+                totalBuildings,
+                run.tokens_issued,
+                run.market_token_pool,
+                JSON.stringify(buildingCounts),
+                JSON.stringify(playerSnapshots),
+            ]
+        );
+        console.log(`[economy] Snapshot saved for run day ${runDay}`);
+    } catch (err) {
+        console.warn('[economy] Failed to save snapshot:', err.message);
+    }
+}
+
 async function advanceDay(io, run) {
     const newDay = run.current_day + 1;
+
+    // Save snapshot before daily stats reset
+    await saveEconomySnapshot(run.id, run.current_day);
 
     if (newDay > run.run_length) {
         await endRun(io, run);
@@ -834,6 +915,7 @@ module.exports = {
     ensureRunPlayerState,
     getRunSnapshot,
     emitRunSnapshot,
+    saveEconomySnapshot,
     BUILDING_RULES,
     BUILD_SLOTS,
     setBuildingRules,

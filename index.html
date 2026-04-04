@@ -113,6 +113,7 @@
             <button class="btn notif-bell" id="notifBellBtn" title="Notifications" aria-label="Notifications">
                 🔔<span class="notif-badge" id="notifBadge" style="display:none;">0</span>
             </button>
+            <button class="btn" id="economyBtn" title="Economy Tracker" aria-label="Economy Tracker" style="font-size:14px; padding:4px 7px;">📊</button>
             <button class="btn" id="soundToggleBtn" title="Toggle sound" aria-label="Toggle sound" style="font-size:14px; padding:4px 7px;">🔊</button>
             <div class="actions-menu">
                 <button class="btn menu-toggle" id="actionsMenuBtn" aria-haspopup="true" aria-expanded="false" title="Actions">☰</button>
@@ -406,8 +407,183 @@
         💬
     </button>
 
+    <!-- Economy Tracker Modal -->
+    <div id="economyModal" class="econ-modal" role="dialog" aria-modal="true" aria-hidden="true" style="display:none;">
+        <div class="econ-panel">
+            <div class="econ-header">
+                <div class="econ-title">📊 Economy Tracker</div>
+                <div class="econ-header-right">
+                    <a id="econFullDashBtn" href="/economy" target="_blank" class="btn" title="Open full dashboard" style="font-size:11px; padding:3px 8px;">Full Dashboard ↗</a>
+                    <button class="btn econ-close-btn" id="econCloseBtn" aria-label="Close economy tracker">✕</button>
+                </div>
+            </div>
+            <nav class="econ-tabs" id="econTabs" role="tablist">
+                <button class="econ-tab active" data-tab="mine" role="tab">My Economy</button>
+                <button class="econ-tab" data-tab="market" role="tab">Market</button>
+                <button class="econ-tab" data-tab="commanders" role="tab">Commanders</button>
+            </nav>
+
+            <!-- My Economy tab -->
+            <div class="econ-tab-content active" id="econTab-mine">
+                <div class="econ-grid2">
+                    <!-- Income breakdown card -->
+                    <div class="econ-card">
+                        <div class="econ-card-title">Income Breakdown</div>
+                        <div class="econ-stat-row">
+                            <span class="econ-stat-label">Gross Income / tick</span>
+                            <span class="econ-stat-val" id="ec-gross">0</span>
+                        </div>
+                        <div class="econ-stat-row">
+                            <span class="econ-stat-label">Maintenance / tick</span>
+                            <span class="econ-stat-val red" id="ec-maint">0</span>
+                        </div>
+                        <div class="econ-stat-row econ-divider">
+                            <span class="econ-stat-label">Net / tick</span>
+                            <span class="econ-stat-val green" id="ec-net">0</span>
+                        </div>
+                        <div class="econ-stat-row">
+                            <span class="econ-stat-label">Daily Income (so far)</span>
+                            <span class="econ-stat-val amber" id="ec-daily">0</span>
+                        </div>
+                        <div class="econ-stat-row">
+                            <span class="econ-stat-label">Wallet Balance</span>
+                            <span class="econ-stat-val" id="ec-wallet">0</span>
+                        </div>
+                    </div>
+
+                    <!-- Uranium chain card -->
+                    <div class="econ-card">
+                        <div class="econ-card-title">Uranium Chain</div>
+                        <div class="econ-chain">
+                            <div class="econ-chain-step">
+                                <div class="econ-chain-icon">⛏️</div>
+                                <div class="econ-chain-label">Raw</div>
+                                <div class="econ-chain-val" id="ec-raw">0.00</div>
+                            </div>
+                            <div class="econ-chain-arrow">→</div>
+                            <div class="econ-chain-step">
+                                <div class="econ-chain-icon">🏭</div>
+                                <div class="econ-chain-label">Refined</div>
+                                <div class="econ-chain-val" id="ec-refined">0.00</div>
+                            </div>
+                            <div class="econ-chain-arrow">→</div>
+                            <div class="econ-chain-step">
+                                <div class="econ-chain-icon">☢️</div>
+                                <div class="econ-chain-label">Stored</div>
+                                <div class="econ-chain-val" id="ec-stored">0/0</div>
+                            </div>
+                        </div>
+                        <div class="econ-stat-row" style="margin-top:10px;">
+                            <span class="econ-stat-label">Daily Produced</span>
+                            <span class="econ-stat-val" id="ec-dprod">0.00</span>
+                        </div>
+                        <div class="econ-stat-row">
+                            <span class="econ-stat-label">Score</span>
+                            <span class="econ-stat-val amber" id="ec-score">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Buildings breakdown -->
+                <div class="econ-card" style="margin-top:12px;">
+                    <div class="econ-card-title">My Buildings</div>
+                    <div id="ec-buildings-list" class="econ-bldg-list"></div>
+                </div>
+
+                <!-- Building rules reference -->
+                <div class="econ-card" style="margin-top:12px;">
+                    <div class="econ-card-title">Build Costs Reference</div>
+                    <div style="overflow-x:auto;">
+                        <table class="econ-table" id="ec-rules-table">
+                            <thead><tr><th>Building</th><th>Cost</th><th>Build Time</th><th>Maintenance/tick</th></tr></thead>
+                            <tbody id="ec-rules-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Market tab -->
+            <div class="econ-tab-content" id="econTab-market" style="display:none;">
+                <div class="econ-grid2">
+                    <div class="econ-card">
+                        <div class="econ-card-title">Current Price</div>
+                        <div class="econ-price-display">
+                            <span id="em-price">$1.0000</span>
+                            <span class="econ-price-chg" id="em-priceChg">—</span>
+                        </div>
+                        <div class="econ-stat-row" style="margin-top:12px;">
+                            <span class="econ-stat-label">Prize Pool</span>
+                            <span class="econ-stat-val amber" id="em-prize">0</span>
+                        </div>
+                        <div class="econ-stat-row">
+                            <span class="econ-stat-label">Tokens Issued</span>
+                            <span class="econ-stat-val" id="em-issued">0</span>
+                        </div>
+                        <div class="econ-stat-row">
+                            <span class="econ-stat-label">Market Pool</span>
+                            <span class="econ-stat-val" id="em-pool">0</span>
+                        </div>
+                        <div class="econ-stat-row">
+                            <span class="econ-stat-label">Circulating (est.)</span>
+                            <span class="econ-stat-val" id="em-circulating">0</span>
+                        </div>
+                    </div>
+                    <div class="econ-card">
+                        <div class="econ-card-title">Run Progress</div>
+                        <div class="econ-stat-row">
+                            <span class="econ-stat-label">Day</span>
+                            <span class="econ-stat-val amber" id="em-day">1 / 3</span>
+                        </div>
+                        <div class="econ-progress-wrap" style="margin-top:8px;">
+                            <div class="econ-progress-bg"><div class="econ-progress-fill" id="em-dayFill" style="width:33%;"></div></div>
+                            <div class="econ-progress-label"><span id="em-nextDay">Next day in —</span></div>
+                        </div>
+                        <div class="econ-stat-row" style="margin-top:12px;">
+                            <span class="econ-stat-label">Run Number</span>
+                            <span class="econ-stat-val" id="em-runNum">#1</span>
+                        </div>
+                        <div class="econ-stat-row">
+                            <span class="econ-stat-label">Active Players</span>
+                            <span class="econ-stat-val" id="em-players">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Market chart -->
+                <div class="econ-card" style="margin-top:12px;">
+                    <div class="econ-card-title">Token Price — Live (last 2 min)</div>
+                    <div style="height:180px; position:relative;">
+                        <canvas id="ec-marketCanvas"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Commanders tab -->
+            <div class="econ-tab-content" id="econTab-commanders" style="display:none;">
+                <!-- Balance bar chart -->
+                <div class="econ-card" style="margin-bottom:12px;">
+                    <div class="econ-card-title">Token Balances</div>
+                    <div style="height:140px; position:relative;">
+                        <canvas id="ec-balanceCanvas"></canvas>
+                    </div>
+                </div>
+
+                <div class="econ-card">
+                    <div class="econ-card-title">Leaderboard</div>
+                    <div style="overflow-x:auto;">
+                        <table class="econ-table">
+                            <thead><tr><th>#</th><th></th><th>Commander</th><th>Balance</th><th>Income/day</th><th>Buildings</th><th>Score</th></tr></thead>
+                            <tbody id="ec-leaderboard-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Socket.io client — must load before game.js -->
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
     <script src="chat-gifs.js?v=1"></script>
     <script src="sounds.js?v=20260403a"></script>
     <script src="game.js?v=20260403p"></script>
