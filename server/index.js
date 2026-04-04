@@ -30,7 +30,7 @@ async function runMigration() {
         }
 
         client = await db.connect();
-        const sql = stripSqlComments(fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
+        const sql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
         // Execute entire schema in one query to preserve dollar-quoted function bodies
         await client.query(sql);
 
