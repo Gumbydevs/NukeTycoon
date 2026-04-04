@@ -22,13 +22,17 @@
     .kbd{background:#071018;padding:6px 8px;border-radius:6px;border:1px solid #21323a;color:#9fb0c3}
     .audit-row{border-bottom:1px solid #182025;padding:8px 6px}
     .audit-row time{color:#7f98a8;font-size:12px}
+    .btn-primary{background:#1b8f4a;border-color:#14683a;color:#eafff0}
+    .btn-warning{background:#ff9f43;border-color:#d67a1a;color:#14110b}
+    .btn-danger{background:#ff5c7a;border-color:#c7425f;color:#14110b}
+    .btn-ghost{background:transparent;border:1px solid #24313b;color:#9fb0c3}
   </style>
 </head>
 <body>
   <div class="wrap">
     <h1>☢️ Balance Tool</h1>
     <p class="muted">Dedicated balance page. Requires an admin key.</p>
-    <p class="muted">Make sure to <kbd>Create a snapshot</kbd> before making changes.</p>
+    <p class="muted">Make sure to <kbd>create a snapshot</kbd> before making changes.</p>
 
     <div class="card">
       <div style="display:flex;gap:8px;align-items:center">
@@ -39,8 +43,55 @@
       </div>
       <div id="msg" class="muted" style="margin-top:8px"></div>
     </div>
+    
+    <!-- Top control buttons for quick access -->
+    <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+      <button id="topSaveBtn" class="btn-primary small">Save Changes</button>
+      <button id="topViewAuditBtn" class="btn-ghost small">View History</button>
+      <button id="topResetBtn" class="btn-warning small">Reload</button>
+    </div>
+    
+    <div class="card">
+      <div class="two-col" style="grid-template-columns:1fr;gap:0">
+        <!-- Placeholders to keep layout consistent -->
+      </div>
+    </div>
+
+    <!-- Snapshots & Benchmarks placed directly under Admin Key per request -->
+    <div class="two-col" style="margin-bottom:12px;grid-template-columns:1fr 380px;gap:12px">
+      <div>
+        <div class="card">
+          <h4>Snapshots</h4>
+          <div class="row" style="gap:8px;align-items:center;margin-bottom:8px;">
+            <input id="snapshotName" placeholder="Snapshot name (optional)" class="small" style="flex:1" />
+            <button id="saveSnapshotBtn" class="small">Save Snapshot</button>
+          </div>
+          <div style="max-height:160px;overflow:auto;border:1px solid #162028;padding:6px;border-radius:6px;background:#071018;margin-bottom:8px;" id="snapshotListWrap">No snapshots</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <h4>Run Benchmarks</h4>
+          <div class="row" style="align-items:center;gap:10px;margin-bottom:8px;">
+            <button id="loadBenchmarksBtn" class="small">Load Benchmarks</button>
+            <div class="muted" id="benchMsg">Loaded: —</div>
+          </div>
+          <pre id="benchmarksPre" style="white-space:pre-wrap;max-height:320px;overflow:auto;background:#071018;padding:10px;border-radius:6px;border:1px solid #162028;margin:0;">No data</pre>
+        </div>
+
+        <div id="auditWrap" style="display:none;margin-top:12px;">
+          <div class="card">
+            <h4>Config Audit</h4>
+            <div id="auditList" style="max-height:420px;overflow:auto;padding:6px;background:#071018;border-radius:6px;border:1px solid #162028;"></div>
+            <div style="margin-top:8px"><button id="closeAuditBtn" class="small">Close</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <div class="card two-col" id="controlsWrap">
+      <div>
       <div>
         <h3>Game Settings</h3>
         <div class="row section">
@@ -148,34 +199,6 @@
           <button id="saveBtn">Save Changes</button>
           <button id="viewAuditBtn">View History</button>
           <button id="resetBtn">Reload</button>
-        </div>
-      </div>
-
-      <div>
-        <div class="card">
-          <h4>Snapshots</h4>
-          <div class="row" style="gap:8px;align-items:center;margin-bottom:8px;">
-            <input id="snapshotName" placeholder="Snapshot name (optional)" class="small" style="flex:1" />
-            <button id="saveSnapshotBtn" class="small">Save Snapshot</button>
-          </div>
-          <div style="max-height:160px;overflow:auto;border:1px solid #162028;padding:6px;border-radius:6px;background:#071018;margin-bottom:8px;" id="snapshotListWrap">No snapshots</div>
-        </div>
-
-        <div class="card">
-          <h4>Run Benchmarks</h4>
-          <div class="row" style="align-items:center;gap:10px;margin-bottom:8px;">
-            <button id="loadBenchmarksBtn" class="small">Load Benchmarks</button>
-            <div class="muted" id="benchMsg">Loaded: —</div>
-          </div>
-          <pre id="benchmarksPre" style="white-space:pre-wrap;max-height:320px;overflow:auto;background:#071018;padding:10px;border-radius:6px;border:1px solid #162028;margin:0;">No data</pre>
-        </div>
-
-        <div id="auditWrap" style="display:none;margin-top:12px;">
-          <div class="card">
-            <h4>Config Audit</h4>
-            <div id="auditList" style="max-height:420px;overflow:auto;padding:6px;background:#071018;border-radius:6px;border:1px solid #162028;"></div>
-            <div style="margin-top:8px"><button id="closeAuditBtn" class="small">Close</button></div>
-          </div>
         </div>
       </div>
 
@@ -408,6 +431,11 @@
     });
 
     $('closeAuditBtn').addEventListener('click', () => { $('auditWrap').style.display = 'none'; });
+
+    // Top buttons forward to the main handlers so bindings stay single-source
+    $('topSaveBtn').addEventListener('click', () => $('saveBtn').click());
+    $('topViewAuditBtn').addEventListener('click', () => $('viewAuditBtn').click());
+    $('topResetBtn').addEventListener('click', () => $('resetBtn').click());
 
     // Auto-load
     loadAll();
