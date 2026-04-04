@@ -343,8 +343,12 @@ function connectSocket() {
                 // Optimistic build was waiting — apply server timing now
                 applyServerBuildingTiming(_existingBld, building);
                 _existingBld._pendingServerConfirm = false;
+                if (building.type === 'storage') game.maxStorage += 1000;
                 renderBuilding(_existingBld.id, _existingBld.type, true, _existingBld);
                 scheduleConstructionTimers(_existingBld, true);
+                calculateProximity();
+                addNotification('success', `🛠️ ${displayNames[building.type] || building.type} construction started.`);
+                updateUI();
             } else if (!_existingBld) {
                 console.log('[building:placed] raw server row keys:', Object.keys(building), 'construction_ends_at:', building.construction_ends_at, 'placed_at:', building.placed_at);
                 const bObj = applyServerBuildingTiming({
@@ -387,6 +391,10 @@ function connectSocket() {
 
     socket.on('building:place_error', ({ message }) => {
         addNotification('danger', `❌ ${message}`);
+        // Remove any optimistic pending entries and restore those cells to empty
+        const pendingIds = game.buildings.filter(b => b._pendingServerConfirm).map(b => b.id);
+        game.buildings = game.buildings.filter(b => !b._pendingServerConfirm);
+        pendingIds.forEach(cid => restoreEmptyCell(cid));
         if (/occupied/i.test(message) && socket?.connected && _authJWT) {
             socket.emit('run:join', { jwt: _authJWT });
         }
@@ -1875,8 +1883,27 @@ function placeOrSelect(id) {
         // For building placement, check that cell is empty
         if (cell.innerHTML && cell.innerHTML !== '') return; // Already occupied
         if (socket?.connected && _authJWT) {
+            // Optimistic local render — show Workers En Route immediately while server confirms
+            const _type = game.selectedMode;
+            if (!game.buildings.find(b => b.id === id)) {
+                const _optimistic = {
+                    id,
+                    type: _type,
+                    owner: game.playerName || 'You',
+                    ownerId: getLocalPlayerId() || 'local',
+                    ownerAvatar: game.playerAvatar || DEFAULT_PLAYER_AVATAR,
+                    constructionTimeRemaining: buildingTypes[_type]?.constructionTime || 0,
+                    constructionTimeRemainingMs: (buildingTypes[_type]?.constructionTime || 0) * 10000,
+                    constructionTotalMs: (buildingTypes[_type]?.constructionTime || 0) * 10000,
+                    constructionEndsAtMs: null,    // filled in by building:placed confirmation
+                    _pendingServerConfirm: true,   // show Workers En Route until server responds
+                    isUnderConstruction: true,
+                };
+                game.buildings.push(_optimistic);
+                renderBuilding(id, _type, true, _optimistic);
+            }
             // Server validates, deducts wallet, and broadcasts building:placed back to all players
-            socket.emit('building:place', { jwt: _authJWT, cellId: id, type: game.selectedMode });
+            socket.emit('building:place', { jwt: _authJWT, cellId: id, type: _type });
         } else {
             buildBuilding(id, game.selectedMode);
         }
