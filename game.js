@@ -48,53 +48,6 @@ function getLocalPlayerId() {
 }
 
 function connectSocket() {
-        // ── Building demolish/cancel events ───────────────────────────────
-        socket.on('building:demolished', ({ cellId, playerId, refund }) => {
-            // Only update if this is our building
-            if (playerId !== getLocalPlayerId()) return;
-            // Remove from grid and game state
-            const idx = game.buildings.findIndex(b => b.id == cellId && !b._queued);
-            if (idx !== -1) {
-                const building = game.buildings[idx];
-                game.buildings.splice(idx, 1);
-                restoreEmptyCell(cellId);
-                if (refund > 0) {
-                    addNotification('info', `💸 Sold ${displayNames[building.type] || building.type} for ${refund.toLocaleString()} tokens.`);
-                } else {
-                    addNotification('info', `🗑️ Demolished ${displayNames[building.type] || building.type}.`);
-                }
-                updateUI && updateUI();
-            }
-        });
-
-        socket.on('building:queue_cancelled', ({ cellId, playerId, refund }) => {
-            if (playerId !== getLocalPlayerId()) return;
-            // Remove from build queue
-            const qIdx = (game._buildQueue || []).findIndex(q => q.cellId == cellId);
-            if (qIdx !== -1) {
-                const q = game._buildQueue[qIdx];
-                game._buildQueue.splice(qIdx, 1);
-                // Remove ghost from buildings
-                const ghostIdx = game.buildings.findIndex(b => b.id == cellId && b._queued);
-                if (ghostIdx !== -1) {
-                    game.buildings.splice(ghostIdx, 1);
-                    restoreEmptyCell(cellId);
-                }
-                if (refund > 0) {
-                    addNotification('info', `⏪ Canceled queued ${displayNames[q.type] || q.type}, refunded ${refund.toLocaleString()} tokens.`);
-                } else {
-                    addNotification('info', `⏪ Canceled queued ${displayNames[q.type] || q.type}.`);
-                }
-                // Re-render queue positions
-                let _pos = 1;
-                (game._buildQueue || []).forEach(q => {
-                    const _g = game.buildings.find(b => b.id === q.cellId && b._queued);
-                    if (_g) { _g._queuePosition = _pos; renderQueuedGhost(q.cellId, q.type, _pos); }
-                    _pos++;
-                });
-                updateUI && updateUI();
-            }
-        });
     socket = io(SERVER_URL, {
         transports: ['websocket', 'polling'],
         rememberUpgrade: true,
@@ -114,6 +67,54 @@ function connectSocket() {
         if (saved) {
             game._isReconnecting = true;
             socket.emit('auth:reconnect', { jwt: saved });
+        }
+    });
+
+    // ── Building demolish/cancel events ───────────────────────────────
+    socket.on('building:demolished', ({ cellId, playerId, refund }) => {
+        // Only update if this is our building
+        if (playerId !== getLocalPlayerId()) return;
+        // Remove from grid and game state
+        const idx = game.buildings.findIndex(b => b.id == cellId && !b._queued);
+        if (idx !== -1) {
+            const building = game.buildings[idx];
+            game.buildings.splice(idx, 1);
+            restoreEmptyCell(cellId);
+            if (refund > 0) {
+                addNotification('info', `💸 Sold ${displayNames[building.type] || building.type} for ${refund.toLocaleString()} tokens.`);
+            } else {
+                addNotification('info', `🗑️ Demolished ${displayNames[building.type] || building.type}.`);
+            }
+            updateUI && updateUI();
+        }
+    });
+
+    socket.on('building:queue_cancelled', ({ cellId, playerId, refund }) => {
+        if (playerId !== getLocalPlayerId()) return;
+        // Remove from build queue
+        const qIdx = (game._buildQueue || []).findIndex(q => q.cellId == cellId);
+        if (qIdx !== -1) {
+            const q = game._buildQueue[qIdx];
+            game._buildQueue.splice(qIdx, 1);
+            // Remove ghost from buildings
+            const ghostIdx = game.buildings.findIndex(b => b.id == cellId && b._queued);
+            if (ghostIdx !== -1) {
+                game.buildings.splice(ghostIdx, 1);
+                restoreEmptyCell(cellId);
+            }
+            if (refund > 0) {
+                addNotification('info', `⏪ Canceled queued ${displayNames[q.type] || q.type}, refunded ${refund.toLocaleString()} tokens.`);
+            } else {
+                addNotification('info', `⏪ Canceled queued ${displayNames[q.type] || q.type}.`);
+            }
+            // Re-render queue positions
+            let _pos = 1;
+            (game._buildQueue || []).forEach(q => {
+                const _g = game.buildings.find(b => b.id === q.cellId && b._queued);
+                if (_g) { _g._queuePosition = _pos; renderQueuedGhost(q.cellId, q.type, _pos); }
+                _pos++;
+            });
+            updateUI && updateUI();
         }
     });
 
