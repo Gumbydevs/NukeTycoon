@@ -5307,8 +5307,8 @@ function refreshEconomyModal({ playerState, run, scores }) {
     const completedBuildings  = (game.buildings || []).filter(b => !b.isUnderConstruction && !b._queued);
     const rules = window._gameBuildingRules || {};
     const totalMaint = completedBuildings.reduce((sum, b) => sum + (rules[b.type]?.maintenanceCost || 0), 0);
-    const gross  = (parseInt(playerState?.last_income,  10) || 0) + totalMaint;
-    const net    = parseInt(playerState?.last_income, 10) || 0;
+    const gross  = parseInt(playerState?.last_income,  10) || 0;
+    const net    = gross - totalMaint;
     const daily  = parseInt(playerState?.daily_income, 10) || 0;
     const wallet = game.playerWallet || 0;
     const raw    = parseFloat(playerState?.uranium_raw    || 0);
