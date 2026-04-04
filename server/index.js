@@ -371,6 +371,13 @@ app.post('/admin/api/reset-buildings', requireAdmin, async (_req, res) => {
             [run.id]
         );
 
+        // Also clear any queued builds for this run so ghosts don't persist
+        try {
+            await db.query('DELETE FROM build_queue WHERE run_id = $1', [run.id]);
+        } catch (e) {
+            console.warn('admin:reset-buildings failed to clear build_queue:', e && e.message);
+        }
+
         io.to(`run:${run.id}`).emit('admin:buildings_reset', {
             runId: run.id,
             cellIds: result.rows.map((row) => row.cell_id),

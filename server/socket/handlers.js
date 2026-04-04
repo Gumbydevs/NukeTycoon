@@ -446,7 +446,15 @@ function registerHandlers(io, socket) {
                 'SELECT id, type, payload, created_at, read FROM notifications WHERE (LOWER(email) = LOWER($1) OR player_id = $2) ORDER BY created_at ASC',
                 [normalizedEmail, player.id]
             );
-            const queueRes = await db.query('SELECT cell_id, type, queued_at, player_id FROM build_queue WHERE run_id = $1 ORDER BY queued_at ASC', [run.id]);
+            // Only return queued entries that do NOT have an active building at the same cell.
+            const queueRes = await db.query(
+                `SELECT q.cell_id, q.type, q.queued_at, q.player_id
+                 FROM build_queue q
+                 LEFT JOIN buildings b ON b.run_id = q.run_id AND b.cell_id = q.cell_id AND b.is_active = TRUE
+                 WHERE q.run_id = $1 AND b.id IS NULL
+                 ORDER BY q.queued_at ASC`,
+                [run.id]
+            );
 
             // Normalize DB rows to client-friendly keys (camelCase) so historical
             // chat messages match the live `chat:message` payload shape.
@@ -684,6 +692,14 @@ function registerHandlers(io, socket) {
                     ownerName: player.username,
                     placedBy: player.id,
                 });
+
+                // If there was a queued entry for this cell, remove it now so clients
+                // don't render a ghost for a cell that the server considers built.
+                try {
+                    await db.query('DELETE FROM build_queue WHERE run_id = $1 AND cell_id = $2', [run.id, cellId]);
+                } catch (e) {
+                    console.warn('Failed to cleanup build_queue after placement:', e && e.message);
+                }
 
                 // Send authoritative wallet balance back to the placing player only
                 socket.emit('player:wallet_update', { token_balance: newWallet });
