@@ -1306,6 +1306,8 @@ function applyServerScores(scores) {
         player.isBot = false;
         if (Number.isFinite(Number(s.token_balance))) player.wallet = parseInt(s.token_balance, 10);
         if (Number.isFinite(Number(s.score))) player.score = Number(s.score);
+        if (s.avatar) player.avatar = s.avatar;
+        if (s.avatar_photo !== undefined) player.photo = s.avatar_photo;
         // copy counts if server provided them
         if (Number.isFinite(Number(s.total_buildings))) player.total_buildings = parseInt(s.total_buildings, 10);
         if (Number.isFinite(Number(s.plant_count))) player.plant_count = parseInt(s.plant_count, 10);
@@ -4579,7 +4581,7 @@ function onCellHover(id, e) {
         const mc = buildingTypes[type]?.maintenanceCost || 0;
         content = `<div style="font-weight:700;">${icon}Place: ${label}</div>` +
             `<div>💰 Cost: ${(buildingTypes[type]?.cost || 0).toLocaleString()} tokens</div>` +
-            `<div style="color:#ff9944;">⚙️ Operating: ${mc.toLocaleString()} tokens/tick</div>` +
+            `<div style="color:#ff9944;">⚙️ Operating: ${mc.toLocaleString()} tokens</div>` +
             `<div>📐 Same-type neighbors: ${same} (${same>0? '+'+(same*11)+'% efficiency': 'no bonus'})</div>` +
             `<div>⚠️ Nearby enemies: ${pen}</div>`;
         
@@ -4620,7 +4622,7 @@ function onCellHover(id, e) {
         const ownerLabel = `<span style="display:inline-flex;align-items:center;gap:6px;color:#4CAF50;">${avatarBadge(game.playerAvatar, 18, game.playerPhoto)} ${escapeHtml(game.playerName || 'You')} <span style="font-size:10px;color:#aaa;">(You)</span></span>`;
         const mcOwned = buildingTypes[type]?.maintenanceCost || 0;
         content = `<div style="font-weight:700;">${icon}${label} — ${ownerLabel}</div>` +
-            `<div style="color:#ff9944;">⚙️ Operating: ${mcOwned.toLocaleString()} tokens/tick</div>` +
+            `<div style="color:#ff9944;">⚙️ Operating: ${mcOwned.toLocaleString()} tokens</div>` +
             `<div>📐 Same-type neighbors: ${same} (${same>0? '+'+(same*11)+'%': 'none'})</div>` +
             `<div>⚠️ Nearby enemies: ${pen}</div>`;
         
@@ -5172,21 +5174,22 @@ function _econRenderLeaderboard(scores) {
         const income   = parseInt(r.daily_income, 10) || 0;
         const score    = Math.round(Number(r.score || 0));
         const pct      = Math.max(4, (balance / maxBal) * 60);
-        const isMe     = r.player_id === getLocalPlayerId();
+        const isMe     = (r.player_id || r.id) === getLocalPlayerId();
         const rowStyle = isMe ? 'background:rgba(255,184,77,0.05);' : '';
         const rankBadge = rank <= 3
             ? `<span class="econ-rank rank-${rank}">${rank}</span>`
             : `<span class="econ-rank rank-n">${rank}</span>`;
-        const playerRecord = (game.players || []).find(pl => pl.id === r.player_id);
+        const pId = r.player_id || r.id;
+        const playerRecord = (game.players || []).find(pl => pl.id === pId);
         const avatarCell = avatarBadge(
             playerRecord?.avatar || r.avatar || DEFAULT_PLAYER_AVATAR,
             20,
-            playerRecord?.photo || r.avatar_photo || null
+            playerRecord?.photo || r.avatar_photo || r.photo || null
         );
         return `<tr style="${rowStyle}">
             <td>${rankBadge}</td>
             <td>${avatarCell}</td>
-            <td style="font-weight:${isMe ? 700 : 400}; color:${isMe ? '#ffb84d' : '#f5f7fa'};">${_escHtmlEcon(r.username || '?')}</td>
+            <td style="font-weight:${isMe ? 700 : 400}; color:${isMe ? '#ffb84d' : '#f5f7fa'};">${_escHtmlEcon(r.username || r.name || '?')}</td>
             <td class="econ-num amber">${balance.toLocaleString()}<span class="econ-bar" style="width:${pct}px;"></span></td>
             <td class="econ-num green">+${income.toLocaleString()}</td>
             <td class="econ-num">${r.mine_count || 0}⛏️ ${r.processor_count || 0}🏭 ${r.plant_count || 0}☢️</td>
