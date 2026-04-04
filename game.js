@@ -4825,7 +4825,7 @@ function refreshEconomyModal({ playerState, run, scores }) {
         under.forEach(b => { counts[b.type + '_uc'] = (counts[b.type + '_uc'] || 0) + 1; });
 
         const lines = [];
-        const buildNames = { mine: 'Mine', processor: 'Processor', storage: 'Storage', plant: 'Reactor', silo: 'Silo' };
+        const buildNames = { mine: 'Mines', processor: 'Processors', storage: 'Storage', plant: 'Reactors', silo: 'Silos' };
         ['mine','processor','storage','plant','silo'].forEach(type => {
             const cnt    = counts[type] || 0;
             const uc     = counts[type + '_uc'] || 0;
@@ -4834,13 +4834,14 @@ function refreshEconomyModal({ playerState, run, scores }) {
             if (cnt + uc === 0) return;
             lines.push(
                 `<div class="econ-bldg-row">` +
-                `<span>${_ECON_BUILDING_ICONS[type] || ''} ${buildNames[type]}</span>` +
-                `<span class="econ-bldg-cnt">${cnt}${uc > 0 ? ` <span class="econ-uc">(+${uc} building)</span>` : ''}</span>` +
-                `<span class="red">-${mCost} ops</span>` +
+                `<span class="econ-bldg-name">${_ECON_BUILDING_ICONS[type] || ''} ${buildNames[type]}</span>` +
+                `<span class="econ-bldg-cnt">${cnt}${uc > 0 ? ` <span class="econ-uc">(+${uc})</span>` : ''}</span>` +
+                `<span class="econ-bldg-cost red">-${mCost} tokens</span>` +
                 `</div>`
             );
         });
-        blist.innerHTML = lines.length ? lines.join('') : '<div style="color:#555; font-size:12px;">No completed buildings yet.</div>';
+        const header = `<div class="econ-bldg-header"><span>BUILDING</span><span>OWNED</span><span>OPERATIONAL COST</span></div>`;
+        blist.innerHTML = lines.length ? header + lines.join('') : '<div style="color:#555; font-size:12px;">No completed buildings yet.</div>';
     }
 
     // ── Market tab ────────────────────────────────────────────────────────────
