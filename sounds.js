@@ -4,12 +4,6 @@
  * All sounds synthesised entirely via the Web Audio API.
  * No external files, no libraries, no network requests.
  *
- * Psychologically tuned for satisfying, dopamine-inducing feedback:
- *   • Major-key arpeggios for rewards (completion, success)
- *   • Rising pitch = positive outcome
- *   • Short attack + clean sustain = feels responsive, not annoying
- *   • Layered harmonics = richness without harshness
- *   • Sub-bass for impact events (nuclear)
  */
 const NukeSounds = (() => {
     'use strict';
