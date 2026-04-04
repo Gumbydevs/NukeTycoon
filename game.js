@@ -340,7 +340,11 @@ function connectSocket() {
             const msgs = arguments[0].chatMessages || [];
             const msgsEl = document.getElementById('chatMessages');
             if (msgsEl) msgsEl.innerHTML = '';
-            msgs.forEach(m => renderChatMessage(m));
+            game.chatMessages = [];
+            msgs.forEach(m => {
+                game.chatMessages.push(m);
+                renderChatMessage(m);
+            });
         }
 
         // Unread notifications
@@ -352,8 +356,7 @@ function connectSocket() {
                 timestamp: new Date(n.created_at).getTime(),
                 read: false,
                 data: n.payload || null,
-            })).concat(game.notifications || []);
-            if (!game.notifications) game.notifications = [];
+            }));
             renderNotifications();
         }
 
