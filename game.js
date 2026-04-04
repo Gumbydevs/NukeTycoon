@@ -922,7 +922,12 @@ function applyServerBuildingTiming(buildingRef, serverRow) {
     const alreadyComplete = Number.isFinite(endsAtMs) && endsAtMs <= now;
     buildingRef.constructionEndsAtMs = (Number.isFinite(endsAtMs) && !alreadyComplete) ? endsAtMs : null;
     console.log('[applyServerBuildingTiming]', buildingRef.type, '| raw construction_ends_at:', serverRow?.construction_ends_at, '| parsed endsAtMs:', endsAtMs, '| alreadyComplete:', alreadyComplete, '| final constructionEndsAtMs:', buildingRef.constructionEndsAtMs);
-    buildingRef.constructionTotalMs = totalMs;
+    // Derive actual total duration from server timestamps when both are available.
+    // This is the authoritative value — server reality beats the buildingTypes constant.
+    const serverDerivedTotalMs = (Number.isFinite(endsAtMs) && Number.isFinite(placedAtMs) && endsAtMs > placedAtMs)
+        ? (endsAtMs - placedAtMs)
+        : null;
+    buildingRef.constructionTotalMs = serverDerivedTotalMs || totalMs;
     // Determine placedAt if available (server may provide placed_at) otherwise derive from endsAt
     if (Number.isFinite(placedAtMs)) {
         buildingRef.constructionPlacedAtMs = placedAtMs;
@@ -2372,7 +2377,10 @@ function renderBuilding(id, type, isPlayer, building) {
     // Use only the wall-clock end timestamp to decide construction state.
     // Uses serverNow() so we compare against server clock, not local clock.
     const now = serverNow();
-    const totalMs = (Number(buildingTypes[type]?.constructionTime) || 0) * 10000;
+    // Prefer the actual duration stored on the building object (set from server timestamps)
+    // over the hardcoded buildingTypes constant, which may differ from server reality.
+    const totalMs = building?.constructionTotalMs ||
+        (Number(buildingTypes[type]?.constructionTime) || 0) * 10000;
     const endsAt = building?.constructionEndsAtMs || null;
     const stillBuilding = !!(endsAt && endsAt > now);
     // Pending = under construction but server hasn't confirmed timing yet
