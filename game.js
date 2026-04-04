@@ -545,8 +545,10 @@ function connectSocket() {
         }
         if (attackType === 'nuke' && destroyedCells) {
             destroyedCells.forEach(cId => {
-                const idx = game.enemyBuildings.findIndex(e => e.id === cId);
-                if (idx !== -1) game.enemyBuildings.splice(idx, 1);
+                const eIdx = game.enemyBuildings.findIndex(e => e.id === cId);
+                if (eIdx !== -1) game.enemyBuildings.splice(eIdx, 1);
+                const oIdx = game.buildings.findIndex(b => b.id === cId);
+                if (oIdx !== -1) game.buildings.splice(oIdx, 1);
                 const cell = document.querySelector(`[data-id="${cId}"]`);
                 if (cell) { cell.innerHTML = ''; cell.className = cell.className.replace(/building.*/, '').trim(); }
             });
