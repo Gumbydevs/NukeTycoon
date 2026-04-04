@@ -373,7 +373,7 @@ async function calculateScores(runId) {
             AND b.is_active = TRUE
             AND (b.construction_ends_at IS NULL OR b.construction_ends_at <= NOW())
         WHERE rp.run_id = $1
-        GROUP BY rp.player_id, p.username, p.token_balance
+        GROUP BY rp.player_id, p.username, p.avatar, p.avatar_photo, p.token_balance
         ORDER BY (
             COUNT(CASE WHEN b.type = 'plant' THEN 1 END) * 100 +
             COUNT(CASE WHEN b.type = 'mine'  THEN 1 END) * 50  +
