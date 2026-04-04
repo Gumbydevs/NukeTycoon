@@ -114,7 +114,6 @@
                 🔔<span class="notif-badge" id="notifBadge" style="display:none;">0</span>
             </button>
             <button class="btn" id="economyBtn" title="Economy Tracker" aria-label="Economy Tracker" style="font-size:14px; padding:4px 7px;">📊</button>
-            <button class="btn" id="soundToggleBtn" title="Toggle sound" aria-label="Toggle sound" style="font-size:14px; padding:4px 7px;">🔊</button>
             <div class="actions-menu">
                 <button class="btn menu-toggle" id="actionsMenuBtn" aria-haspopup="true" aria-expanded="false" title="Actions">☰</button>
                 <div class="dropdown" id="actionsMenu" aria-hidden="true" style="display:none;">
@@ -130,6 +129,9 @@
                         <div class="menu-section-title">Actions</div>
                         <button class="menu-item game-only" data-type="sabotage">Sabotage</button>
                         <button class="menu-item" id="profileMenuItem">Profile</button>
+                    </div>
+                    <div class="menu-section">
+                        <button class="menu-item" id="soundToggleMenuItem">🔊 Toggle Sound</button>
                     </div>
                 </div>
             </div>
@@ -295,7 +297,21 @@
             </div>
 
             <div style="margin-bottom:12px;">
-                <div style="font-weight:700; margin-bottom:6px;">Profile Picture</div>
+                <div style="font-weight:700; margin-bottom:6px;">Profile Photo</div>
+                <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+                    <div id="profilePhotoPreview" class="profile-photo-preview"></div>
+                    <div style="flex:1;">
+                        <label class="btn" style="cursor:pointer; display:inline-block; margin-bottom:6px;">
+                            📷 Upload Photo
+                            <input type="file" id="profilePhotoInput" accept="image/jpeg,image/png,image/webp,image/gif" style="display:none;" />
+                        </label>
+                        <button class="btn" id="profilePhotoRemoveBtn" style="display:none;">Remove Photo</button>
+                        <div id="profilePhotoMsg" style="color:#ff6b6b; font-size:11px; min-height:14px; margin-top:2px;"></div>
+                    </div>
+                </div>
+            </div>
+            <div style="margin-bottom:12px;">
+                <div style="font-weight:700; margin-bottom:6px;">Profile Emoji</div>
                 <div id="profileAvatarPicker" class="avatar-picker" data-selected-avatar="☢️"></div>
             </div>
 

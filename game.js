@@ -83,6 +83,7 @@ function connectSocket() {
         game.playerName   = player.username;
         game.playerEmail  = player.email;
         game.playerAvatar = player.avatar || DEFAULT_PLAYER_AVATAR;
+        game.playerPhoto  = player.avatar_photo || null;
 
         if (isNewPlayer) {
             game.pendingInitialProfileSetup = true;
@@ -132,6 +133,7 @@ function connectSocket() {
             id:      p.id,
             name:    p.username,
             avatar:  p.avatar || DEFAULT_PLAYER_AVATAR,
+            photo:   p.avatar_photo || null,
             isLocal: p.id === getLocalPlayerId(),
             isBot:   false,
             wallet:  parseInt(p.token_balance, 10) || 0,
@@ -208,6 +210,7 @@ function connectSocket() {
                 id: player.id,
                 name: player.username,
                 avatar: player.avatar || DEFAULT_PLAYER_AVATAR,
+                photo: player.avatar_photo || null,
                 isLocal: false,
                 isBot: false,
                 wallet: parseInt(player.token_balance, 10) || 0,
@@ -629,7 +632,7 @@ function connectSocket() {
     });
 
     // ── Username rename ──────────────────────────────────────────────────
-    socket.on('player:rename_success', ({ username, avatar, jwt }) => {
+    socket.on('player:rename_success', ({ username, avatar, avatarPhoto, jwt }) => {
         if (jwt) {
             _authJWT = jwt;
             localStorage.setItem('nuke_jwt', jwt);
@@ -639,6 +642,7 @@ function connectSocket() {
             oldUsername: game.playerName,
             username,
             avatar: avatar || game.playerAvatar || DEFAULT_PLAYER_AVATAR,
+            photo: avatarPhoto !== undefined ? avatarPhoto : game.playerPhoto,
         });
 
         const msgEl = document.getElementById('profileUsernameMsg');
@@ -663,8 +667,8 @@ function connectSocket() {
         if (setupMsg) { setupMsg.style.color = '#ff6b6b'; setupMsg.textContent = message; }
     });
 
-    socket.on('run:player_updated', ({ playerId, oldUsername, username, avatar }) => {
-        applyPlayerProfileUpdate({ playerId, oldUsername, username, avatar });
+    socket.on('run:player_updated', ({ playerId, oldUsername, username, avatar, avatarPhoto }) => {
+        applyPlayerProfileUpdate({ playerId, oldUsername, username, avatar, photo: avatarPhoto !== undefined ? avatarPhoto : null });
     });
 
     socket.on('error', ({ message }) => {
@@ -684,6 +688,18 @@ function connectSocket() {
             // Panel is closed — show floating toast only; don't touch the toggle button
             showChatToast(msg);
         }
+    });
+
+    socket.on('player:photo_updated', ({ avatarPhoto }) => {
+        game.playerPhoto = avatarPhoto || null;
+        _renderProfilePhotoPreview();
+        const msgEl = document.getElementById('profilePhotoMsg');
+        if (msgEl) { msgEl.style.color = '#4CAF50'; msgEl.textContent = avatarPhoto ? 'Photo saved!' : 'Photo removed.'; }
+    });
+
+    socket.on('player:photo_error', ({ message }) => {
+        const msgEl = document.getElementById('profilePhotoMsg');
+        if (msgEl) { msgEl.style.color = '#ff6b6b'; msgEl.textContent = message; }
     });
 }
 
@@ -728,7 +744,7 @@ const game = {
     playerName: 'You',
     playerEmail: '',
     playerAvatar: DEFAULT_PLAYER_AVATAR,
-    pendingInitialProfileSetup: false,
+    playerPhoto: null,
     botsEnabled: false,
     uraniumRaw: 0,      // mined by Mine buildings
     uraniumRefined: 0,  // converted by Processor buildings; consumed by Plants
@@ -946,23 +962,29 @@ function escapeHtml(value) {
         .replace(/'/g, '&#39;');
 }
 
-function avatarBadge(avatar, size = 18) {
+function avatarBadge(avatar, size = 18, photo = null) {
+    if (photo && (photo.startsWith('data:image/') || photo.startsWith('https://'))) {
+        return `<img src="${escapeHtml(photo)}" style="display:inline-block;width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;border:1px solid #333;vertical-align:middle;" alt="avatar" />`;
+    }
     return `<span style="display:inline-flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;border-radius:50%;background:#1a1a1a;border:1px solid #333;font-size:${Math.max(12, size - 4)}px;line-height:1;vertical-align:middle;">${escapeHtml(avatar || DEFAULT_PLAYER_AVATAR)}</span>`;
 }
 
-function applyPlayerProfileUpdate({ playerId, oldUsername, username, avatar }) {
+function applyPlayerProfileUpdate({ playerId, oldUsername, username, avatar, photo }) {
     const nextName = username || game.playerName || 'You';
     const nextAvatar = avatar || DEFAULT_PLAYER_AVATAR;
+    const nextPhoto = photo !== undefined ? photo : null;
 
     if (playerId === getLocalPlayerId() || oldUsername === game.playerName) {
         game.playerName = nextName;
         game.playerAvatar = nextAvatar;
+        if (photo !== undefined) game.playerPhoto = nextPhoto;
     }
 
     (game.players || []).forEach((p) => {
         if ((playerId && p.id === playerId) || (oldUsername && p.name === oldUsername)) {
             p.name = nextName;
             p.avatar = nextAvatar;
+            if (photo !== undefined) p.photo = nextPhoto;
         }
     });
 
@@ -982,6 +1004,9 @@ function applyPlayerProfileUpdate({ playerId, oldUsername, username, avatar }) {
     if (signupInput && game.pendingInitialProfileSetup) signupInput.value = game.playerName || '';
     const avatarDisplay = document.getElementById('profileAvatarDisplay');
     if (avatarDisplay) avatarDisplay.textContent = game.playerAvatar || DEFAULT_PLAYER_AVATAR;
+
+    // Update photo preview in profile modal if open
+    _renderProfilePhotoPreview();
 
     const profilePicker = document.getElementById('profileAvatarPicker');
     if (profilePicker) profilePicker.dataset.selectedAvatar = game.playerAvatar || DEFAULT_PLAYER_AVATAR;
@@ -1743,6 +1768,11 @@ function initMenu() {
         }
         actionsMenu.style.left = left + 'px';
         actionsMenu.style.top = top + 'px';
+        // Sync sound toggle label with current state
+        const soundMenuItem = document.getElementById('soundToggleMenuItem');
+        if (soundMenuItem && typeof NukeSounds !== 'undefined') {
+            soundMenuItem.textContent = NukeSounds.isEnabled() ? '🔊 Toggle Sound' : '🔇 Toggle Sound';
+        }
     }
 
     // expose setMenuOpen globally so inline fallbacks can delegate to the same logic
@@ -1787,6 +1817,7 @@ function initMenu() {
             } else {
                 if (mi.id === 'profileMenuItem') showProfile();
                 if (mi.id === 'devMenuItem') toggleDevPanel();
+                if (mi.id === 'soundToggleMenuItem') toggleSound();
             }
             // intentionally NOT closing the menu here
         });
@@ -3105,14 +3136,30 @@ function showProfile() {
     const avatarDisplay = document.getElementById('profileAvatarDisplay');
     if (avatarDisplay) avatarDisplay.textContent = game.playerAvatar || DEFAULT_PLAYER_AVATAR;
     renderAvatarPicker('profileAvatarPicker', game.playerAvatar || DEFAULT_PLAYER_AVATAR);
+    _renderProfilePhotoPreview();
     const msgEl = document.getElementById('profileUsernameMsg');
     if (msgEl) msgEl.textContent = '';
+    const photoMsg = document.getElementById('profilePhotoMsg');
+    if (photoMsg) photoMsg.textContent = '';
     const statsEl = document.getElementById('profileStats');
     if (statsEl) {
         const portfolio = (game.playerWallet + ((game.uraniumRaw + game.uraniumRefined) * game.market.price)) || 0;
         statsEl.textContent = `Tokens: ${game.playerWallet.toLocaleString()} — Raw: ${formatUranium(game.uraniumRaw)} / Ref: ${formatUranium(game.uraniumRefined)} — Portfolio: ${Math.round(portfolio).toLocaleString()} tokens`;
     }
     modal.style.display = 'flex';
+}
+
+function _renderProfilePhotoPreview() {
+    const preview = document.getElementById('profilePhotoPreview');
+    const removeBtn = document.getElementById('profilePhotoRemoveBtn');
+    if (!preview) return;
+    if (game.playerPhoto) {
+        preview.innerHTML = `<img src="${escapeHtml(game.playerPhoto)}" class="profile-photo-img" alt="Profile photo" />`;
+        if (removeBtn) removeBtn.style.display = 'inline-block';
+    } else {
+        preview.innerHTML = `<span style="font-size:34px;">${escapeHtml(game.playerAvatar || DEFAULT_PLAYER_AVATAR)}</span>`;
+        if (removeBtn) removeBtn.style.display = 'none';
+    }
 }
 
 function changeUsername() {
@@ -3206,6 +3253,16 @@ function closeConversionModal() {
     const modal = document.getElementById('conversionModal');
     if (!modal) return;
     modal.style.display = 'none';
+}
+
+function toggleSound() {
+    if (typeof NukeSounds === 'undefined') return;
+    NukeSounds.prime();
+    const nowEnabled = !NukeSounds.isEnabled();
+    NukeSounds.setEnabled(nowEnabled);
+    if (nowEnabled) NukeSounds.uiTick();
+    const menuItem = document.getElementById('soundToggleMenuItem');
+    if (menuItem) menuItem.textContent = nowEnabled ? '🔊 Toggle Sound' : '🔇 Toggle Sound';
 }
 
 function requestLoginCode() {
@@ -3408,17 +3465,54 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Sound toggle button
+    // Sound toggle button (now in action menu — kept for backward compat if element exists)
     const soundToggleBtn = document.getElementById('soundToggleBtn');
     if (soundToggleBtn) {
-        soundToggleBtn.addEventListener('click', () => {
-            if (typeof NukeSounds === 'undefined') return;
-            NukeSounds.prime();
-            const nowEnabled = !NukeSounds.isEnabled();
-            NukeSounds.setEnabled(nowEnabled);
-            soundToggleBtn.textContent = nowEnabled ? '🔊' : '🔇';
-            soundToggleBtn.title = nowEnabled ? 'Mute sound' : 'Unmute sound';
-            if (nowEnabled) NukeSounds.uiTick();
+        soundToggleBtn.addEventListener('click', toggleSound);
+    }
+
+    // Photo upload handling
+    const photoInput = document.getElementById('profilePhotoInput');
+    if (photoInput) {
+        photoInput.addEventListener('change', () => {
+            const file = photoInput.files && photoInput.files[0];
+            const msgEl = document.getElementById('profilePhotoMsg');
+            if (!file) return;
+            if (!file.type.startsWith('image/')) {
+                if (msgEl) { msgEl.style.color = '#ff6b6b'; msgEl.textContent = 'Please select an image file.'; }
+                photoInput.value = '';
+                return;
+            }
+            if (file.size > 500 * 1024) {
+                if (msgEl) { msgEl.style.color = '#ff6b6b'; msgEl.textContent = 'Photo must be under 500KB.'; }
+                photoInput.value = '';
+                return;
+            }
+            if (msgEl) { msgEl.style.color = '#888'; msgEl.textContent = 'Uploading…'; }
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const dataUrl = ev.target.result;
+                if (!socket?.connected || !_authJWT) {
+                    if (msgEl) { msgEl.style.color = '#ff6b6b'; msgEl.textContent = 'Not connected to server.'; }
+                    return;
+                }
+                socket.emit('player:update_photo', { jwt: _authJWT, photo: dataUrl });
+            };
+            reader.readAsDataURL(file);
+            photoInput.value = '';
+        });
+    }
+
+    const photoRemoveBtn = document.getElementById('profilePhotoRemoveBtn');
+    if (photoRemoveBtn) {
+        photoRemoveBtn.addEventListener('click', () => {
+            const msgEl = document.getElementById('profilePhotoMsg');
+            if (!socket?.connected || !_authJWT) {
+                if (msgEl) { msgEl.style.color = '#ff6b6b'; msgEl.textContent = 'Not connected to server.'; }
+                return;
+            }
+            if (msgEl) { msgEl.style.color = '#888'; msgEl.textContent = 'Removing…'; }
+            socket.emit('player:update_photo', { jwt: _authJWT, photo: null });
         });
     }
 
@@ -5756,7 +5850,9 @@ function renderChatMessage(msg) {
     div.className = 'chat-msg' + (isSelf ? ' chat-msg--self' : '');
     const ts = new Date(msg.ts);
     const timeStr = ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const avatarHtml = `<span class="chat-msg-avatar">${escapeHtml(msg.avatar || '☢️')}</span>`;
+    const avatarHtml = msg.avatarPhoto && (msg.avatarPhoto.startsWith('data:image/') || msg.avatarPhoto.startsWith('https://'))
+        ? `<img src="${escapeHtml(msg.avatarPhoto)}" class="chat-msg-avatar chat-msg-avatar--photo" alt="avatar" />`
+        : `<span class="chat-msg-avatar">${escapeHtml(msg.avatar || '☢️')}</span>`;
     const nameHtml = isSelf ? '' : `<span class="chat-msg-name">${escapeHtml(msg.username)}</span>`;
     let bodyHtml = '';
     if (msg.gifUrl && /^https:\/\/(media\.giphy\.com|media\.tenor\.com)\//i.test(msg.gifUrl)) {

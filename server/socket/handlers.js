@@ -114,6 +114,7 @@ function registerHandlers(io, socket) {
                     username:      result.player.username,
                     email:         result.player.email,
                     avatar:        result.player.avatar || DEFAULT_AVATAR,
+                    avatar_photo:  result.player.avatar_photo || null,
                     token_balance: parseInt(result.player.token_balance, 10),
                 },
                 jwt: result.token,
@@ -144,6 +145,7 @@ function registerHandlers(io, socket) {
                     username: res.player.username,
                     email: res.player.email,
                     avatar: res.player.avatar || DEFAULT_AVATAR,
+                    avatar_photo:  res.player.avatar_photo || null,
                     token_balance: parseInt(res.player.token_balance, 10),
                 },
                 jwt: res.token,
@@ -173,6 +175,7 @@ function registerHandlers(io, socket) {
                     username: res.player.username,
                     email: res.player.email,
                     avatar: res.player.avatar || DEFAULT_AVATAR,
+                    avatar_photo:  res.player.avatar_photo || null,
                     token_balance: parseInt(res.player.token_balance, 10),
                 },
                 jwt: res.token,
@@ -207,6 +210,7 @@ function registerHandlers(io, socket) {
                 username:      player.username,
                 email:         player.email,
                 avatar:        player.avatar || DEFAULT_AVATAR,
+                avatar_photo:  player.avatar_photo || null,
                 token_balance: parseInt(player.token_balance, 10),
             },
             jwt, // return the same token
@@ -325,6 +329,7 @@ function registerHandlers(io, socket) {
                     id: player.id,
                     username: player.username,
                     avatar: player.avatar || DEFAULT_AVATAR,
+                    avatar_photo: player.avatar_photo || null,
                     token_balance: freshWallet,
                     total_buildings: 0,
                     plant_count: 0,
@@ -726,6 +731,7 @@ function registerHandlers(io, socket) {
                 playerId: player.id,
                 username: player.username,
                 avatar: player.avatar || DEFAULT_AVATAR,
+                avatarPhoto: player.avatar_photo || null,
                 text: cleanText,
                 gifUrl: cleanGifUrl,
                 ts: now,
@@ -767,7 +773,7 @@ function registerHandlers(io, socket) {
             const updatedPlayer = { ...player, username: clean, avatar: cleanAvatar };
             const refreshedJwt = generateJWT(updatedPlayer);
 
-            socket.emit('player:rename_success', { username: clean, avatar: cleanAvatar, jwt: refreshedJwt });
+            socket.emit('player:rename_success', { username: clean, avatar: cleanAvatar, avatarPhoto: player.avatar_photo || null, jwt: refreshedJwt });
 
             const run = await getActiveRun();
             if (run) {
@@ -776,6 +782,47 @@ function registerHandlers(io, socket) {
                     oldUsername,
                     username: clean,
                     avatar: cleanAvatar,
+                    avatarPhoto: player.avatar_photo || null,
+                });
+            }
+        });
+    });
+
+    // ── PHOTO UPLOAD ──────────────────────────────────────────────────────────
+    socket.on('player:update_photo', async ({ jwt, photo }) => {
+        await requireAuth(socket, jwt, async (decoded, player) => {
+            // Validate: must be a data URL for a supported image type
+            if (photo !== null) {
+                if (typeof photo !== 'string') {
+                    socket.emit('player:photo_error', { message: 'Invalid photo data.' });
+                    return;
+                }
+                if (!photo.startsWith('data:image/jpeg;base64,') &&
+                    !photo.startsWith('data:image/png;base64,') &&
+                    !photo.startsWith('data:image/webp;base64,') &&
+                    !photo.startsWith('data:image/gif;base64,')) {
+                    socket.emit('player:photo_error', { message: 'Only JPEG, PNG, WebP, or GIF images are allowed.' });
+                    return;
+                }
+                // Limit to ~700KB base64 (~500KB raw)
+                if (photo.length > 700000) {
+                    socket.emit('player:photo_error', { message: 'Photo must be under 500KB.' });
+                    return;
+                }
+            }
+
+            await db.query('UPDATE players SET avatar_photo = $1 WHERE id = $2', [photo || null, player.id]);
+
+            socket.emit('player:photo_updated', { avatarPhoto: photo || null });
+
+            const run = await getActiveRun();
+            if (run) {
+                io.to(`run:${run.id}`).emit('run:player_updated', {
+                    playerId: player.id,
+                    oldUsername: player.username,
+                    username: player.username,
+                    avatar: player.avatar || DEFAULT_AVATAR,
+                    avatarPhoto: photo || null,
                 });
             }
         });

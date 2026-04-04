@@ -223,6 +223,39 @@ body.authenticated .container {
     font-size: 34px;
 }
 
+/* Profile photo upload preview */
+.profile-photo-preview {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: #222;
+    border: 1px solid #333;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 34px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.profile-photo-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+}
+
+/* Chat message photo avatar */
+.chat-msg-avatar--photo {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid #333;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
 #circulating { min-width: 72px; }
 #wallet      { min-width: 56px; }
 #uranium     { min-width: 110px; }
