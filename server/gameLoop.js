@@ -507,6 +507,35 @@ async function emitRunSnapshot(io, runId, eventName = 'run:tick') {
         return endsAt <= serverNow && endsAt > serverNow - 2000;
     });
 
+    // Persist notifications for building completions for owners who are offline
+    if (justCompleted.length > 0) {
+        try {
+            const connectedIds = new Set(sockets.map(s => s.playerId).filter(Boolean));
+            for (const b of justCompleted) {
+                const ownerId = b.player_id;
+                if (!ownerId) continue;
+                // Skip if owner is currently connected to the room
+                if (connectedIds.has(ownerId)) continue;
+                try {
+                    const emailRes = await db.query('SELECT email FROM players WHERE id = $1', [ownerId]);
+                    const email = (emailRes.rows[0]?.email || '').toLowerCase();
+                    const notifMsg = `✅ Your ${b.type} finished construction at cell ${b.cell_id}.`;
+                    const payload = JSON.stringify({ msg: notifMsg, cellId: b.cell_id, type: b.type, ts: Date.now() });
+                    const res = await db.query(
+                        `INSERT INTO notifications (run_id, player_id, email, type, payload)
+                         VALUES ($1,$2,$3,$4,$5)`,
+                        [runId, ownerId, email, 'info', payload]
+                    );
+                    console.log(`[build-complete notify] inserted=${res.rowCount || 0} run=${runId} owner=${ownerId} cell=${b.cell_id}`);
+                } catch (e) {
+                    console.warn('build completion notify failed for owner:', ownerId, e && e.message);
+                }
+            }
+        } catch (e) {
+            console.warn('build completion notify loop failed:', e && e.message);
+        }
+    }
+
     sockets.forEach((roomSocket) => {
         roomSocket.emit(eventName, {
             run: snapshot.run,

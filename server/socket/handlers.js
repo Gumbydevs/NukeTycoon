@@ -411,7 +411,7 @@ function registerHandlers(io, socket) {
 
             // Backfill missed chat notifications for anything that happened while this player was offline.
             try {
-                await db.query(
+                const backfillRes = await db.query(
                     `INSERT INTO notifications (run_id, player_id, email, type, payload, read, created_at)
                      SELECT $1, $2, $3, 'chat',
                             jsonb_build_object(
@@ -436,6 +436,7 @@ function registerHandlers(io, socket) {
                        )`,
                     [run.id, player.id, normalizedEmail, player.last_seen_at || null]
                 );
+                console.log(`[run:join] backfilled ${backfillRes.rowCount || 0} chat notifications for player=${player.id}`);
             } catch (err) {
                 console.warn('notification backfill failed:', err.message);
             }
@@ -1045,11 +1046,16 @@ function registerHandlers(io, socket) {
                     : attackType === 'steal'
                     ? `🕵️ ${player.username} stole ${payload.stolenAmount || 0} uranium from you!`
                     : `⚡ ${player.username} disabled your building at cell ${cellId}.`;
-                await db.query(
-                    `INSERT INTO notifications (run_id, player_id, email, type, payload)
-                     VALUES ($1,$2,$3,$4,$5)`,
-                    [run.id, target.player_id, targetEmail, notifType, JSON.stringify({ msg: notifMsg, attackType, attackerName: player.username, cellId, ts: Date.now() })]
-                );
+                try {
+                    const res = await db.query(
+                        `INSERT INTO notifications (run_id, player_id, email, type, payload)
+                         VALUES ($1,$2,$3,$4,$5)`,
+                        [run.id, target.player_id, targetEmail, notifType, JSON.stringify({ msg: notifMsg, attackType, attackerName: player.username, cellId, ts: Date.now() })]
+                    );
+                    console.log(`[sabotage notify] inserted=${res.rowCount || 0} run=${run.id} to=${target.player_id} type=${notifType}`);
+                } catch (err) {
+                    console.warn('sabotage notification failed:', err.message);
+                }
             } catch (err) {
                 console.warn('sabotage notification failed:', err.message);
             }
@@ -1128,11 +1134,16 @@ function registerHandlers(io, socket) {
                 for (const pid of toNotify) {
                     const emailRes = await db.query('SELECT email FROM players WHERE id = $1', [pid]);
                     const email = (emailRes.rows[0]?.email || '').toLowerCase();
-                    await db.query(
-                        `INSERT INTO notifications (run_id, player_id, email, type, payload)
-                         VALUES ($1,$2,$3,$4,$5)`,
-                        [socket.runId, pid, email, 'chat', JSON.stringify({ id, from: player.username, text: cleanText, gifUrl: cleanGifUrl, ts: now })]
-                    );
+                    try {
+                        const notifRes = await db.query(
+                            `INSERT INTO notifications (run_id, player_id, email, type, payload)
+                             VALUES ($1,$2,$3,$4,$5)`,
+                            [socket.runId, pid, email, 'chat', JSON.stringify({ id, from: player.username, text: cleanText, gifUrl: cleanGifUrl, ts: now })]
+                        );
+                        console.log(`[chat notify] inserted=${notifRes.rowCount || 0} run=${socket.runId} to=${pid}`);
+                    } catch (e) {
+                        console.warn('chat notify failed:', e && e.message);
+                    }
                 }
             } catch (err) {
                 console.warn('chat notify failed:', err.message);
