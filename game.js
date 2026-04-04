@@ -63,12 +63,27 @@ function setConnectionReconnecting(reconnecting) {
 function fetchAndDisplayVersion() {
     try {
         fetch('/api/version', { cache: 'no-store' })
-            .then(r => r.json())
-            .then(j => {
-                const v = (j && j.version) ? j.version : null;
+            .then(r => {
+                const ct = r.headers.get('content-type') || '';
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                if (ct.includes('application/json')) return r.json().then(j => ({ json: j }));
+                // If server returns plain text (version string), parse it
+                if (ct.includes('text/plain') || ct.includes('text/')) return r.text().then(t => ({ text: t }));
+                // Unexpected content-type (HTML/proxy) — treat as error
+                throw new Error('Unexpected content-type');
+            })
+            .then(data => {
                 const el = document.getElementById('appVersion');
-                if (el) el.textContent = v ? `v${v}` : 'v?';
-            }).catch(() => {
+                if (!el) return;
+                if (data.json && data.json.version) el.textContent = `v${data.json.version}`;
+                else if (data.text) {
+                    const txt = (typeof data.text === 'string') ? data.text.trim() : '';
+                    // if the plain text looks like a semver, use it; otherwise fallback
+                    if (/^\d+\.\d+\.\d+/.test(txt)) el.textContent = `v${txt}`;
+                    else el.textContent = 'v?';
+                } else el.textContent = 'v?';
+            }).catch((err) => {
+                console.warn('Version fetch failed:', err && err.message);
                 const el = document.getElementById('appVersion'); if (el) el.textContent = 'v?';
             });
     } catch (e) { /* ignore */ }
@@ -82,9 +97,20 @@ function showChangelog() {
     content.textContent = 'Loading…';
     modal.style.display = 'flex';
     fetch('/api/changelog', { cache: 'no-store' })
-        .then(r => r.text())
+        .then(r => {
+            const ct = r.headers.get('content-type') || '';
+            if (!r.ok) return r.json().then(j => { throw new Error(j && j.error ? j.error : `HTTP ${r.status}`); });
+            if (ct.includes('text/plain')) return r.text();
+            // If server returned JSON with error, surface a friendly message
+            if (ct.includes('application/json')) return r.json().then(j => {
+                if (j && j.ok === false && j.error) throw new Error(j.error);
+                return JSON.stringify(j, null, 2);
+            });
+            // Received HTML (proxy/site page) — treat as unavailable
+            throw new Error('Changelog unavailable (unexpected HTML response)');
+        })
         .then(t => { content.textContent = t || '(No changelog entries yet)'; })
-        .catch(() => { content.textContent = '(Unable to load changelog)'; });
+        .catch((err) => { content.textContent = `(Unable to load changelog) ${err && err.message ? '- ' + err.message : ''}`; });
 }
 
 function hideChangelog() {

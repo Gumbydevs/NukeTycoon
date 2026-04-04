@@ -203,8 +203,9 @@ body.authenticated .container {
     transform-origin: center;
     position: relative;
     z-index: 9999; /* keep above header elements */
-    background: transparent; /* ensure no background box */
-    padding: 0; /* no internal padding to avoid box */
+    background: transparent !important; /* ensure no background box */
+    padding: 0 !important; /* no internal padding to avoid box */
+    border: none !important;
 }
 .conn-indicator.off {
     box-shadow: 0 0 6px rgba(255,60,60,0.95);
