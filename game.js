@@ -99,9 +99,9 @@ function connectSocket() {
         localStorage.removeItem('nuke_jwt');
         _authJWT = null;
         _localPlayerId = null;
-        // Show login modal again
+        // Show landing page again
         const modal = document.getElementById('loginModal');
-        if (modal) modal.style.display = 'flex';
+        if (modal) modal.style.display = 'block';
         document.body.classList.remove('authenticated');
     });
 
@@ -6179,3 +6179,118 @@ function botSabotagePlayer(bot, targets) {
 
     addNotification('danger', `⚠️ ${bot.name} sabotaged your ${displayNames[target.type] || target.type}!`);
 }
+
+/* ══════════════════════════════════════════════════════════════
+   LANDING PAGE — particle canvas + live prize pool fetch
+   ══════════════════════════════════════════════════════════════ */
+(function initLandingPage() {
+    // ── Particle canvas (flying money + fallout symbols) ──────────────
+    const canvas = document.getElementById('landingCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    function resize() {
+        canvas.width  = canvas.parentElement ? canvas.parentElement.offsetWidth  : window.innerWidth;
+        canvas.height = canvas.parentElement ? canvas.parentElement.offsetHeight : window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    const SYMBOLS = ['$', '$', '$', '💵', '💰', '☢', '☢', '💣', '💲'];
+    const particles = [];
+    const COUNT = 55;
+
+    function randomParticle(forceBottom) {
+        const sym = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
+        return {
+            x: Math.random() * window.innerWidth,
+            y: forceBottom ? window.innerHeight + 20 + Math.random() * 200 : Math.random() * window.innerHeight,
+            vy: -(0.4 + Math.random() * 1.2),
+            vx: (Math.random() - 0.5) * 0.6,
+            alpha: 0.1 + Math.random() * 0.5,
+            size: 10 + Math.random() * 18,
+            rot: Math.random() * Math.PI * 2,
+            rotV: (Math.random() - 0.5) * 0.03,
+            sym,
+            isMoney: sym === '$' || sym === '💵' || sym === '💰' || sym === '💲',
+        };
+    }
+
+    for (let i = 0; i < COUNT; i++) particles.push(randomParticle(false));
+
+    let running = true;
+    function tick() {
+        if (!running) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        for (let p of particles) {
+            p.y  += p.vy;
+            p.x  += p.vx;
+            p.rot += p.rotV;
+            if (p.y < -40) Object.assign(p, randomParticle(true));
+
+            ctx.save();
+            ctx.globalAlpha = p.alpha;
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.rot);
+            if (p.isMoney) {
+                ctx.font = `bold ${p.size}px monospace`;
+                ctx.fillStyle = '#ffb84d';
+            } else {
+                ctx.font = `${p.size}px sans-serif`;
+                ctx.fillStyle = '#ff6020';
+            }
+            ctx.fillText(p.sym, 0, 0);
+            ctx.restore();
+        }
+        requestAnimationFrame(tick);
+    }
+    tick();
+
+    // Stop animation once user authenticates (save battery)
+    const observer = new MutationObserver(() => {
+        if (document.body.classList.contains('authenticated')) {
+            running = false;
+            observer.disconnect();
+        }
+    });
+    observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+
+    // ── Live prize pool + stats fetch ─────────────────────────────────
+    async function fetchLandingStats() {
+        try {
+            const res = await fetch(`${SERVER_URL}/api/economy`);
+            if (!res.ok) return;
+            const data = await res.json();
+
+            const tokensPerUSD = data.tokensPerUSD || 2000;
+            const run = data.run;
+
+            if (run) {
+                const prizeTokens = parseInt(run.prize_pool, 10) || 0;
+                const prizeUSD    = (prizeTokens / tokensPerUSD).toFixed(2);
+
+                const usdEl     = document.getElementById('landingPrizeUSD');
+                const tokensEl  = document.getElementById('landingPrizeTokens');
+                if (usdEl) usdEl.textContent = '$' + Number(prizeUSD).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                if (tokensEl) tokensEl.textContent = prizeTokens.toLocaleString() + ' tokens';
+
+                const dayEl = document.getElementById('landingDay');
+                if (dayEl) dayEl.textContent = `Day ${run.current_day} / ${run.run_length}`;
+            }
+
+            const playersEl = document.getElementById('landingPlayers');
+            if (playersEl && data.players) playersEl.textContent = data.players.length;
+
+            const marketEl = document.getElementById('landingMarket');
+            if (marketEl && data.marketPrice !== undefined) {
+                const p = parseFloat(data.marketPrice);
+                marketEl.textContent = isNaN(p) ? '—' : '$' + p.toFixed(4);
+            }
+        } catch (e) {
+            // Network unavailable — ticker stays at dashes, no error shown
+        }
+    }
+
+    fetchLandingStats();
+    setInterval(fetchLandingStats, 15000);
+})();

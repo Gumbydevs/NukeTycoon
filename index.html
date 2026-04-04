@@ -4,66 +4,195 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NUKEWAR</title>
-    <link rel="stylesheet" href="styles/main.css?v=20260403n">
+    <link rel="stylesheet" href="styles/main.css?v=20260404lp16">
 </head>
 <body>
-    <div id="loginModal" style="position:fixed; left:0; top:0; right:0; bottom:0; background:rgba(0,0,0,0.85); z-index:999; display:flex; align-items:center; justify-content:center;">
-        <div style="background:#0d0d0d; border:1px solid #333; padding:24px; width:420px; color:#fff;">
-            <div style="font-weight:700; font-size:18px; margin-bottom:4px; color:#ffb84d;">☢️ NUKEWAR</div>
-            <div style="color:#888; font-size:12px; margin-bottom:20px;">Enter your email to log in or create your commander account.</div>
+    <!-- SVG turbulence filter — must be outside any overflow:hidden ancestor -->
+    <svg id="cloud-filters" aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">
+        <defs>
+            <filter id="cloud-puff" x="-50%" y="-50%" width="200%" height="200%">
+                <feTurbulence type="fractalNoise" baseFrequency="0.042 0.058" numOctaves="5" seed="4" result="noise"/>
+                <feDisplacementMap in="SourceGraphic" in2="noise" scale="22" xChannelSelector="R" yChannelSelector="G"/>
+            </filter>
+            <filter id="cloud-puff-sm" x="-30%" y="-30%" width="160%" height="160%">
+                <feTurbulence type="fractalNoise" baseFrequency="0.06 0.09" numOctaves="3" seed="9" result="noise"/>
+                <feDisplacementMap in="SourceGraphic" in2="noise" scale="10" xChannelSelector="R" yChannelSelector="G"/>
+            </filter>
+        </defs>
+    </svg>
 
-            <!-- Step 1: Email input -->
-            <div id="loginStep1">
-                <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px;">
-                    <input id="loginEmail" type="email" placeholder="your@email.com"
-                        style="flex:1; padding:8px; background:#111; border:1px solid #333; color:#fff; font-family:monospace;" />
-                    <button class="btn" id="loginSendBtn">Send Code</button>
+    <!-- Mushroom clouds: live outside #loginModal so overflow:hidden doesn't clip fixed children -->
+    <div class="mcloud mcloud--left" aria-hidden="true">
+        <div class="mc-cap-wrap">
+            <div class="mc-dome"></div>
+            <div class="mc-lobe mc-lobe-1"></div>
+            <div class="mc-lobe mc-lobe-2"></div>
+            <div class="mc-lobe mc-lobe-3"></div>
+            <div class="mc-lobe mc-lobe-4"></div>
+            <div class="mc-lobe mc-lobe-5"></div>
+            <div class="mc-fire-core"></div>
+            <div class="mc-skirt"></div>
+        </div>
+        <div class="mc-neck"></div>
+        <div class="mc-stem"><div class="mc-stem-glow"></div></div>
+        <div class="mc-base"><div class="mc-base-fire"></div></div>
+    </div>
+    <div class="mcloud mcloud--right" aria-hidden="true">
+        <div class="mc-cap-wrap">
+            <div class="mc-dome"></div>
+            <div class="mc-lobe mc-lobe-1"></div>
+            <div class="mc-lobe mc-lobe-2"></div>
+            <div class="mc-lobe mc-lobe-3"></div>
+            <div class="mc-lobe mc-lobe-4"></div>
+            <div class="mc-lobe mc-lobe-5"></div>
+            <div class="mc-fire-core"></div>
+            <div class="mc-skirt"></div>
+        </div>
+        <div class="mc-neck"></div>
+        <div class="mc-stem"><div class="mc-stem-glow"></div></div>
+        <div class="mc-base"><div class="mc-base-fire"></div></div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         LANDING PAGE  (hidden once authenticated via body.authenticated)
+         ═══════════════════════════════════════════════════════════ -->
+    <div id="loginModal" class="landing-page">
+
+        <!-- Particle canvas (money / fallout) -->
+        <canvas id="landingCanvas"></canvas>
+
+        <!-- ── Header bar ─────────────────────────────────────── -->
+        <header class="lp-header">
+            <div class="lp-brand">
+                <span class="lp-brand-icon">☢️</span>
+                <div>
+                    <div class="lp-brand-name">NUKEWAR</div>
+                    <div class="lp-brand-sub">Global Arms Race · Real Money Prize Pool</div>
                 </div>
-                <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px;">
-                    <input id="loginPassword" type="password" placeholder="Password (for password login)"
-                        style="flex:1; padding:8px; background:#111; border:1px solid #333; color:#fff; font-family:monospace;" />
-                    <button class="btn" id="loginPasswordBtn">Login</button>
-                    <button class="btn" id="signupPasswordBtn">Create Account</button>
-                </div>
-                <div id="loginError" style="color:#ff6b6b; font-size:11px; min-height:14px;"></div>
+                <span class="lp-live-dot">LIVE</span>
             </div>
-
-            <!-- Step 2: OTP code input (hidden until code is sent) -->
-            <div id="loginStep2" style="display:none;">
-                <div style="color:#ccc; font-size:12px; margin-bottom:10px;">
-                    Check your email &mdash; a 6-digit code was sent to <strong id="loginEmailDisplay"></strong>.
-                </div>
-                <div id="loginDevHint" style="color:#4CAF50; font-size:13px; margin-bottom:8px; display:none;"></div>
-                <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px;">
-                    <input id="loginCode" type="text" inputmode="numeric" maxlength="6" placeholder="000000"
-                        style="flex:1; padding:8px; background:#111; border:1px solid #333; color:#ffb84d; font-size:20px; letter-spacing:6px; text-align:center; font-family:monospace;" />
-                    <button class="btn" id="loginVerifyBtn">Verify</button>
-                </div>
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <div id="loginError2" style="color:#ff6b6b; font-size:11px; min-height:14px;"></div>
-                    <button id="loginBackBtn" style="background:none; border:none; color:#888; font-size:11px; cursor:pointer; text-decoration:underline;">Use different email</button>
-                </div>
+            <div class="lp-header-right">
+                <a class="lp-economy-link" href="https://nuketycoon-production.up.railway.app/economy" target="_blank">📊 Economy</a>
             </div>
+        </header>
 
-            <!-- Step 3: New account profile setup -->
-            <div id="loginStep3" style="display:none;">
-                <div style="color:#ccc; font-size:12px; margin-bottom:10px;">
-                    Welcome to NUKEWAR. Choose your commander name and profile picture to finish creating your account.
-                </div>
-                <div style="margin-bottom:10px;">
-                    <div style="font-weight:700; margin-bottom:6px;">Commander Name</div>
-                    <input id="signupUsername" type="text" maxlength="20" placeholder="YourName_1234"
-                        style="width:100%; padding:8px; background:#111; border:1px solid #333; color:#ffb84d; font-family:monospace;" />
-                </div>
-                <div style="margin-bottom:10px;">
-                    <div style="font-weight:700; margin-bottom:6px;">Profile Picture</div>
-                    <div id="signupAvatarPicker" class="avatar-picker" data-selected-avatar="☢️"></div>
-                </div>
-                <div id="loginError3" style="color:#ff6b6b; font-size:11px; min-height:14px; margin-bottom:8px;"></div>
-                <button class="btn" id="accountCreateBtn" style="width:100%;">Enter NUKEWAR</button>
+        <!-- ── Ticker bar ─────────────────────────────────────── -->
+        <div class="lp-ticker">
+            <div class="lp-tick-item lp-tick-prize">
+                <div class="lp-tick-label">💰 Prize Pool</div>
+                <div class="lp-tick-prize-usd" id="landingPrizeUSD">...</div>
+                <div class="lp-tick-prize-tokens" id="landingPrizeTokens"></div>
+            </div>
+            <div class="lp-tick-item">
+                <div class="lp-tick-label">Commanders</div>
+                <div class="lp-tick-val" id="landingPlayers">...</div>
+            </div>
+            <div class="lp-tick-item">
+                <div class="lp-tick-label">War Day</div>
+                <div class="lp-tick-val" id="landingDay">...</div>
+            </div>
+            <div class="lp-tick-item">
+                <div class="lp-tick-label">Token Price</div>
+                <div class="lp-tick-val lp-amber" id="landingMarket">...</div>
             </div>
         </div>
+
+        <!-- ── Main content ───────────────────────────────────── -->
+        <div class="lp-body">
+          <div class="lp-body-inner">
+
+            <!-- Hero section -->
+            <section class="lp-hero">
+                <div class="lp-hero-eyebrow">☢ &nbsp;THE NUCLEAR ARMS RACE&nbsp; ☢</div>
+                <h1 class="lp-hero-title">Build. Refine. Nuke.<br><span class="lp-amber-text">Win Real Money.</span></h1>
+                <p class="lp-hero-lore">
+                    Mine uranium. Refine it. Fire up reactors, sell power on a live market, and stack crypto profits.
+                    Build missile silos, hoard warheads, and nuke your rivals into rubble.
+                    Top the leaderboard and claim your share of the crypto prize pool.
+                </p>
+                <div class="lp-hero-stats">
+                    <div class="lp-hstat">
+                        <div class="lp-hstat-icon">⛏️</div>
+                        <div class="lp-hstat-label">Mine and refine uranium to fuel your reactors</div>
+                    </div>
+                    <div class="lp-hstat">
+                        <div class="lp-hstat-icon">⚡</div>
+                        <div class="lp-hstat-label">Generate power, sell it, earn on the live market</div>
+                    </div>
+                    <div class="lp-hstat">
+                        <div class="lp-hstat-icon">☢️</div>
+                        <div class="lp-hstat-label">Build silos, arm warheads, nuke your enemies</div>
+                    </div>
+                    <div class="lp-hstat">
+                        <div class="lp-hstat-icon">🏆</div>
+                        <div class="lp-hstat-label">Top 3 commanders split the crypto prize pool</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Login / Signup card -->
+            <section class="lp-auth-card">
+                <div class="lp-auth-header">
+                    <div class="lp-auth-title">Take Command</div>
+                    <div class="lp-auth-sub">Enter your email to log in or create your account.</div>
+                </div>
+
+                <!-- Step 1: Email input -->
+                <div id="loginStep1">
+                    <div class="lp-field-row">
+                        <input id="loginEmail" type="email" placeholder="commander@email.com" class="lp-input" autocomplete="email" />
+                        <button class="lp-btn-primary" id="loginSendBtn">Send Code</button>
+                    </div>
+                    <div class="lp-divider"><span>or use password</span></div>
+                    <div class="lp-field-row">
+                        <input id="loginPassword" type="password" placeholder="Password" class="lp-input" autocomplete="current-password" />
+                        <button class="lp-btn-ghost" id="loginPasswordBtn">Login</button>
+                        <button class="lp-btn-ghost" id="signupPasswordBtn">Sign Up</button>
+                    </div>
+                    <div id="loginError" class="lp-error"></div>
+                </div>
+
+                <!-- Step 2: OTP code -->
+                <div id="loginStep2" style="display:none;">
+                    <div class="lp-otp-info">
+                        Code sent to <strong id="loginEmailDisplay"></strong> — check your inbox.
+                    </div>
+                    <div id="loginDevHint" class="lp-dev-hint" style="display:none;"></div>
+                    <div class="lp-field-row">
+                        <input id="loginCode" type="text" inputmode="numeric" maxlength="6" placeholder="000000" class="lp-input lp-input--otp" autocomplete="one-time-code" />
+                        <button class="lp-btn-primary" id="loginVerifyBtn">Verify</button>
+                    </div>
+                    <div class="lp-row-sb">
+                        <div id="loginError2" class="lp-error"></div>
+                        <button id="loginBackBtn" class="lp-back-btn">Use different email</button>
+                    </div>
+                </div>
+
+                <!-- Step 3: Profile setup -->
+                <div id="loginStep3" style="display:none;">
+                    <div class="lp-otp-info">Welcome, Commander. Choose your callsign and emblem.</div>
+                    <div class="lp-field-group">
+                        <div class="lp-field-label">Commander Name</div>
+                        <input id="signupUsername" type="text" maxlength="20" placeholder="YourName_1234" class="lp-input" autocomplete="username" />
+                    </div>
+                    <div class="lp-field-group">
+                        <div class="lp-field-label">Profile Picture</div>
+                        <div id="signupAvatarPicker" class="avatar-picker" data-selected-avatar="☢️"></div>
+                    </div>
+                    <div id="loginError3" class="lp-error"></div>
+                    <button class="lp-btn-primary lp-btn-full" id="accountCreateBtn">☢️ Enter NUKEWAR</button>
+                </div>
+            </section>
+
+            <!-- Flavour footer -->
+            <footer class="lp-footer">
+                <p class="lp-footer-muted">Prize pool paid out in crypto. Connect your wallet to play.</p>
+            </footer>
+          </div><!-- end lp-body-inner -->
+        </div>
     </div>
+    <!-- End landing page -->
+
     <div class="container">
         <div class="top-bar">
             <div class="top-bar-title">NUKEWAR</div>
