@@ -26,6 +26,7 @@
     .btn-warning{background:#ff9f43;border-color:#d67a1a;color:#14110b}
     .btn-danger{background:#ff5c7a;border-color:#c7425f;color:#14110b}
     .btn-ghost{background:transparent;border:1px solid #24313b;color:#9fb0c3}
+    .btn-purple{background:#6a4cff;border-color:#5138d1;color:#fff}
   </style>
 </head>
 <body>
@@ -47,7 +48,7 @@
     <!-- Top control buttons for quick access -->
     <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
       <button id="topSaveBtn" class="btn-primary small">Save Changes</button>
-      <button id="topViewAuditBtn" class="btn-ghost small">View History</button>
+      <button id="topViewAuditBtn" class="btn-purple small">View History</button>
       <button id="topResetBtn" class="btn-warning small">Reload</button>
     </div>
     
@@ -84,13 +85,17 @@
           </div>
         </div>
 
-        <div id="auditWrap" style="display:none;margin-top:12px;">
-          <div class="card">
-            <h4>Config Audit <button id="toggleAudit" class="small btn-ghost" style="margin-left:8px">Collapse</button></h4>
-            <div id="auditCardBody">
-              <div id="auditList" style="max-height:420px;overflow:auto;padding:6px;background:#071018;border-radius:6px;border:1px solid #162028;"></div>
-              <div style="margin-top:8px"><button id="closeAuditBtn" class="small">Close</button></div>
-            </div>
+        <!-- auditWrap moved below to occupy the center area between snapshots and game settings -->
+      </div>
+    </div>
+
+    <div style="display:flex;justify-content:center;margin-bottom:12px">
+      <div id="auditWrap" style="display:none;width:100%;max-width:980px">
+        <div class="card">
+          <h4>Config Audit <button id="toggleAudit" class="small btn-ghost" style="margin-left:8px">Collapse</button></h4>
+          <div id="auditCardBody">
+            <div id="auditList" style="max-height:420px;overflow:auto;padding:6px;background:#071018;border-radius:6px;border:1px solid #162028;"></div>
+            <div style="margin-top:8px"><button id="closeAuditBtn" class="small">Close</button></div>
           </div>
         </div>
       </div>
@@ -235,7 +240,7 @@
         </div>
         <div style="margin-top:12px" class="row">
           <button id="saveBtn" class="btn-primary">Save Changes</button>
-          <button id="viewAuditBtn" class="btn-ghost">View History</button>
+          <button id="viewAuditBtn" class="btn-purple">View History</button>
           <button id="resetBtn" class="btn-warning">Reload</button>
         </div>
       </div>
@@ -534,6 +539,8 @@
       const el = $(id);
       if (el) el.style.display = 'none';
     });
+
+    // middle view history button wiring (not used anymore)
   </script>
 </body>
 </html>
