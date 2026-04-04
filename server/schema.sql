@@ -187,11 +187,28 @@ CREATE TABLE IF NOT EXISTS notifications (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     run_id      UUID REFERENCES runs(id),
     player_id   UUID REFERENCES players(id),
-    email       TEXT NOT NULL,
+    email       TEXT,
     type        TEXT NOT NULL,
     payload     JSONB DEFAULT '{}',
     read        BOOLEAN DEFAULT FALSE,
     created_at  TIMESTAMPTZ DEFAULT NOW()
+# ── Trigger: Always set notifications.email from player_id if not provided ──
+CREATE OR REPLACE FUNCTION set_notification_email()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.email IS NULL OR NEW.email = '' THEN
+        SELECT email INTO NEW.email FROM players WHERE id = NEW.player_id;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_set_notification_email ON notifications;
+
+CREATE TRIGGER trg_set_notification_email
+BEFORE INSERT ON notifications
+FOR EACH ROW
+EXECUTE FUNCTION set_notification_email();
 );
 CREATE INDEX IF NOT EXISTS idx_notifications_player ON notifications(player_id, read);
 
