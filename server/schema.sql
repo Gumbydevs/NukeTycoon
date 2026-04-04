@@ -170,6 +170,7 @@ CREATE TABLE IF NOT EXISTS server_config_audit (
     old_value     TEXT,
     new_value     TEXT,
     admin_key_id  UUID REFERENCES admin_keys(id),
+    admin_action_id UUID REFERENCES admin_actions(id),
     admin_name    TEXT,
     created_at    TIMESTAMPTZ DEFAULT NOW()
 );
@@ -184,6 +185,16 @@ CREATE TABLE IF NOT EXISTS server_config_snapshots (
     created_at   TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_server_config_snapshots_created_at ON server_config_snapshots(created_at);
+
+-- ── Admin actions (groups of config changes like 'save' or 'snapshot_restore') ───
+CREATE TABLE IF NOT EXISTS admin_actions (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    admin_key_id  UUID REFERENCES admin_keys(id),
+    admin_name    TEXT,
+    action_type   TEXT NOT NULL, -- save | snapshot_restore | other
+    meta          JSONB DEFAULT '{}',
+    created_at    TIMESTAMPTZ DEFAULT NOW()
+);
 
 -- ── Economy snapshots (one per game-day, used for historical charts) ──────────
 CREATE TABLE IF NOT EXISTS economy_snapshots (

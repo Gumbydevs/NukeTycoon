@@ -240,6 +240,12 @@ app.post('/admin/api/balance', requireAdmin, async (req, res) => {
     const client = await db.connect();
     try {
         await client.query('BEGIN');
+        // Insert an admin_actions row to group this save
+        const actionRes = await client.query(
+            `INSERT INTO admin_actions (admin_key_id, admin_name, action_type, meta) VALUES ($1,$2,$3,$4) RETURNING id`,
+            [req.admin?.id || null, req.admin?.name || req.admin?.created_by || null, 'save', JSON.stringify({ count: Object.keys(changes).length })]
+        );
+        const adminActionId = actionRes.rows[0].id;
         const applied = {};
         for (const [key, rawVal] of Object.entries(changes)) {
             const val = rawVal === null || rawVal === undefined ? null : String(rawVal);
@@ -251,9 +257,9 @@ app.post('/admin/api/balance', requireAdmin, async (req, res) => {
                 [key, val]
             );
             await client.query(
-                `INSERT INTO server_config_audit (key, old_value, new_value, admin_key_id, admin_name)
-                 VALUES ($1,$2,$3,$4,$5)`,
-                [key, oldVal, val, req.admin?.id || null, req.admin?.name || req.admin?.created_by || req.admin?.source || null]
+                `INSERT INTO server_config_audit (key, old_value, new_value, admin_key_id, admin_action_id, admin_name)
+                 VALUES ($1,$2,$3,$4,$5,$6)`,
+                [key, oldVal, val, req.admin?.id || null, adminActionId, req.admin?.name || req.admin?.created_by || req.admin?.source || null]
             );
             applied[key] = { old: oldVal, new: val };
         }
@@ -780,6 +786,12 @@ app.post('/admin/api/config-snapshots/:id/restore', requireAdmin, async (req, re
     const client = await db.connect();
     try {
         await client.query('BEGIN');
+        // Create admin action for snapshot restore
+        const actionRes = await client.query(
+            `INSERT INTO admin_actions (admin_key_id, admin_name, action_type, meta) VALUES ($1,$2,$3,$4) RETURNING id`,
+            [req.admin?.id || null, req.admin?.name || req.admin?.created_by || null, 'snapshot_restore', JSON.stringify({ snapshot_id: id })]
+        );
+        const adminActionId = actionRes.rows[0].id;
         const r = await client.query('SELECT snapshot FROM server_config_snapshots WHERE id = $1 FOR UPDATE', [id]);
         if (r.rowCount === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Snapshot not found.' }); }
         const snapshot = r.rows[0].snapshot || {};
@@ -794,9 +806,9 @@ app.post('/admin/api/config-snapshots/:id/restore', requireAdmin, async (req, re
                 [key, newVal]
             );
             await client.query(
-                `INSERT INTO server_config_audit (key, old_value, new_value, admin_key_id, admin_name)
-                 VALUES ($1,$2,$3,$4,$5)`,
-                [key, oldVal, newVal, req.admin?.id || null, req.admin?.name || req.admin?.created_by || req.admin?.source || null]
+                `INSERT INTO server_config_audit (key, old_value, new_value, admin_key_id, admin_action_id, admin_name)
+                 VALUES ($1,$2,$3,$4,$5,$6)`,
+                [key, oldVal, newVal, req.admin?.id || null, adminActionId, req.admin?.name || req.admin?.created_by || req.admin?.source || null]
             );
             applied[key] = { old: oldVal, new: newVal };
         }
