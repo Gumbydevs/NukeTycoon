@@ -147,6 +147,7 @@
     .rank-3 { background: rgba(200,100,60,0.2); color: #cd7f32; }
     .rank-n { background: var(--surface2); color: var(--muted); }
     .avatar-cell { font-size: 18px; }
+    .avatar-cell img.eco-photo { width:24px; height:24px; border-radius:50%; object-fit:cover; vertical-align:middle; }
     .username-cell { font-weight: 600; color: var(--text); }
     .balance-cell { color: var(--amber); font-weight: 700; }
     .income-cell  { color: var(--green); }
@@ -590,7 +591,7 @@ function renderLeaderboard(players, scores, buildingRules) {
         const pct = rows[0].balance > 0 ? (p.balance / rows[0].balance) * 100 : 0;
         return `<tr>
             <td><span class="rank-badge ${rankClass}">${rank}</span></td>
-            <td class="avatar-cell">${p.avatar || '☢️'}</td>
+            <td class="avatar-cell">${p.avatar_photo ? `<img src="${escHtml(p.avatar_photo)}" class="eco-photo" alt="" />` : (p.avatar || '☢️')}</td>
             <td class="username-cell">${escHtml(p.username || 'Unknown')}</td>
             <td class="balance-cell">${fmt(p.balance)}</td>
             <td class="income-cell">+${fmt(p.daily_income)}/day</td>
@@ -635,7 +636,7 @@ function renderHallOfFame(alltimePlayers) {
         const bestRankBadge = p.best_rank === 1 ? '🥇' : p.best_rank === 2 ? '🥈' : p.best_rank === 3 ? '🥉' : p.best_rank != null ? `#${p.best_rank}` : '—';
         return `<tr>
             <td><span class="rank-badge ${rankClass}">${rank}</span></td>
-            <td class="avatar-cell">${p.avatar || '☢️'}</td>
+            <td class="avatar-cell">${p.avatar_photo ? `<img src="${escHtml(p.avatar_photo)}" class="eco-photo" alt="" />` : (p.avatar || '☢️')}</td>
             <td class="username-cell">${escHtml(p.username || 'Unknown')}</td>
             <td class="balance-cell">${fmt(p.best_balance)}</td>
             <td class="income-cell">+${fmt(p.best_daily_income)}/day</td>

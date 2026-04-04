@@ -181,7 +181,7 @@ app.get('/economy/api/data', async (_req, res) => {
             db.query('SELECT * FROM alltime_market_records'),
             db.query(
                 `SELECT apb.player_id, apb.best_balance, apb.best_daily_income, apb.best_rank,
-                        apb.total_runs, apb.updated_at, p.username, p.avatar
+                        apb.total_runs, apb.updated_at, p.username, p.avatar, p.avatar_photo
                  FROM alltime_player_bests apb
                  JOIN players p ON p.id = apb.player_id
                  ORDER BY apb.best_balance DESC LIMIT 25`
@@ -192,6 +192,7 @@ app.get('/economy/api/data', async (_req, res) => {
             player_id:        p.player_id,
             username:         p.username,
             avatar:           p.avatar,
+            avatar_photo:     p.avatar_photo || null,
             best_balance:     parseInt(p.best_balance, 10) || 0,
             best_daily_income:parseInt(p.best_daily_income, 10) || 0,
             best_rank:        p.best_rank === 99999 ? null : p.best_rank,
@@ -215,7 +216,7 @@ app.get('/economy/api/data', async (_req, res) => {
                 [run.id]
             ),
             db.query(
-                `SELECT p.id, p.username, p.avatar, p.token_balance,
+                `SELECT p.id, p.username, p.avatar, p.avatar_photo, p.token_balance,
                         COALESCE(rps.score, 0) AS score,
                         COALESCE(rps.uranium_raw, 0) AS uranium_raw,
                         COALESCE(rps.uranium_refined, 0) AS uranium_refined,
@@ -233,7 +234,7 @@ app.get('/economy/api/data', async (_req, res) => {
             db.query('SELECT * FROM alltime_market_records'),
             db.query(
                 `SELECT apb.player_id, apb.best_balance, apb.best_daily_income, apb.best_rank,
-                        apb.total_runs, apb.updated_at, p.username, p.avatar
+                        apb.total_runs, apb.updated_at, p.username, p.avatar, p.avatar_photo
                  FROM alltime_player_bests apb
                  JOIN players p ON p.id = apb.player_id
                  ORDER BY apb.best_balance DESC

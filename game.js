@@ -3164,6 +3164,7 @@ function showProfile() {
     if (avatarDisplay) avatarDisplay.textContent = game.playerAvatar || DEFAULT_PLAYER_AVATAR;
     renderAvatarPicker('profileAvatarPicker', game.playerAvatar || DEFAULT_PLAYER_AVATAR);
     _renderProfilePhotoPreview();
+    const msgEl = document.getElementById('profileUsernameMsg');
     if (msgEl) msgEl.textContent = '';
     const photoMsg = document.getElementById('profilePhotoMsg');
     if (photoMsg) photoMsg.textContent = '';
