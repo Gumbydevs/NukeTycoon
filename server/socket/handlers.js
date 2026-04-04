@@ -626,40 +626,55 @@ function registerHandlers(io, socket) {
                 return;
             }
 
-            // All clear — deduct and place
+            // All clear — deduct and place (use UPSERT to avoid unique constraint
+            // failures when an older destroyed row exists for the same run+cell).
             await ensureRunPlayerState(run.id, player.id);
-            await db.query(
-                'UPDATE players SET token_balance = token_balance - $1 WHERE id = $2',
-                [cost, player.id]
-            );
-            const constructionEndsAt = new Date(Date.now() + (BUILDING_RULES[type]?.constructionMs || 0));
-            const buildResult = await db.query(
-                `INSERT INTO buildings (run_id, player_id, type, cell_id, construction_ends_at)
-                 VALUES ($1, $2, $3, $4, $5)
-                 RETURNING *`,
-                [run.id, player.id, type, cellId, constructionEndsAt]
-            );
-            const prizeContribution = Math.floor(cost * 0.10);
-            await db.query(
-                `UPDATE runs
-                 SET prize_pool = prize_pool + $1,
-                     tokens_burned = tokens_burned + $2,
-                     market_token_pool = GREATEST(1, market_token_pool - $3)
-                 WHERE id = $4`,
-                [prizeContribution, cost, cost / MARKET_POOL_BURN_RATE, run.id]
-            );
-            const newWallet = parseInt(player.token_balance, 10) - cost;
+            try {
+                await db.query('UPDATE players SET token_balance = token_balance - $1 WHERE id = $2', [cost, player.id]);
+                const constructionEndsAt = new Date(Date.now() + (BUILDING_RULES[type]?.constructionMs || 0));
+                const buildResult = await db.query(
+                    `INSERT INTO buildings (run_id, player_id, type, cell_id, construction_ends_at, placed_at, is_active, destroyed_at)
+                     VALUES ($1, $2, $3, $4, $5, NOW(), TRUE, NULL)
+                     ON CONFLICT (run_id, cell_id) DO UPDATE SET
+                         player_id = EXCLUDED.player_id,
+                         type = EXCLUDED.type,
+                         construction_ends_at = EXCLUDED.construction_ends_at,
+                         is_active = TRUE,
+                         destroyed_at = NULL,
+                         placed_at = NOW()
+                     RETURNING *`,
+                    [run.id, player.id, type, cellId, constructionEndsAt]
+                );
 
-            // Broadcast the new building to everyone in the run
-            io.to(`run:${run.id}`).emit('building:placed', {
-                building:  buildResult.rows[0],
-                ownerName: player.username,
-                placedBy:  player.id,
-            });
+                const prizeContribution = Math.floor(cost * 0.10);
+                await db.query(
+                    `UPDATE runs
+                     SET prize_pool = prize_pool + $1,
+                         tokens_burned = tokens_burned + $2,
+                         market_token_pool = GREATEST(1, market_token_pool - $3)
+                     WHERE id = $4`,
+                    [prizeContribution, cost, cost / MARKET_POOL_BURN_RATE, run.id]
+                );
 
-            // Send authoritative wallet balance back to the placing player only
-            socket.emit('player:wallet_update', { token_balance: newWallet });
-            await emitRunEconomy(io, run.id);
+                // Fetch authoritative wallet balance after deduction
+                const walletRes = await db.query('SELECT token_balance FROM players WHERE id = $1', [player.id]);
+                const newWallet = parseInt(walletRes.rows[0]?.token_balance, 10) || 0;
+
+                // Broadcast the new building to everyone in the run
+                io.to(`run:${run.id}`).emit('building:placed', {
+                    building: buildResult.rows[0],
+                    ownerName: player.username,
+                    placedBy: player.id,
+                });
+
+                // Send authoritative wallet balance back to the placing player only
+                socket.emit('player:wallet_update', { token_balance: newWallet });
+                await emitRunEconomy(io, run.id);
+            } catch (err) {
+                console.error('building:place failed:', err && (err.stack || err.message || err));
+                socket.emit('building:place_error', { message: 'Server error placing building.' });
+                return;
+            }
         });
     });
 
