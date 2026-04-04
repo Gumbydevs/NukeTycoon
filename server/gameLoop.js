@@ -591,6 +591,7 @@ async function processRunEconomy(io, run) {
     let aggregatePower = 0;
 
     const client = await db.connect();
+    let newlyPlaced = [];
     try {
         await client.query('BEGIN');
         await client.query('DELETE FROM fallout_zones WHERE run_id = $1 AND expires_at <= NOW()', [run.id]);
@@ -714,6 +715,78 @@ async function processRunEconomy(io, run) {
             [previousPrice, nextPrice, nextTokenPool, nextTokensIssued, run.id]
         );
 
+        // Process server-side build queue: promote queued entries into real
+        // building rows when players have free construction slots. This makes
+        // queue progression authoritative and resilient across reconnects.
+        try {
+            for (const pRow of playersResult.rows) {
+                const playerId = pRow.id;
+                // Count active constructions for this player inside the TX
+                const activeRes = await client.query(
+                    `SELECT COUNT(*)::int AS cnt
+                     FROM buildings
+                     WHERE run_id = $1
+                       AND player_id = $2
+                       AND is_active = TRUE
+                       AND construction_ends_at > NOW()`,
+                    [run.id, playerId]
+                );
+                const activeCount = parseInt(activeRes.rows[0]?.cnt || 0, 10) || 0;
+                const freeSlots = Math.max(0, BUILD_SLOTS - activeCount);
+                if (freeSlots <= 0) continue;
+
+                // Lock and fetch queued entries for this player (oldest first)
+                const qRes = await client.query(
+                    `SELECT id, cell_id, type
+                     FROM build_queue
+                     WHERE run_id = $1 AND player_id = $2
+                     ORDER BY queued_at ASC
+                     LIMIT $3
+                     FOR UPDATE SKIP LOCKED`,
+                    [run.id, playerId, freeSlots]
+                );
+                for (const q of qRes.rows) {
+                    try {
+                        // Skip if cell already occupied
+                        const occ = await client.query(
+                            `SELECT id FROM buildings WHERE run_id = $1 AND cell_id = $2 AND is_active = TRUE`,
+                            [run.id, q.cell_id]
+                        );
+                        if (occ.rows.length > 0) {
+                            await client.query('DELETE FROM build_queue WHERE id = $1', [q.id]);
+                            continue;
+                        }
+
+                        const constructionMs = Number(BUILDING_RULES[q.type]?.constructionMs || 0);
+                        const endsAt = new Date(Date.now() + constructionMs);
+
+                        const ins = await client.query(
+                            `INSERT INTO buildings (run_id, player_id, type, cell_id, construction_ends_at, placed_at, is_active, destroyed_at)
+                             VALUES ($1,$2,$3,$4,$5,NOW(),TRUE,NULL)
+                             ON CONFLICT (run_id, cell_id) DO UPDATE SET
+                                 player_id = EXCLUDED.player_id,
+                                 type = EXCLUDED.type,
+                                 construction_ends_at = EXCLUDED.construction_ends_at,
+                                 is_active = TRUE,
+                                 destroyed_at = NULL,
+                                 placed_at = NOW()
+                             RETURNING *`,
+                            [run.id, playerId, q.type, q.cell_id, endsAt]
+                        );
+
+                        // Remove queue entry now that we've promoted it
+                        await client.query('DELETE FROM build_queue WHERE id = $1', [q.id]);
+
+                        newlyPlaced.push({ building: ins.rows[0], ownerId: playerId });
+                    } catch (err) {
+                        console.warn('queued-promotion failed for queue id=', q.id, err && err.message);
+                    }
+                }
+            }
+        } catch (err) {
+            console.warn('build-queue processing failed:', err && err.message);
+        }
+
         await client.query('COMMIT');
     } catch (err) {
         await client.query('ROLLBACK');
@@ -723,6 +796,27 @@ async function processRunEconomy(io, run) {
     }
 
     await emitRunSnapshot(io, run.id, 'run:tick');
+
+    // Emit any newly-placed buildings so clients receive placement events.
+    if (newlyPlaced && Array.isArray(newlyPlaced) && newlyPlaced.length > 0) {
+        try {
+            for (const p of newlyPlaced) {
+                try {
+                    const ownerRes = await db.query('SELECT username FROM players WHERE id = $1', [p.ownerId]);
+                    const ownerName = ownerRes.rows[0]?.username || null;
+                    io.to(`run:${run.id}`).emit('building:placed', {
+                        building: p.building,
+                        ownerName,
+                        placedBy: p.ownerId,
+                    });
+                } catch (e) {
+                    console.warn('emit placed failed for owner=', p.ownerId, e && e.message);
+                }
+            }
+        } catch (e) {
+            console.warn('emitting newlyPlaced buildings failed:', e && e.message);
+        }
+    }
 }
 
 // ── All-time record helpers ───────────────────────────────────────────────────
