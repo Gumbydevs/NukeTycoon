@@ -410,8 +410,11 @@ function registerHandlers(io, socket) {
 
             // Fetch recent chat and notifications for this player (by email)
             const chatRes = await db.query('SELECT * FROM chat_messages WHERE run_id = $1 ORDER BY ts ASC LIMIT 200', [run.id]);
-            // Fetch notifications by player email instead of player_id
-            const notesRes = await db.query('SELECT id, type, payload, created_at, read FROM notifications WHERE email = $1 ORDER BY created_at ASC', [player.email]);
+            // Fetch notifications by player email or player_id (cover legacy rows)
+            const notesRes = await db.query(
+                'SELECT id, type, payload, created_at, read FROM notifications WHERE (email = $1 OR player_id = $2) ORDER BY created_at ASC',
+                [player.email, player.id]
+            );
             const queueRes = await db.query('SELECT cell_id, type, queued_at, player_id FROM build_queue WHERE run_id = $1 ORDER BY queued_at ASC', [run.id]);
 
             socket.emit('run:state', {
@@ -1018,14 +1021,14 @@ function registerHandlers(io, socket) {
                 const runPlayersRes = await db.query('SELECT player_id FROM run_players WHERE run_id = $1', [socket.runId]);
                 const toNotify = runPlayersRes.rows.map(r => r.player_id).filter(pid => !onlineIds.has(pid) && pid !== player.id);
                 for (const pid of toNotify) {
-                    // Look up email for this player
-                    const emailRes = await db.query('SELECT email FROM players WHERE id = $1', [pid]);
-                    const email = emailRes.rows[0]?.email || '';
-                    await db.query(
-                        `INSERT INTO notifications (run_id, player_id, email, type, payload)
-                         VALUES ($1,$2,$3,$4,$5)`,
-                        [socket.runId, pid, email, 'chat', JSON.stringify({ id, from: player.username, text: cleanText, ts: now })]
-                    );
+                        // Look up email for this player and normalize to lowercase
+                        const emailRes = await db.query('SELECT email FROM players WHERE id = $1', [pid]);
+                        const email = (emailRes.rows[0]?.email || '').toLowerCase();
+                        await db.query(
+                            `INSERT INTO notifications (run_id, player_id, email, type, payload)
+                             VALUES ($1,$2,$3,$4,$5)`,
+                            [socket.runId, pid, email, 'chat', JSON.stringify({ id, from: player.username, text: cleanText, ts: now })]
+                        );
                 }
             } catch (err) {
                 console.warn('chat notify failed:', err.message);
