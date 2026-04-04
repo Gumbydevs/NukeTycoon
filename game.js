@@ -664,16 +664,13 @@ function connectSocket() {
         renderChatMessage(msg);
         const panel = document.getElementById('chatPanel');
         const isOpen = panel && panel.style.display !== 'none';
-        if (!isOpen) {
+        if (isOpen) {
+            // Panel is open — keep the toggle hidden (guard against any spurious show)
+            const toggleBtn = document.getElementById('chatToggleBtn');
+            if (toggleBtn) toggleBtn.style.display = 'none';
+        } else {
+            // Panel is closed — show floating toast only; don't touch the toggle button
             showChatToast(msg);
-            if (msg.playerId !== getLocalPlayerId()) {
-                game._chatUnread = (game._chatUnread || 0) + 1;
-                const badge = document.getElementById('chatToggleUnread');
-                if (badge) {
-                    badge.textContent = game._chatUnread > 9 ? '9+' : String(game._chatUnread);
-                    badge.style.display = 'inline-flex';
-                }
-            }
         }
     });
 }
@@ -5235,10 +5232,6 @@ function initChatUI() {
         if (!panel) return;
         panel.style.display = 'flex';
         if (toggleBtn) toggleBtn.style.display = 'none';
-        // clear unread badge
-        game._chatUnread = 0;
-        const badge = document.getElementById('chatToggleUnread');
-        if (badge) badge.style.display = 'none';
         scrollChatToBottom();
         setTimeout(() => { if (input) input.focus(); }, 40);
     }
