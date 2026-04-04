@@ -183,6 +183,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 CREATE INDEX IF NOT EXISTS idx_chat_run_ts ON chat_messages(run_id, ts);
 
 -- ── Notifications for offline players (persisted)
+
 CREATE TABLE IF NOT EXISTS notifications (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     run_id      UUID REFERENCES runs(id),
@@ -192,7 +193,12 @@ CREATE TABLE IF NOT EXISTS notifications (
     payload     JSONB DEFAULT '{}',
     read        BOOLEAN DEFAULT FALSE,
     created_at  TIMESTAMPTZ DEFAULT NOW()
-# ── Trigger: Always set notifications.email from player_id if not provided ──
+);
+
+-- Ensure email column exists (for migration safety)
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS email TEXT;
+
+-- Trigger: Always set notifications.email from player_id if not provided
 CREATE OR REPLACE FUNCTION set_notification_email()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -204,12 +210,11 @@ END;
 $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS trg_set_notification_email ON notifications;
-
 CREATE TRIGGER trg_set_notification_email
 BEFORE INSERT ON notifications
 FOR EACH ROW
 EXECUTE FUNCTION set_notification_email();
-);
+
 CREATE INDEX IF NOT EXISTS idx_notifications_player ON notifications(player_id, read);
 
 -- ── All-time market records (persist across runs) ─────────────────────────────
