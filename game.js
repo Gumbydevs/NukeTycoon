@@ -2389,6 +2389,11 @@ function placeOrSelect(id) {
  * Build a building at the specified cell
  */
 function buildBuilding(id, type) {
+    // Defensive: block if building config not loaded or invalid type
+    if (!buildingTypes[type]) {
+        addNotification('danger', 'Invalid building type. Please refresh or wait for config.');
+        return;
+    }
     // Special handling for silos (nuclear weapons)
     if (type === 'silo') {
         // Check if player has at least 1 completed reactor
