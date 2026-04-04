@@ -346,6 +346,7 @@ function connectSocket() {
 
         // Unread notifications
         if (Array.isArray(notifications)) {
+            console.log('Received notifications from server:', notifications);
             game.notifications = (notifications || []).map(n => ({
                 id: n.id,
                 type: n.type || 'info',
