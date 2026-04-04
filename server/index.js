@@ -735,6 +735,94 @@ app.get('/admin/api/config-audit', requireAdmin, async (req, res) => {
     }
 });
 
+// Snapshot endpoints: create, list, get, restore, delete
+app.post('/admin/api/config-snapshots', requireAdmin, async (req, res) => {
+    try {
+        const name = typeof req.body?.name === 'string' ? req.body.name.trim() : (`snapshot-${new Date().toISOString()}`);
+        // Read current server_config into an object
+        const rows = await db.query('SELECT key, value FROM server_config');
+        const obj = {};
+        rows.rows.forEach(r => { obj[r.key] = r.value; });
+        const result = await db.query(
+            `INSERT INTO server_config_snapshots (name, snapshot, created_by, admin_key_id) VALUES ($1, $2, $3, $4) RETURNING id, created_at`,
+            [name, obj, req.admin?.name || req.admin?.created_by || null, req.admin?.id || null]
+        );
+        res.json({ ok: true, id: result.rows[0].id, created_at: result.rows[0].created_at });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/admin/api/config-snapshots', requireAdmin, async (req, res) => {
+    try {
+        const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit, 10) || 200));
+        const rows = await db.query('SELECT id, name, created_by, admin_key_id, created_at FROM server_config_snapshots ORDER BY created_at DESC LIMIT $1', [limit]);
+        res.json({ ok: true, snapshots: rows.rows });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/admin/api/config-snapshots/:id', requireAdmin, async (req, res) => {
+    try {
+        const id = req.params.id;
+        const r = await db.query('SELECT id, name, snapshot, created_by, admin_key_id, created_at FROM server_config_snapshots WHERE id = $1', [id]);
+        if (r.rowCount === 0) return res.status(404).json({ error: 'Snapshot not found.' });
+        res.json({ ok: true, snapshot: r.rows[0] });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Restore snapshot: applies all keys and writes config audit rows
+app.post('/admin/api/config-snapshots/:id/restore', requireAdmin, async (req, res) => {
+    const id = req.params.id;
+    const client = await db.connect();
+    try {
+        await client.query('BEGIN');
+        const r = await client.query('SELECT snapshot FROM server_config_snapshots WHERE id = $1 FOR UPDATE', [id]);
+        if (r.rowCount === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Snapshot not found.' }); }
+        const snapshot = r.rows[0].snapshot || {};
+        const applied = {};
+        for (const [key, val] of Object.entries(snapshot)) {
+            const prev = await client.query('SELECT value FROM server_config WHERE key = $1', [key]);
+            const oldVal = prev.rows[0]?.value || null;
+            const newVal = val === null || val === undefined ? null : String(val);
+            await client.query(
+                `INSERT INTO server_config (key, value, updated_at) VALUES ($1, $2, NOW())
+                 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+                [key, newVal]
+            );
+            await client.query(
+                `INSERT INTO server_config_audit (key, old_value, new_value, admin_key_id, admin_name)
+                 VALUES ($1,$2,$3,$4,$5)`,
+                [key, oldVal, newVal, req.admin?.id || null, req.admin?.name || req.admin?.created_by || req.admin?.source || null]
+            );
+            applied[key] = { old: oldVal, new: newVal };
+        }
+        await client.query('COMMIT');
+        try { await loadBuildingRulesFromDB(); await loadRuntimeConfigFromDB(); } catch (e) { console.warn('Failed to reload runtime config after restore:', e && e.message); }
+        io.emit('run:balance_update', { applied, restoredFrom: id });
+        res.json({ ok: true, applied });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        res.status(500).json({ error: err.message });
+    } finally {
+        client.release();
+    }
+});
+
+app.delete('/admin/api/config-snapshots/:id', requireAdmin, async (req, res) => {
+    try {
+        const id = req.params.id;
+        const r = await db.query('DELETE FROM server_config_snapshots WHERE id = $1 RETURNING id', [id]);
+        if (r.rowCount === 0) return res.status(404).json({ error: 'Snapshot not found.' });
+        res.json({ ok: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Purge used/expired auth codes
 app.post('/admin/api/purge-auth-codes', requireAdmin, async (_req, res) => {
     try {

@@ -174,6 +174,17 @@ CREATE TABLE IF NOT EXISTS server_config_audit (
     created_at    TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- ── Server config snapshots (named snapshots for rollback) ───────────────
+CREATE TABLE IF NOT EXISTS server_config_snapshots (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name         TEXT NOT NULL,
+    snapshot     JSONB NOT NULL,
+    created_by   TEXT,
+    admin_key_id UUID REFERENCES admin_keys(id),
+    created_at   TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_server_config_snapshots_created_at ON server_config_snapshots(created_at);
+
 -- ── Economy snapshots (one per game-day, used for historical charts) ──────────
 CREATE TABLE IF NOT EXISTS economy_snapshots (
     id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),

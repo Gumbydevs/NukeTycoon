@@ -27,7 +27,8 @@
 <body>
   <div class="wrap">
     <h1>☢️ Balance Tool</h1>
-    <p class="muted">Dedicated balance page — only economy/game parameters. Requires an admin key.</p>
+    <p class="muted">Dedicated balance page. Requires an admin key.</p>
+    <p class="muted">Make sure to <kbd>Create a snapshot</kbd> before making changes.</p>
 
     <div class="card">
       <div style="display:flex;gap:8px;align-items:center">
@@ -152,6 +153,15 @@
 
       <div>
         <div class="card">
+          <h4>Snapshots</h4>
+          <div class="row" style="gap:8px;align-items:center;margin-bottom:8px;">
+            <input id="snapshotName" placeholder="Snapshot name (optional)" class="small" style="flex:1" />
+            <button id="saveSnapshotBtn" class="small">Save Snapshot</button>
+          </div>
+          <div style="max-height:160px;overflow:auto;border:1px solid #162028;padding:6px;border-radius:6px;background:#071018;margin-bottom:8px;" id="snapshotListWrap">No snapshots</div>
+        </div>
+
+        <div class="card">
           <h4>Run Benchmarks</h4>
           <div class="row" style="align-items:center;gap:10px;margin-bottom:8px;">
             <button id="loadBenchmarksBtn" class="small">Load Benchmarks</button>
@@ -272,6 +282,64 @@
     }
 
     $('loadBenchmarksBtn').addEventListener('click', loadBenchmarks);
+
+    async function loadSnapshots(){
+      try{
+        const data = await api('/admin/api/config-snapshots');
+        const list = data.snapshots || [];
+        const wrap = $('snapshotListWrap');
+        wrap.innerHTML = list.map(s => {
+          const when = new Date(s.created_at).toLocaleString();
+          const who = s.created_by || s.admin_key_id || 'unknown';
+          return `<div style="display:flex;justify-content:space-between;gap:8px;padding:6px;border-bottom:1px solid #0f1a1f;">
+            <div style="flex:1"><strong>${s.name}</strong><div class="muted">by ${who} · ${when}</div></div>
+            <div style="display:flex;gap:6px"><button class="small" onclick="previewSnapshot('${s.id}')">Preview</button><button class="small" onclick="restoreSnapshot('${s.id}')">Restore</button><button class="small" onclick="deleteSnapshot('${s.id}')">Delete</button></div>
+          </div>`;
+        }).join('') || '<div class="muted">No snapshots</div>';
+      }catch(err){ $('snapshotListWrap').textContent = 'Failed to load snapshots: ' + (err.message || err); }
+    }
+
+    async function saveSnapshot(){
+      const name = $('snapshotName').value.trim();
+      try{
+        $('msg').textContent = 'Saving snapshot...';
+        const data = await api('/admin/api/config-snapshots', { method: 'POST', body: JSON.stringify({ name }) });
+        $('msg').textContent = 'Snapshot saved.';
+        $('snapshotName').value = '';
+        loadSnapshots();
+      }catch(err){ $('msg').textContent = '❌ ' + err.message; }
+    }
+
+    window.previewSnapshot = async function(id){
+      try{
+        const data = await api('/admin/api/config-snapshots/' + encodeURIComponent(id));
+        const snap = data.snapshot;
+        const pretty = JSON.stringify(snap.snapshot || {}, null, 2);
+        alert('Snapshot: ' + snap.name + '\n\n' + pretty.slice(0, 2000));
+      }catch(err){ alert('Preview failed: ' + err.message); }
+    }
+
+    window.restoreSnapshot = async function(id){
+      if (!confirm('Restore snapshot? This will overwrite current server config and is auditable.')) return;
+      try{
+        $('msg').textContent = 'Restoring snapshot...';
+        const res = await api('/admin/api/config-snapshots/' + encodeURIComponent(id) + '/restore', { method: 'POST', body: '{}' });
+        $('msg').textContent = 'Snapshot restored.';
+        loadAll();
+        loadSnapshots();
+      }catch(err){ $('msg').textContent = '❌ ' + err.message; }
+    }
+
+    window.deleteSnapshot = async function(id){
+      if (!confirm('Delete snapshot?')) return;
+      try{
+        await api('/admin/api/config-snapshots/' + encodeURIComponent(id), { method: 'DELETE' });
+        loadSnapshots();
+      }catch(err){ alert('Delete failed: ' + err.message); }
+    }
+
+    $('saveSnapshotBtn').addEventListener('click', saveSnapshot);
+    loadSnapshots();
 
     $('saveBtn').addEventListener('click', async () => {
       const changes = {};
