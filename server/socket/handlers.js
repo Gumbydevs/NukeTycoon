@@ -9,7 +9,7 @@ const normalizeAvatar = (avatar) => VALID_AVATARS.has(avatar) ? avatar : DEFAULT
 const VALID_TYPES = Object.keys(BUILDING_RULES);
 // Do NOT snapshot costs here — always read BUILDING_RULES[type].cost live so
 // admin changes via /admin/api/set-building-config are reflected immediately.
-const STRIKE_LIMIT_PER_DAY = 1;
+const STRIKE_LIMIT_PER_DAY = 999; // DEV: unlimited nukes for testing (restore to 1 before prod)
 const MARKET_POOL_BURN_RATE = 50;
 
 // Manhattan distance on a 20-column grid
