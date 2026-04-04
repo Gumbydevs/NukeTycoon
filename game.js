@@ -2339,7 +2339,8 @@ function placeOrSelect(id) {
         executeNuclearStrike(id);
     } else {
         // For building placement, check that cell is empty
-        if (cell.innerHTML && cell.innerHTML !== '') return; // Already occupied
+        // Use trimmed innerHTML to avoid invisible whitespace counting as occupied
+        if (cell.innerHTML && cell.innerHTML.trim() !== '') return; // Already occupied
         if (socket?.connected && _authJWT) {
             // Optimistic local render — show Workers En Route immediately while server confirms
             const _type = game.selectedMode;
@@ -2361,6 +2362,14 @@ function placeOrSelect(id) {
                 } else {
                     addNotification('danger', '⚠️ Not connected to server.');
                 }
+                game.selectedMode = null;
+                return;
+            }
+
+            // Client-side quick wallet check to avoid showing optimistic "workers en route"
+            const _cost = buildingTypes[_type]?.cost || 0;
+            if (Number.isFinite(_cost) && Number.isFinite(game.playerWallet) && game.playerWallet < _cost) {
+                addNotification('danger', `🚫 Not enough tokens to build ${displayNames[_type] || _type}.`);
                 game.selectedMode = null;
                 return;
             }
@@ -4143,11 +4152,12 @@ function renderQueuedGhost(cellId, type, queuePos) {
     const terrain = game.terrain?.[cellId] || 'grass';
     cell.classList.add('terrain-' + terrain);
     if ((game.deposits || []).some(d => d.cellId === cellId)) cell.classList.add('has-deposit');
+    // If queuePos is null/undefined, hide the badge to avoid showing `#null`.
+    const badge = (queuePos || queuePos === 0) ? `<span style="position:absolute;bottom:1px;right:2px;font-size:9px;font-weight:700; color:#ffb84d;text-shadow:0 0 3px #000;line-height:1;">#${queuePos}</span>` : '';
     cell.innerHTML = `
         <div style="position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;">
             <span style="font-size:18px;opacity:0.4;">${emoji}</span>
-            <span style="position:absolute;bottom:1px;right:2px;font-size:9px;font-weight:700;
-                         color:#ffb84d;text-shadow:0 0 3px #000;line-height:1;">#${queuePos}</span>
+            ${badge}
         </div>`;
 }
 
