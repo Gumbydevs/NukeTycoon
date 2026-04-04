@@ -7,7 +7,7 @@ const fs         = require('fs');
 const path       = require('path');
 const db         = require('./db');
 const { setupGameLoop, getActiveRun, createNewRun, endRun, setNextRunLength, getNextRunLength, BUILDING_RULES, setBuildingRules, saveBuildingRulesToDB, loadBuildingRulesFromDB, calculateScores, updateAlltimeMarketRecords } = require('./gameLoop');
-const { verifyJWT } = require('./auth');
+const { verifyJWT, verifyAdminKey, createAdminKey } = require('./auth');
 const { registerHandlers } = require('./socket/handlers');
 
 let dbReady = false;
@@ -66,17 +66,46 @@ function getAdminKeyFromRequest(req) {
     return [headerKey, queryKey, bodyKey].find((value) => typeof value === 'string' && value.trim())?.trim() || '';
 }
 
-function requireAdmin(req, res, next) {
-    const expected = (process.env.ADMIN_KEY || '').trim();
-    if (!expected) {
+async function requireAdmin(req, res, next) {
+    const provided = getAdminKeyFromRequest(req);
+
+    // Determine whether any admin keys are configured (env or DB)
+    let configured = false;
+    const envKeysRaw = (process.env.ADMIN_KEYS || process.env.ADMIN_KEY || '').trim();
+    if (envKeysRaw) configured = true;
+    try {
+        const r = await db.query('SELECT 1 FROM admin_keys WHERE active = TRUE LIMIT 1');
+        if (r && r.rowCount > 0) configured = true;
+    } catch (e) {
+        // ignore errors (table may not exist yet during migrations)
+    }
+
+    if (!configured) {
         res.status(503).json({ error: 'ADMIN_KEY is not configured on the Railway server.' });
         return;
     }
 
-    const provided = getAdminKeyFromRequest(req);
-    if (provided !== expected) {
+    // Verify provided key against env and DB keys
+    const verification = await verifyAdminKey(provided);
+    if (!verification) {
         res.status(401).json({ error: 'Invalid admin key.' });
         return;
+    }
+
+    // Attach admin info to request for handlers to use
+    req.admin = verification;
+
+    // Audit the admin request (don't store the raw key)
+    try {
+        const bodyCopy = (typeof req.body === 'object' && req.body !== null) ? { ...req.body } : null;
+        if (bodyCopy && Object.prototype.hasOwnProperty.call(bodyCopy, 'key')) delete bodyCopy.key;
+        await db.query(
+            `INSERT INTO admin_audit (admin_key_id, admin_name, path, method, action, details)
+             VALUES ($1,$2,$3,$4,$5,$6)`,
+            [verification.id, verification.name || verification.created_by || verification.source || null, req.path, req.method, `${req.method} ${req.path}`, JSON.stringify({ body: bodyCopy, query: req.query })]
+        );
+    } catch (e) {
+        console.warn('admin audit log failed:', e && e.message);
     }
 
     next();
@@ -594,6 +623,49 @@ app.post('/admin/api/set-building-config', requireAdmin, async (req, res) => {
         await saveBuildingRulesToDB(type);
         io.emit('run:building_config', { buildingRules: BUILDING_RULES });
         res.json({ ok: true, buildingRules: BUILDING_RULES });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+// Admin keys management: list, create, deactivate
+app.get('/admin/api/admin-keys', requireAdmin, async (_req, res) => {
+    try {
+        const result = await db.query('SELECT id, name, created_by, created_at, last_used_at, active FROM admin_keys ORDER BY created_at DESC');
+        res.json({ ok: true, keys: result.rows });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/admin/api/admin-keys', requireAdmin, async (req, res) => {
+    try {
+        const name = typeof req.body?.name === 'string' ? req.body.name.trim() : null;
+        const createdBy = req.admin?.name || req.admin?.created_by || 'web';
+        const newKey = await createAdminKey(name, createdBy);
+        // Return the plain key once so the operator can copy it.
+        res.json({ ok: true, id: newKey.id, key: newKey.key, message: 'Copy this key now — it will not be shown again.' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/admin/api/admin-keys/:id/deactivate', requireAdmin, async (req, res) => {
+    try {
+        const id = req.params.id;
+        const r = await db.query('UPDATE admin_keys SET active = FALSE WHERE id = $1 RETURNING id, name, active', [id]);
+        if (r.rowCount === 0) { res.status(404).json({ error: 'Key not found.' }); return; }
+        res.json({ ok: true, key: r.rows[0] });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Admin audit viewer
+app.get('/admin/api/admin-audit', requireAdmin, async (req, res) => {
+    try {
+        const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit, 10) || 200));
+        const rows = await db.query('SELECT id, admin_key_id, admin_name, path, method, action, details, created_at FROM admin_audit ORDER BY created_at DESC LIMIT $1', [limit]);
+        res.json({ ok: true, audit: rows.rows });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

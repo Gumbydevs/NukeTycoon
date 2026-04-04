@@ -147,6 +147,51 @@
         <div id="runLengthMsg" class="muted" style="font-size:12px; margin-top:6px;"></div>
       </section>
     </div>
+    <section class="card" style="margin-top:16px;">
+      <h2>Admin Keys</h2>
+      <p class="muted">Create and manage admin keys. New keys are shown once — copy them immediately.</p>
+
+      <div class="row" style="align-items:center;">
+        <input id="newAdminName" type="text" placeholder="Name (e.g., Alice, CI Bot)" style="width:360px;" />
+        <button id="createAdminKeyBtn" class="primary">Create Key</button>
+      </div>
+
+      <div id="createdKeyWrap" style="margin-top:10px; display:none;">
+        <div class="muted">Copy this key now — it will not be shown again.</div>
+        <pre id="createdKey" style="margin-top:6px;padding:8px;"> </pre>
+        <div class="row" style="margin-top:8px;">
+          <button id="copyCreatedKeyBtn">Copy Key</button>
+          <button id="dismissCreatedKeyBtn">Dismiss</button>
+        </div>
+      </div>
+
+      <h3 style="margin-top:14px;">Existing Keys</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Created By</th>
+            <th>Created</th>
+            <th>Last Used</th>
+            <th>Active</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="adminKeysBody"><tr><td colspan="6" class="muted">Loading…</td></tr></tbody>
+      </table>
+
+      <div class="row" style="margin-top:10px;">
+        <button id="refreshAdminKeysBtn">Refresh</button>
+        <button id="loadAdminAuditBtn">Show Audit</button>
+      </div>
+
+      <div id="adminAuditWrap" style="margin-top:12px; display:none;">
+        <h4>Recent Audit</h4>
+        <div style="max-height:240px; overflow:auto; border:1px solid #222; padding:8px; border-radius:6px;">
+          <pre id="adminAuditPre" style="margin:0;font-size:12px;">No data</pre>
+        </div>
+      </div>
+    </section>
 
     <section class="card" style="margin-top:16px;">
       <h2>Building Config</h2>
@@ -607,6 +652,73 @@
     }
 
     $('loadBuildingConfigBtn').addEventListener('click', loadBuildingConfig);
+
+    // ── Admin Keys / Audit ─────────────────────────────────────────────────
+    async function loadAdminKeys() {
+      try {
+        const data = await api('/admin/api/admin-keys');
+        const keys = data.keys || [];
+        $('adminKeysBody').innerHTML = keys.map(k => `
+          <tr>
+            <td>${k.name || ''}</td>
+            <td>${k.created_by || ''}</td>
+            <td>${k.created_at ? new Date(k.created_at).toLocaleString() : ''}</td>
+            <td>${k.last_used_at ? new Date(k.last_used_at).toLocaleString() : ''}</td>
+            <td>${k.active ? 'Yes' : 'No'}</td>
+            <td>${k.active ? `<button onclick="deactivateAdminKey('${k.id}')" class="danger" style="padding:6px 8px;font-size:12px;">Deactivate</button>` : ''}</td>
+          </tr>
+        `).join('') || '<tr><td colspan="6" class="muted">No keys found.</td></tr>';
+      } catch (err) {
+        $('adminKeysBody').innerHTML = `<tr><td colspan="6" class="muted">❌ ${err.message}</td></tr>`;
+      }
+    }
+
+    async function createAdminKey() {
+      const name = $('newAdminName').value.trim();
+      $('createdKeyWrap').style.display = 'none';
+      try {
+        const data = await api('/admin/api/admin-keys', { method: 'POST', body: JSON.stringify({ name }) });
+        if (data && data.key) {
+          $('createdKey').textContent = data.key;
+          $('createdKeyWrap').style.display = 'block';
+        }
+        loadAdminKeys();
+      } catch (err) {
+        alert('Create key failed: ' + err.message);
+      }
+    }
+
+    async function deactivateAdminKey(id) {
+      if (!confirm('Deactivate this admin key?')) return;
+      try {
+        await api(`/admin/api/admin-keys/${id}/deactivate`, { method: 'POST', body: '{}' });
+        loadAdminKeys();
+      } catch (err) {
+        alert('Failed to deactivate: ' + err.message);
+      }
+    }
+
+    async function loadAdminAudit() {
+      try {
+        const data = await api('/admin/api/admin-audit');
+        $('adminAuditPre').textContent = JSON.stringify(data.audit || [], null, 2);
+        $('adminAuditWrap').style.display = 'block';
+      } catch (err) {
+        $('adminAuditPre').textContent = 'Error: ' + err.message;
+        $('adminAuditWrap').style.display = 'block';
+      }
+    }
+
+    $('createAdminKeyBtn').addEventListener('click', createAdminKey);
+    $('refreshAdminKeysBtn').addEventListener('click', loadAdminKeys);
+    $('loadAdminAuditBtn').addEventListener('click', loadAdminAudit);
+    $('copyCreatedKeyBtn').addEventListener('click', () => {
+      const txt = $('createdKey').textContent || '';
+      navigator.clipboard?.writeText(txt).then(() => { alert('Copied to clipboard'); }).catch(() => { alert('Copy failed'); });
+    });
+    $('dismissCreatedKeyBtn').addEventListener('click', () => { $('createdKeyWrap').style.display = 'none'; $('createdKey').textContent = ''; });
+    // Load keys on page load
+    loadAdminKeys();
 
     // Raw Response collapsible toggle
     $('rawResponseToggle').addEventListener('click', () => {

@@ -140,6 +140,29 @@ CREATE TABLE IF NOT EXISTS server_config (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- ── Admin keys (multiple admin login keys) ─────────────────────────────────
+CREATE TABLE IF NOT EXISTS admin_keys (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name        TEXT,
+    key_hash    TEXT NOT NULL,
+    created_by  TEXT,
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    last_used_at TIMESTAMPTZ,
+    active      BOOLEAN DEFAULT TRUE
+);
+
+-- ── Admin audit log (records who performed admin actions) ────────────────
+CREATE TABLE IF NOT EXISTS admin_audit (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    admin_key_id  UUID REFERENCES admin_keys(id),
+    admin_name    TEXT,
+    path          TEXT,
+    method        TEXT,
+    action        TEXT,
+    details       JSONB DEFAULT '{}',
+    created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ── Economy snapshots (one per game-day, used for historical charts) ──────────
 CREATE TABLE IF NOT EXISTS economy_snapshots (
     id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -248,4 +248,43 @@ async function verifyOTP(email, code) {
     return { ok: true, player, token, isNewPlayer };
 }
 
-module.exports = { sendOTP, verifyOTP, verifyJWT, generateJWT, signupWithPassword, loginWithPassword };
+async function verifyAdminKey(providedKey) {
+    if (!providedKey) return null;
+
+    // Support simple env-based keys for quick setup (comma-separated allowed)
+    const envKeys = (process.env.ADMIN_KEYS || process.env.ADMIN_KEY || '')
+        .split(',')
+        .map(k => (k || '').trim())
+        .filter(Boolean);
+    if (envKeys.length > 0 && envKeys.includes(providedKey)) {
+        return { source: 'env', id: null, name: 'env-admin' };
+    }
+
+    const h = hashCode(providedKey);
+    try {
+        const result = await db.query('SELECT id, name, created_by, active FROM admin_keys WHERE key_hash = $1 AND active = TRUE LIMIT 1', [h]);
+        if (result.rows.length === 0) return null;
+        const row = result.rows[0];
+        try {
+            await db.query('UPDATE admin_keys SET last_used_at = NOW() WHERE id = $1', [row.id]);
+        } catch (e) {
+            console.warn('Failed to update admin_keys.last_used_at:', e && e.message);
+        }
+        return { source: 'db', id: row.id, name: row.name || null, created_by: row.created_by || null };
+    } catch (err) {
+        console.warn('verifyAdminKey DB error:', err && err.message);
+        return null;
+    }
+}
+
+async function createAdminKey(name, createdBy) {
+    const plain = crypto.randomBytes(32).toString('hex');
+    const h = hashCode(plain);
+    const res = await db.query(
+        'INSERT INTO admin_keys (name, key_hash, created_by) VALUES ($1, $2, $3) RETURNING id',
+        [name || null, h, createdBy || null]
+    );
+    return { id: res.rows[0].id, key: plain };
+}
+
+module.exports = { sendOTP, verifyOTP, verifyJWT, generateJWT, signupWithPassword, loginWithPassword, verifyAdminKey, createAdminKey, hashCode };
