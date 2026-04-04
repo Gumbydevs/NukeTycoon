@@ -3207,6 +3207,10 @@ function updateUI() {
     if (timeEl) timeEl.textContent = hh + ':' + mm + ':' + ss;
     const dayEl = document.getElementById('day');
     if (dayEl) dayEl.textContent = game.time.day;
+    // Keep the Round HUD in sync with server-authoritative runLength
+    const roundEl = document.getElementById('round');
+    game.round = Math.min(game.time.day, game.runLength || game.runLength === 0 ? game.runLength : 1);
+    if (roundEl) roundEl.textContent = `${game.round}/${game.runLength}`;
     const marketEl = document.getElementById('marketPrice');
     if (marketEl) {
         marketEl.textContent = '$' + game.market.price.toFixed(2);
