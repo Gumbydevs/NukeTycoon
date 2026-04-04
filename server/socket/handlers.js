@@ -401,6 +401,23 @@ function registerHandlers(io, socket) {
                 }
             }
 
+            // Construction limit: 1 building under construction at a time
+            const activeConstruction = await db.query(
+                `SELECT id FROM buildings
+                 WHERE run_id = $1
+                   AND player_id = $2
+                   AND is_active = TRUE
+                   AND construction_ends_at > NOW()`,
+                [run.id, player.id]
+            );
+            if (activeConstruction.rows.length > 0) {
+                socket.emit('building:place_error', {
+                    message: 'Construction slot busy — wait for the current build to finish.',
+                    code: 'CONSTRUCTION_LIMIT',
+                });
+                return;
+            }
+
             // All clear — deduct and place
             await ensureRunPlayerState(run.id, player.id);
             await db.query(

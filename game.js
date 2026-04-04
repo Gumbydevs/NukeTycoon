@@ -419,12 +419,24 @@ function connectSocket() {
         }
     });
 
-    socket.on('building:place_error', ({ message }) => {
-        addNotification('danger', `❌ ${message}`);
+    socket.on('building:place_error', ({ message, code }) => {
         // Remove any optimistic pending entries and restore those cells to empty
-        const pendingIds = game.buildings.filter(b => b._pendingServerConfirm).map(b => b.id);
+        const pendingBuildings = game.buildings.filter(b => b._pendingServerConfirm);
+        const pendingIds = pendingBuildings.map(b => b.id);
         game.buildings = game.buildings.filter(b => !b._pendingServerConfirm);
         pendingIds.forEach(cid => restoreEmptyCell(cid));
+
+        if (code === 'CONSTRUCTION_LIMIT') {
+            // Server safety-net: construction slot was still busy. Re-queue the pending build.
+            if (pendingBuildings.length > 0) {
+                const pb = pendingBuildings[0];
+                game._buildQueue = game._buildQueue || [];
+                game._buildQueue.unshift({ cellId: pb.id, type: pb.type });
+                addNotification('info', `⏳ ${displayNames[pb.type] || pb.type} re-queued — construction slot busy.`);
+            }
+        } else {
+            addNotification('danger', `❌ ${message}`);
+        }
         if (/occupied/i.test(message) && socket?.connected && _authJWT) {
             socket.emit('run:join', { jwt: _authJWT });
         }
@@ -646,8 +658,13 @@ const game = {
     // Every player (human or bot) pays this once to enter a run.
     // A run = runLength rounds (default 3), each lasting one real 24-hour day.
     // Their buy-in seeds the prize pool and the bonding curve pool directly.
-    buyIn: 5000, // tunable — cost per player per run (in tokens)
-    
+    buyIn: 20000, // tunable — cost per player per run (in tokens)
+
+    // ── Construction queue ────────────────────────────────────────────────────
+    // When a build is requested while another is in progress, queued here.
+    // Each entry: { cellId, type }
+    _buildQueue: [],
+
     // ── Strike tracking ───────────────────────────────────────────────────────
     // Track nuke strikes per day for reset logic
     dayStrikes: 0,                // strikes used today (resets each day)
@@ -728,11 +745,11 @@ const PLAYER_COLOR = '#ffb84d';
 const ENEMY_COLOR = '#888888';
 
 const buildingTypes = {
-    mine:      { cost: 800,  emoji: '⛏️',  color: '#4CAF50', power: 0,   constructionTime: 1,   maintenanceCost: 1 },
-    processor: { cost: 1200, emoji: '🏭',  color: '#d98a3a', power: 0,   constructionTime: 1.5, maintenanceCost: 2 },
-    storage:   { cost: 1000, emoji: '🗄️',  color: '#b08b4f', power: 0,   constructionTime: 2,   maintenanceCost: 1 },
-    plant:     { cost: 1000, emoji: '☢️',  color: '#ffb84d', power: 100, constructionTime: 2.2, maintenanceCost: 3 },
-    silo:      { cost: 6000, emoji: '💥',  color: '#ff0000', power: 0,   constructionTime: 3.5, isWeapon: true, maintenanceCost: 5 }
+    mine:      { cost: 800,  emoji: '⛏️',  color: '#4CAF50', power: 0,   constructionTime: 1,   maintenanceCost: 2 },
+    processor: { cost: 1200, emoji: '🏭',  color: '#d98a3a', power: 0,   constructionTime: 1.5, maintenanceCost: 3 },
+    storage:   { cost: 1000, emoji: '🗄️',  color: '#b08b4f', power: 0,   constructionTime: 2,   maintenanceCost: 2 },
+    plant:     { cost: 1000, emoji: '☢️',  color: '#ffb84d', power: 100, constructionTime: 2.2, maintenanceCost: 10 },
+    silo:      { cost: 6000, emoji: '💥',  color: '#ff0000', power: 0,   constructionTime: 3.5, isWeapon: true, maintenanceCost: 25 }
 };
 
 // Display names used in UI (keep keys stable in logic)
@@ -1920,6 +1937,18 @@ function placeOrSelect(id) {
         if (socket?.connected && _authJWT) {
             // Optimistic local render — show Workers En Route immediately while server confirms
             const _type = game.selectedMode;
+
+            // Construction limit: 1 active build at a time — queue if slot is busy
+            const _isBuilding = game.buildings.some(b => b.isUnderConstruction);
+            if (_isBuilding) {
+                game._buildQueue = game._buildQueue || [];
+                game._buildQueue.push({ cellId: id, type: _type });
+                const qLen = game._buildQueue.length;
+                addNotification('info', `⏳ ${displayNames[_type] || _type} queued (${qLen} in queue) — will start when current build finishes.`);
+                game.selectedMode = null;
+                return;
+            }
+
             if (!game.buildings.find(b => b.id === id)) {
                 const _optimistic = {
                     id,
@@ -3373,6 +3402,11 @@ function constructionAnimLoop() {
                     setTimeout(() => cell.classList.remove('build-complete'), 900);
                     if (typeof NukeSounds !== 'undefined') NukeSounds.buildComplete();
                     addNotification('success', `✅ ${displayNames[b.type] || b.type} construction complete!`);
+                    // Dispatch the next queued build, if any
+                    if (game._buildQueue && game._buildQueue.length > 0) {
+                        const _next = game._buildQueue.shift();
+                        setTimeout(() => dispatchQueuedBuild(_next), 600);
+                    }
                 }
                 continue;
             }
@@ -3394,6 +3428,43 @@ function constructionAnimLoop() {
     processList(game.enemyBuildings, false);
 
     requestAnimationFrame(constructionAnimLoop);
+}
+
+/**
+ * Dispatch the next entry from game._buildQueue.
+ * Called automatically after a construction completes.
+ */
+function dispatchQueuedBuild({ cellId, type }) {
+    if (!socket?.connected || !_authJWT) return;
+    // Skip if the cell was taken while we waited
+    if (game.buildings.find(b => b.id === cellId) || game.enemyBuildings.find(b => b.id === cellId)) {
+        addNotification('warning', `⚠️ Queued ${displayNames[type] || type} cell was occupied — skipped.`);
+        if (game._buildQueue && game._buildQueue.length > 0) {
+            const _next = game._buildQueue.shift();
+            setTimeout(() => dispatchQueuedBuild(_next), 200);
+        }
+        return;
+    }
+    // Optimistic render
+    const _optimistic = {
+        id: cellId,
+        type,
+        owner: game.playerName || 'You',
+        ownerId: getLocalPlayerId() || 'local',
+        ownerAvatar: game.playerAvatar || DEFAULT_PLAYER_AVATAR,
+        constructionTimeRemaining: buildingTypes[type]?.constructionTime || 0,
+        constructionTimeRemainingMs: (buildingTypes[type]?.constructionTime || 0) * 10000,
+        constructionTotalMs: (buildingTypes[type]?.constructionTime || 0) * 10000,
+        constructionEndsAtMs: null,
+        _pendingServerConfirm: true,
+        isUnderConstruction: true,
+    };
+    game.buildings.push(_optimistic);
+    renderBuilding(cellId, type, true, _optimistic);
+    showWorkersEnRouteFloat(cellId);
+    socket.emit('building:place', { jwt: _authJWT, cellId, type });
+    const remaining = (game._buildQueue || []).length;
+    addNotification('info', `🔨 Starting queued ${displayNames[type] || type}${remaining > 0 ? ` (${remaining} still queued)` : ''}.`);
 }
 
 /**
@@ -3508,7 +3579,7 @@ function productionTick() {
         fuelConsumed = Math.min(requiredFuel, game.uraniumRefined);
         const power = calculatePower();
         const powerFraction = fuelConsumed / requiredFuel;
-        income = Math.floor(power * powerFraction * 0.3); // tokens per production tick (matches server)
+        income = Math.floor(power * powerFraction * 0.1); // tokens per production tick (matches server)
         game.uraniumRefined -= fuelConsumed;
     }
 
@@ -3955,6 +4026,7 @@ function returnToMenu() {
     if (game._clockInterval)      { clearInterval(game._clockInterval);      game._clockInterval = null; }
     if (game._botInterval)        { clearInterval(game._botInterval);        game._botInterval = null; }
     game._constructionRAFRunning = false; // stops the rAF construction loop
+    game._buildQueue = []; // clear stale queue on menu return
     
     // Reset game state
     game.runEnded = false;

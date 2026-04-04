@@ -98,8 +98,7 @@
 
 ## Phase 4 — Expansion (Post-Launch)
 
-- [ ] **Real multiplayer rooms** — Replace AI opponents with real players in the same session (WebSocket or Solana-anchored game state).
-- [ ] **Player trading** — Let players sell refined fuel or processor capacity to each other mid-round.
+-- [ ] **Player trading** — Let players sell refined fuel or processor capacity to each other mid-round.
 - [ ] **Cosmetics** — Grid skins, building skins, profile badges. Zero pay-to-win.
 - [ ] **Seasons / season pass** — Rotating round themes, map hazards (e.g., radiation zones that damage nearby buildings).
 - [ ] **Advanced destruction fallout system** — Expand Phase 1 nuke strikes with persistent radiation damage zones, multi-stage explosions, and fallout clouds that spread over time. Adds strategic depth to strike placement and cleanup tactics.

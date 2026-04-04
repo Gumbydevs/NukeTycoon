@@ -24,7 +24,7 @@ function getOrGenerateDeposits(runId) {
     }
     return _depositsCache.get(runId);
 }
-const BUY_IN = 5000;
+const BUY_IN = 20000;
 const GRID_COLS = 20;
 const GRID_ROWS = 20;
 const PROXIMITY_RANGE = 2;
@@ -37,11 +37,11 @@ const MARKET_PER_SECOND_VOL = MARKET_VOLATILITY / 60;
 const MARKET_BASE_DEMAND = 1000;
 const MARKET_DRIFT_FACTOR = 0.0002;
 const BUILDING_RULES = {
-    mine:      { cost: 800,  constructionMs: 10000, maintenanceCost: 1 },
-    processor: { cost: 1200, constructionMs: 15000, maintenanceCost: 2 },
-    storage:   { cost: 1000, constructionMs: 20000, maintenanceCost: 1,  storageBonus: 1000 },
-    plant:     { cost: 1000, constructionMs: 22000, maintenanceCost: 3,  basePower: 100 },
-    silo:      { cost: 6000, constructionMs: 35000, maintenanceCost: 5,  isWeapon: true },
+    mine:      { cost: 800,  constructionMs: 10000, maintenanceCost: 2 },
+    processor: { cost: 1200, constructionMs: 15000, maintenanceCost: 3 },
+    storage:   { cost: 1000, constructionMs: 20000, maintenanceCost: 2,  storageBonus: 1000 },
+    plant:     { cost: 1000, constructionMs: 22000, maintenanceCost: 10, basePower: 100 },
+    silo:      { cost: 6000, constructionMs: 35000, maintenanceCost: 25, isWeapon: true },
 };
 
 function setBuildingRules(type, cost, constructionMs, maintenanceCost) {
@@ -616,7 +616,7 @@ async function processRunEconomy(io, run) {
                 fuelConsumed = Math.min(requiredFuel, uraniumRefined);
                 uraniumRefined -= fuelConsumed;
                 const powerFraction = requiredFuel > 0 ? (fuelConsumed / requiredFuel) : 0;
-                income = Math.floor(totalPower * powerFraction * 0.3); // was * 2
+                income = Math.floor(totalPower * powerFraction * 0.1); // was * 0.3
             }
 
             // Deduct maintenance cost for every completed building
