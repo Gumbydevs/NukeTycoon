@@ -800,7 +800,7 @@ body.mobile-menu-open .dropdown { display: none !important; }
 .help-tabs { width:220px; min-width:140px; max-width:260px; overflow:auto; display:flex; flex-direction:column; gap:6px; }
 .help-tabs button { text-align:left; padding:10px 12px; background:transparent; border:1px solid transparent; color:#ddd; cursor:pointer; border-radius:6px; }
 .help-tabs button.active { background: rgba(255,184,77,0.06); color:#ffb84d; border-color: rgba(255,184,77,0.08); }
-.help-content { flex:1; overflow:auto; padding:6px 12px; color:#dcdcdc; font-size:14px; line-height:1.45; }
+.help-content { flex:1; overflow:auto; padding:10px 18px; color:#dcdcdc; font-size:15px; line-height:1.8; }
 
 /* Live sidebar (players & leaderboard) */
 #liveSidebar {

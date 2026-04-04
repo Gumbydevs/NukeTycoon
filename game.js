@@ -1870,55 +1870,81 @@ function initMenu() {
 
 // ── Help UI: legend toggle, help modal, tabs ─────────────────────────────
 const HELP_CONTENT = [
-    { id: 'overview', title: 'Overview', html: `
-        <h3>Overview</h3>
-        <p>NUKEWAR is a shared strategy game where players build and run facilities on a single map. You place buildings to gather raw material, refine it, and turn it into income. Your goal is to grow your operation so you finish the run with the highest score.</p>
-        <p>Each game is a run made of multiple rounds. Players pay a small entry fee to join. Those tokens go into the prize pool for the run. Play smart to earn the largest share at the end.</p>
+    { id: 'overview', title: 'Game Overview', html: `
+        <h3>Welcome to NUKEWAR! 🚀</h3>
+        <p style="margin-bottom:12px;">Build, compete, and sabotage in a live multiplayer tycoon game. Place buildings, manage uranium, and outsmart rivals to win tokens!</p>
+        <p>🏆 <b>Goal:</b> Finish the run with the highest score and win a share of the prize pool.</p>
+        <br>
     `},
-    { id: 'how-it-works', title: 'How the Game Works', html: `
-        <h3>How the Game Works</h3>
-        <p>On your turn you place buildings and manage production. Mines produce raw ore. Processors turn raw ore into refined material. Plants use refined material to generate power and income. Storage protects material when production spikes.</p>
-        <p>Rounds advance automatically. Your buildings run each round and update production and income. Plan placement and upgrades so your production chain keeps moving.</p>
-    `},
-    { id: 'buildings', title: 'Buildings', html: `
-        <h3>Buildings</h3>
-        <p>Mine: extracts raw ore from the ground. Put mines on deposit cells for better output.</p>
-        <p>Processor: converts raw ore into refined material that plants need.</p>
-        <p>Plant: consumes refined material to produce power and tokens.</p>
-        <p>Storage: holds raw or refined material so you do not lose production when rates fluctuate.</p>
-        <p>Silo: a high cost structure with specialized benefits. Use when you need extra capacity or effects.</p>
+    { id: 'mechanics', title: 'How It Works', html: `
+        <h3>How It Works ⚙️</h3>
+        <ul style="margin-bottom:12px;">
+            <li>Each run lasts <b>3 days</b> (real time).</li>
+            <li>Pay tokens to join. Prize pool grows with more players.</li>
+            <li>Build on a 20x20 grid. Terrain, roads, and uranium deposits are random each run.</li>
+            <li>Place, upgrade, and sabotage buildings. Queue builds if slots are full.</li>
+            <li>Sabotage rivals with disables, steals, or nukes!</li>
+        </ul>
+        <br>
     `},
     { id: 'resources', title: 'Resources', html: `
-        <h3>Resources</h3>
-        <p>Raw ore comes from mines. Refined material comes from processors. Tokens are the currency used to buy buildings and to pay the entry fee.</p>
-        <p>Keep an eye on your storage level. If storage fills up, new production can be lost. Manage flows so processors and plants stay balanced.</p>
+        <h3>Resources 💰</h3>
+        <ul style="margin-bottom:12px;">
+            <li><b>Tokens:</b> Buy, build, sabotage, and win. Earned from power and market.</li>
+            <li><b>Raw Uranium:</b> Mined by Mines. More if near deposits.</li>
+            <li><b>Refined Uranium:</b> Made by Processors. Used by Plants.</li>
+            <li><b>Storage:</b> Lets you hold more uranium. Avoid waste!</li>
+        </ul>
+        <br>
     `},
-    { id: 'economy', title: 'Economy and Prize Pool', html: `
-        <h3>Economy and Prize Pool</h3>
-        <p>Entry fees and a portion of in game spending fund the prize pool for each run. The market price changes with trading activity. Large token movements affect the market price.</p>
-        <p>Plan purchases and sells around the market price to get the most value for your tokens and to grow your final score.</p>
+    { id: 'buildings', title: 'Buildings', html: `
+        <h3>Buildings 🏗️</h3>
+        <ul style="margin-bottom:12px;">
+            <li><b>Mine:</b> Get raw uranium. Place near deposits for best results.</li>
+            <li><b>Processor:</b> Turn raw uranium into refined uranium.</li>
+            <li><b>Plant:</b> Use refined uranium to make power and tokens.</li>
+            <li><b>Storage:</b> Store more uranium, prevent overflow.</li>
+            <li><b>Silo:</b> Launch nukes to destroy enemy buildings!</li>
+        </ul>
+        <br>
     `},
-    { id: 'rounds', title: 'Rounds and Runs', html: `
-        <h3>Rounds and Runs</h3>
-        <p>A run includes several rounds that simulate time passing. Buildings operate each round and update your production and wallet. At the end of the run the prize pool is distributed based on final rankings.</p>
-        <p>Focus on steady growth and avoid one time moves that leave you empty late in the run.</p>
+    { id: 'flow', title: 'Game Flow', html: `
+        <h3>Game Flow 🔄</h3>
+        <ul style="margin-bottom:12px;">
+            <li>Mines → Processors → Plants → Tokens</li>
+            <li>Storage keeps uranium safe</li>
+            <li>Pay building upkeep daily</li>
+            <li>Market price changes as players buy/sell</li>
+        </ul>
+        <br>
     `},
-    { id: 'controls', title: 'Controls', html: `
-        <h3>Controls</h3>
-        <p>Click a map cell to select or place a building. Use the action menu to choose building types. On mobile use the menu designed for small screens. Press Escape to close any open panel or cancel the current action.</p>
+    { id: 'multiplayer', title: 'Multiplayer', html: `
+        <h3>Multiplayer 👥</h3>
+        <ul style="margin-bottom:12px;">
+            <li>Everyone plays on the same map</li>
+            <li>See enemy buildings live</li>
+            <li>Sabotage and nukes affect rivals instantly</li>
+            <li>Leaderboard updates in real time</li>
+        </ul>
+        <br>
     `},
-    { id: 'multiplayer', title: 'Playing with Others', html: `
-        <h3>Playing with Others</h3>
-        <p>All players share the same map. Buildings placed by other players appear on your view. The leaderboard shows who is leading based on building value and wallet size. The server keeps the game state synchronized so play is fair.</p>
+    { id: 'win', title: 'How to Win', html: `
+        <h3>How to Win 🥇</h3>
+        <ul style="margin-bottom:12px;">
+            <li>Score = Plants × 100 + Mines × 50 + (tokens ÷ 1000)</li>
+            <li>Top 3 players split the prize pool</li>
+            <li>Grow steady, sabotage smart, and watch your wallet!</li>
+        </ul>
+        <br>
     `},
-    { id: 'tips', title: 'Practical Tips', html: `
-        <h3>Practical Tips</h3>
-        <ul>
-            <li>Put mines on deposit cells for higher output.</li>
-            <li>Balance processors and plants so material flows smoothly.</li>
-            <li>Use storage to protect production when rates spike.</li>
-            <li>Watch the market price and buy when the price is favorable.</li>
-            <li>Expand steadily rather than spending everything at once.</li>
+    { id: 'tips', title: 'Tips', html: `
+        <h3>Tips & Tricks 💡</h3>
+        <ul style="margin-bottom:12px;">
+            <li>Put mines near uranium for more output</li>
+            <li>Balance your processors and plants</li>
+            <li>Use storage to avoid losing uranium</li>
+            <li>Sabotage at the right time for max effect</li>
+            <li>Check the leaderboard and market often</li>
         </ul>
     `}
 ];
