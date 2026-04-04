@@ -338,13 +338,10 @@ function connectSocket() {
         // Chat history (persisted)
         if (Array.isArray(arguments[0].chatMessages)) {
             const msgs = arguments[0].chatMessages || [];
+            game.chatMessages = msgs;
             const msgsEl = document.getElementById('chatMessages');
             if (msgsEl) msgsEl.innerHTML = '';
-            game.chatMessages = [];
-            msgs.forEach(m => {
-                game.chatMessages.push(m);
-                renderChatMessage(m);
-            });
+            game.chatMessages.forEach(m => renderChatMessage(m));
         }
 
         // Unread notifications
