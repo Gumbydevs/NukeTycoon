@@ -1028,7 +1028,9 @@ async function advanceDay(io, run) {
         return;
     }
 
-    const nextDayAt = new Date(Date.now() + DAY_DURATION_MS);
+    // Prefer per-run configured day duration when available, fall back to global DAY_DURATION_MS
+    const durationMs = Number(run.day_duration_ms) || DAY_DURATION_MS;
+    const nextDayAt = new Date(Date.now() + durationMs);
     await db.query(
         `UPDATE runs
          SET current_day = $1,

@@ -536,11 +536,30 @@ app.post('/admin/api/set-run-length', requireAdmin, async (req, res) => {
         }
         setNextRunLength(len);
         const run = await getActiveRun();
+        let appliedToCurrentRun = false;
         if (run) {
+            appliedToCurrentRun = true;
+            // Update current run length in DB
             await db.query('UPDATE runs SET run_length = $1 WHERE id = $2', [len, run.id]);
+
+            // If next_day_at was missing for some reason, seed it so the day clock can progress
+            try {
+                if (!run.next_day_at) {
+                    const dur = Number(run.day_duration_ms) || Number(process.env.DAY_DURATION_MS) || 86400000;
+                    const newNext = new Date(Date.now() + dur);
+                    await db.query('UPDATE runs SET next_day_at = $1 WHERE id = $2', [newNext, run.id]);
+                }
+            } catch (e) {
+                console.warn('admin:set-run-length failed to ensure next_day_at:', e && e.message);
+            }
+
+            // Broadcast config update to all connected clients so HUDs refresh
+            io.emit('run:config_update', { run_length: len });
+            // Also emit into run room for backwards compat with room-scoped listeners
             io.to(`run:${run.id}`).emit('run:config_update', { run_length: len });
         }
-        res.json({ ok: true, runLength: len, appliedToCurrentRun: !!run });
+
+        res.json({ ok: true, runLength: len, appliedToCurrentRun });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
