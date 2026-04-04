@@ -351,7 +351,7 @@ function connectSocket() {
                 type: n.type || 'info',
                 message: (n.payload && typeof n.payload === 'object') ? (n.payload.text || JSON.stringify(n.payload)) : String(n.payload || ''),
                 timestamp: new Date(n.created_at).getTime(),
-                read: false,
+                read: !!n.read, // preserve read state if present
                 data: n.payload || null,
             }));
             renderNotifications();
@@ -6272,8 +6272,11 @@ function renderChatMessage(msg) {
     div.className = 'chat-msg' + (isSelf ? ' chat-msg--self' : '');
     const ts = new Date(msg.ts);
     const timeStr = ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const avatarHtml = msg.avatarPhoto && (msg.avatarPhoto.startsWith('data:image/') || msg.avatarPhoto.startsWith('https://'))
-        ? `<img src="${escapeHtml(msg.avatarPhoto)}" class="chat-msg-avatar chat-msg-avatar--photo" alt="avatar" />`
+    // Always use avatarPhoto if present, fallback to avatar emoji only if no photo
+    let avatarPhoto = msg.avatarPhoto || msg.avatar_photo || null;
+    if (isSelf && game.playerPhoto) avatarPhoto = game.playerPhoto;
+    const avatarHtml = avatarPhoto && (avatarPhoto.startsWith('data:image/') || avatarPhoto.startsWith('https://'))
+        ? `<img src="${escapeHtml(avatarPhoto)}" class="chat-msg-avatar chat-msg-avatar--photo" alt="avatar" />`
         : `<span class="chat-msg-avatar">${escapeHtml(msg.avatar || '☢️')}</span>`;
     const nameHtml = isSelf ? '' : `<span class="chat-msg-name">${escapeHtml(msg.username)}</span>`;
     let bodyHtml = '';
