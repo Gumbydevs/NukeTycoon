@@ -2003,6 +2003,8 @@ function placeOrSelect(id) {
                 game.buildings.push(_optimistic);
                 renderBuilding(id, _type, true, _optimistic);
                 showWorkersEnRouteFloat(id);
+                const _cost = buildingTypes[_type]?.cost || 0;
+                if (_cost > 0) showBuildingFloat(id, '-' + _cost.toLocaleString(), '#ff6b6b');
             }
             // Server validates, deducts wallet, and broadcasts building:placed back to all players
             socket.emit('building:place', { jwt: _authJWT, cellId: id, type: _type });
@@ -2077,6 +2079,7 @@ function buildBuilding(id, type) {
     game._walletMarketBaseline = game.market.price;
     const _walletEl = document.getElementById('wallet');
     if (_walletEl) showFloatingText('-' + cost.toLocaleString(), '#ff6b6b', _walletEl);
+    showBuildingFloat(id, '-' + cost.toLocaleString(), '#ff6b6b');
     // drain liquidity pool → pushes price up via bonding curve
     game.market.tokenPool = Math.max(1, game.market.tokenPool - cost / game.market.poolBurnRate);
     const _constrMs = (buildingTypes[type].constructionTime || 0) * 10000;
@@ -3543,6 +3546,8 @@ function dispatchQueuedBuild({ cellId, type }) {
         renderBuilding(cellId, type, true, _optimistic);
     }
     showWorkersEnRouteFloat(cellId);
+    const _dispatchCost = buildingTypes[type]?.cost || 0;
+    if (_dispatchCost > 0) showBuildingFloat(cellId, '-' + _dispatchCost.toLocaleString(), '#ff6b6b');
     socket.emit('building:place', { jwt: _authJWT, cellId, type });
     // Re-number remaining ghosts
     let _pos = 1;
