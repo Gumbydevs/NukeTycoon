@@ -3495,6 +3495,26 @@ function productionTick() {
             game._walletMarketBaseline = game.market.price;
             if (_incomeEl) showFloatingText('+' + Math.round(game._pendingIncomeDisplay).toLocaleString(), '#4CAF50', _incomeEl);
         }
+
+        // ── Per-building income/maintenance floats ────────────────────────────
+        // Show over player buildings only; stagger slightly so they don't stack.
+        const _completedBuildings = game.buildings.filter(b => !b.isUnderConstruction);
+        const _activePlants = _completedBuildings.filter(b => b.type === 'plant');
+        const _incomePerPlant = _activePlants.length > 0
+            ? Math.round(game._pendingIncomeDisplay / _activePlants.length)
+            : 0;
+        _completedBuildings.forEach((b, i) => {
+            const _delay = i * 60; // small stagger per building
+            const _mc = (buildingTypes[b.type]?.maintenanceCost || 0) * 5;
+            if (b.type === 'plant' && _incomePerPlant > 0) {
+                setTimeout(() => showBuildingFloat(b.id, '+' + _incomePerPlant, '#4CAF50'), _delay);
+            }
+            if (_mc > 0) {
+                setTimeout(() => showBuildingFloat(b.id, '-' + _mc, '#ff6b6b'), _delay + 300);
+            }
+        });
+        // ─────────────────────────────────────────────────────────────────────
+
         game._pendingIncomeDisplay = 0;
         game._incomeTickCount = 0;
     }
@@ -4771,6 +4791,38 @@ function showWorkersEnRouteFloat(cellId) {
         'white-space:nowrap'
     ].join(';');
     el.textContent = '🚧 Workers En Route…';
+    el.style.left = (rect.left + rect.width  / 2) + 'px';
+    el.style.top  = (rect.top  + rect.height / 2) + 'px';
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), duration);
+}
+
+/**
+ * Show a small income/maintenance label that zooms and fades over a grid cell.
+ * color should be '#4CAF50' for income, '#ff6b6b' for costs.
+ */
+function showBuildingFloat(cellId, text, color) {
+    const cell = document.querySelector('[data-id="' + cellId + '"]');
+    if (!cell) return;
+    const rect = cell.getBoundingClientRect();
+    if (!rect.width && !rect.height) return;
+    const duration = 1800;
+    const el = document.createElement('div');
+    const glow = color + '99';
+    el.style.cssText = [
+        'position:fixed',
+        `color:${color}`,
+        'font-size:10px',
+        'font-weight:800',
+        'pointer-events:none',
+        'z-index:9999',
+        `animation:workersFloat ${duration}ms cubic-bezier(0.22,1,0.36,1) forwards`,
+        'font-family:monospace',
+        'letter-spacing:0.5px',
+        `text-shadow:0 0 6px ${glow}, 0 1px 3px #000c`,
+        'white-space:nowrap'
+    ].join(';');
+    el.textContent = text;
     el.style.left = (rect.left + rect.width  / 2) + 'px';
     el.style.top  = (rect.top  + rect.height / 2) + 'px';
     document.body.appendChild(el);
