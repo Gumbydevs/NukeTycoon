@@ -244,6 +244,28 @@ function connectSocket() {
         applyServerScores(scores);
         updateUI();
         updateFalloutVisualization();
+
+        // ── Per-building income/maintenance floats (server-authoritative path) ──
+        // Only show on ticks that carry meaningful economy data (not initial load).
+        if (playerState) {
+            const _tickIncome = parseInt(playerState.last_income, 10) || 0;
+            const _completedBuildings = game.buildings.filter(b => !b.isUnderConstruction);
+            const _activePlants = _completedBuildings.filter(b => b.type === 'plant');
+            const _incomePerPlant = _activePlants.length > 0
+                ? Math.round(_tickIncome / _activePlants.length)
+                : 0;
+            _completedBuildings.forEach((b, i) => {
+                const _delay = i * 60;
+                if (b.type === 'plant' && _incomePerPlant > 0) {
+                    setTimeout(() => showBuildingFloat(b.id, '+' + _incomePerPlant, '#4CAF50'), _delay);
+                }
+                const _mc = buildingTypes[b.type]?.maintenanceCost || 0;
+                if (_mc > 0) {
+                    setTimeout(() => showBuildingFloat(b.id, '-' + _mc, '#ff6b6b'), _delay + 300);
+                }
+            });
+        }
+        // ────────────────────────────────────────────────────────────────────────
     });
 
     // Server says these buildings finished construction
