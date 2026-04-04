@@ -99,6 +99,8 @@
     <div class="card two-col" id="controlsWrap">
       <div>
       <div>
+        <h3>Game Settings <button id="toggleGameSettings" class="small btn-ghost" style="margin-left:8px">Expand</button></h3>
+        <div id="gameSettingsBody">
         <h3>Game Settings</h3>
         <div class="row section">
           <label style="width:160px">Buy-in (tokens)</label>
@@ -109,15 +111,32 @@
           <input id="game_proximity" type="number" style="width:80px" class="small" />
         </div>
 
-        <h4 class="section">Grid <button id="toggleGrid" class="small btn-ghost" style="margin-left:8px">Collapse</button></h4>
+        <div style="margin-top:8px" class="row">
+          <label style="width:160px">Proximity unit</label>
+          <select id="proximity_unit" class="small" style="width:160px">
+            <option value="cells">Cells</option>
+            <option value="meters">Meters</option>
+          </select>
+          <label style="width:160px;margin-left:12px">Enemy building bonus</label>
+          <input id="proximity_enemy_bonus" type="number" step="0.01" class="small" style="width:100px" />
+        </div>
+        <div style="margin-top:8px" class="row">
+          <label style="width:160px">Same-type building bonus</label>
+          <input id="proximity_same_type_bonus" type="number" step="0.01" class="small" style="width:100px" />
+          <label style="width:160px;margin-left:12px">Road proximity bonus</label>
+          <input id="proximity_road_bonus" type="number" step="0.01" class="small" style="width:100px" />
+        </div>
+
+        <h4 class="section">Grid <button id="toggleGrid" class="small btn-ghost" style="margin-left:8px">Expand</button></h4>
         <div id="gridBody" class="row section">
           <label style="width:160px">Cols</label>
           <input id="grid_cols" type="number" style="width:80px" class="small" />
           <label style="width:160px;margin-left:20px">Rows</label>
           <input id="grid_rows" type="number" style="width:80px" class="small" />
         </div>
+        
 
-        <h4 class="section">Economy / Market <button id="toggleEconomy" class="small btn-ghost" style="margin-left:8px">Collapse</button></h4>
+        <h4 class="section">Economy / Market <button id="toggleEconomy" class="small btn-ghost" style="margin-left:8px">Expand</button></h4>
         <div id="economyBody">
           <div class="row section">
             <label style="width:160px">Base price</label>
@@ -143,7 +162,7 @@
           </div>
         </div>
 
-        <h4 class="section">Production <button id="toggleProduction" class="small btn-ghost" style="margin-left:8px">Collapse</button></h4>
+        <h4 class="section">Production <button id="toggleProduction" class="small btn-ghost" style="margin-left:8px">Expand</button></h4>
         <div id="productionBody">
           <div class="row section">
             <label style="width:160px">Mine base (per tick)</label>
@@ -165,7 +184,7 @@
           </div>
         </div>
 
-        <h4 class="section">Sabotage / Nukes <button id="toggleSabotage" class="small btn-ghost" style="margin-left:8px">Collapse</button></h4>
+        <h4 class="section">Sabotage / Nukes <button id="toggleSabotage" class="small btn-ghost" style="margin-left:8px">Expand</button></h4>
         <div id="sabotageBody">
           <div class="row section">
             <label style="width:160px">Disable cost</label>
@@ -199,9 +218,9 @@
 
         <h4 class="section">Building Rules</h4>
         <div id="buildingRulesWrap" style="margin-top:8px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <div style="display:flex;justify-content:flex-start;align-items:center;margin-bottom:6px;gap:12px">
+            <button id="toggleRules" class="small btn-ghost">Expand</button>
             <div class="muted">Rules</div>
-            <button id="toggleRules" class="small btn-ghost">Collapse</button>
           </div>
           <div id="buildingRulesBody">
             <table>
@@ -213,11 +232,14 @@
           </div>
         </div>
 
+        </div>
         <div style="margin-top:12px" class="row">
           <button id="saveBtn">Save Changes</button>
           <button id="viewAuditBtn">View History</button>
           <button id="resetBtn">Reload</button>
         </div>
+      </div>
+      </div>
       </div>
 
     
@@ -271,6 +293,14 @@
         $('prod_prox_bonus').value = prod.proximityBonusPerBuilding ?? '';
         $('prod_prox_cap').value = prod.proximityBonusCap ?? '';
 
+        // Proximity detailed config
+        const prox = cfg.proximity || {};
+        $('game_proximity').value = cfg.proximityRange || prox.range || '';
+        $('proximity_unit').value = prox.unit || 'cells';
+        $('proximity_enemy_bonus').value = prox.enemyBonus ?? '';
+        $('proximity_same_type_bonus').value = prox.sameTypeBonus ?? '';
+        $('proximity_road_bonus').value = prox.roadBonus ?? '';
+
         // Sabotage
         const sb = cfg.sabotage || {};
         $('sabotage_disable_cost').value = sb.disableCost ?? '';
@@ -295,6 +325,8 @@
           </tr>`;
         }).join('') || '<tr><td colspan="5" class="muted">No rules found</td></tr>';
         $('buildingRulesBodyTable').innerHTML = rows;
+        // show admin name if provided
+        if (data.admin_name) $('msg').textContent = 'Signed in: ' + data.admin_name;
         $('msg').textContent = 'Loaded.';
       }catch(err){ $('msg').textContent = '❌ ' + err.message; }
     }
@@ -387,6 +419,11 @@
       changes['game.buy_in'] = Number($('game_buy_in').value) || 0;
       changes['game.build_slots'] = Number($('game_build_slots').value) || 1;
       changes['game.proximity_range'] = Number($('game_proximity').value) || 2;
+      // Proximity details
+      changes['game.proximity.unit'] = ($('proximity_unit').value || 'cells');
+      changes['game.proximity.enemy_bonus'] = Number($('proximity_enemy_bonus').value) || 0;
+      changes['game.proximity.same_type_bonus'] = Number($('proximity_same_type_bonus').value) || 0;
+      changes['game.proximity.road_bonus'] = Number($('proximity_road_bonus').value) || 0;
       changes['grid.cols'] = Number($('grid_cols').value) || 20;
       changes['grid.rows'] = Number($('grid_rows').value) || 20;
       changes['economy.total_token_supply'] = Number($('economy_total_token_supply').value) || 1000000;
@@ -454,6 +491,16 @@
     $('topSaveBtn').addEventListener('click', () => $('saveBtn').click());
     $('topViewAuditBtn').addEventListener('click', () => $('viewAuditBtn').click());
     $('topResetBtn').addEventListener('click', () => $('resetBtn').click());
+
+    // Save admin key and validate by hitting the admin balance endpoint to get admin name
+    $('saveKeyBtn').addEventListener('click', async () => {
+      localStorage.setItem('nukwar_admin_key', getKey());
+      try{
+        const data = await api('/admin/api/balance');
+        const who = data.admin_name || (data.admin && data.admin.name) || data.admin_key_id || 'admin';
+        $('msg').textContent = 'Signed in: ' + who;
+      }catch(err){ $('msg').textContent = 'Saved key (validation failed): ' + (err.message||err); }
+    });
 
     // Collapse / expand handlers
     function toggle(sectionId, btn){
