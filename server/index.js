@@ -491,11 +491,16 @@ app.post('/admin/api/full-db-reset', requireAdmin, async (_req, res) => {
         }
         // End all active runs
         await db.query("UPDATE runs SET status = 'ended', ended_at = NOW() WHERE status = 'active'");
-        // Wipe ALL per-run data (every historical run)
+        // Wipe ALL per-run data (every historical run).
+        // Delete from child tables first to avoid FK constraint errors (e.g., build_queue -> runs).
         await db.query('DELETE FROM sabotage_events');
         await db.query('DELETE FROM fallout_zones');
+        await db.query('DELETE FROM build_queue');
+        await db.query('DELETE FROM chat_messages');
+        await db.query('DELETE FROM notifications');
         await db.query('DELETE FROM run_player_state');
         await db.query('DELETE FROM run_players');
+        await db.query('DELETE FROM economy_snapshots');
         await db.query('DELETE FROM buildings');
         await db.query('DELETE FROM runs');
         // Reset player balances
@@ -567,6 +572,10 @@ app.post('/admin/api/wipe-old-runs', requireAdmin, async (_req, res) => {
         const ids = ended.rows.map(r => r.id);
         await db.query('DELETE FROM sabotage_events WHERE run_id = ANY($1)', [ids]);
         await db.query('DELETE FROM fallout_zones WHERE run_id = ANY($1)', [ids]);
+        await db.query('DELETE FROM build_queue WHERE run_id = ANY($1)', [ids]);
+        await db.query('DELETE FROM chat_messages WHERE run_id = ANY($1)', [ids]);
+        await db.query('DELETE FROM notifications WHERE run_id = ANY($1)', [ids]);
+        await db.query('DELETE FROM economy_snapshots WHERE run_id = ANY($1)', [ids]);
         await db.query('DELETE FROM buildings WHERE run_id = ANY($1)', [ids]);
         await db.query('DELETE FROM run_player_state WHERE run_id = ANY($1)', [ids]);
         await db.query('DELETE FROM run_players WHERE run_id = ANY($1)', [ids]);
@@ -637,11 +646,16 @@ app.post('/admin/api/set-player-balance', requireAdmin, async (req, res) => {
 app.post('/admin/api/wipe-all-players', requireAdmin, async (_req, res) => {
     try {
         await db.query("UPDATE runs SET status = 'ended', ended_at = COALESCE(ended_at, NOW()) WHERE status = 'active'");
+        // Delete child per-run data first to avoid FK constraint errors
         await db.query('DELETE FROM sabotage_events');
         await db.query('DELETE FROM fallout_zones');
-        await db.query('DELETE FROM buildings');
+        await db.query('DELETE FROM build_queue');
+        await db.query('DELETE FROM chat_messages');
+        await db.query('DELETE FROM notifications');
         await db.query('DELETE FROM run_player_state');
         await db.query('DELETE FROM run_players');
+        await db.query('DELETE FROM economy_snapshots');
+        await db.query('DELETE FROM buildings');
         await db.query('DELETE FROM runs');
         await db.query('DELETE FROM auth_codes');
         const result = await db.query('DELETE FROM players');
