@@ -1902,7 +1902,7 @@ function placeOrSelect(id) {
                     constructionTotalMs: (buildingTypes[_type]?.constructionTime || 0) * 10000,
                     constructionEndsAtMs: null,    // filled in by building:placed confirmation
                     _pendingServerConfirm: true,   // show Workers En Route until server responds
-                    _workersEnRouteUntil: Date.now() + 8000, // 8s display window
+                    _workersEnRouteUntil: Date.now() + 6000, // 6s display window
                     isUnderConstruction: true,
                 };
                 game.buildings.push(_optimistic);
@@ -2377,7 +2377,7 @@ function renderBuilding(id, type, isPlayer, building) {
 
     // ── Workers En Route: hard override — nothing can bypass this ───────
     if (building?._workersEnRouteUntil && Date.now() < building._workersEnRouteUntil) {
-        cell.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;"><span style="font-size:7px;color:#aaa;text-align:center;line-height:1.4;">Workers<br>En Route…</span></div>`;
+        cell.innerHTML = `<span style="font-size:9px;color:#ccc;text-align:center;line-height:1.3;display:block;padding-top:2px;">Workers<br>En Route…</span>`;
         return;
     }
 
