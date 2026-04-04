@@ -346,19 +346,16 @@ function connectSocket() {
 
         // Unread notifications
         if (Array.isArray(notifications)) {
-            console.log('Received notifications from server:', notifications);
-            game.notifications = (notifications || []).map(n => ({
-                id: n.id,
-                type: n.type || 'info',
-                message: (n.payload && typeof n.payload === 'object')
-                    ? (n.payload.from
-                        ? `💬 ${n.payload.from}: ${n.payload.text || 'sent a GIF'}`
-                        : (n.payload.text || JSON.stringify(n.payload)))
-                    : String(n.payload || ''),
-                timestamp: new Date(n.created_at).getTime(),
-                read: n.read === true, // preserve true/false from server
-                data: n.payload || null,
-            }));
+            game.notifications = (notifications || []).map(n => {
+                let p = n.payload;
+                if (typeof p === 'string') { try { p = JSON.parse(p); } catch (_) { p = { msg: p }; } }
+                let message;
+                if (p && p.msg) message = p.msg;
+                else if (p && p.from) message = `💬 ${p.from}: ${p.text || 'sent a GIF'}`;
+                else if (p && p.text) message = p.text;
+                else message = String(n.payload || '');
+                return { id: n.id, type: n.type || 'info', message, timestamp: new Date(n.created_at).getTime(), read: n.read === true, data: p || null };
+            });
             renderNotifications();
         }
 

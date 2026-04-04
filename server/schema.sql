@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS players (
 );
 ALTER TABLE players ADD COLUMN IF NOT EXISTS avatar TEXT DEFAULT '☢️';
 ALTER TABLE players ADD COLUMN IF NOT EXISTS avatar_photo TEXT;
-ALTER TABLE players ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE players ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ DEFAULT NULL;
 -- Password fields for password-based login (optional)
 ALTER TABLE players ADD COLUMN IF NOT EXISTS password_salt TEXT;
 ALTER TABLE players ADD COLUMN IF NOT EXISTS password_hash TEXT;

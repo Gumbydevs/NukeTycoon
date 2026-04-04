@@ -979,6 +979,26 @@ function registerHandlers(io, socket) {
             // Broadcast to entire run room (everyone sees the attack)
             io.to(`run:${run.id}`).emit('sabotage:applied', payload);
             socket.emit('player:wallet_update', { token_balance: bal - cost });
+
+            // Persist a notification for the target player so they see it on relog
+            try {
+                const targetEmailRes = await db.query('SELECT email FROM players WHERE id = $1', [target.player_id]);
+                const targetEmail = (targetEmailRes.rows[0]?.email || '').toLowerCase();
+                const notifType = attackType === 'nuke' ? 'danger' : attackType === 'steal' ? 'warning' : 'warning';
+                const notifMsg = attackType === 'nuke'
+                    ? `☢️ You were NUKED by ${player.username}! Buildings near cell ${cellId} destroyed.`
+                    : attackType === 'steal'
+                    ? `🕵️ ${player.username} stole ${payload.stolenAmount || 0} uranium from you!`
+                    : `⚡ ${player.username} disabled your building at cell ${cellId}.`;
+                await db.query(
+                    `INSERT INTO notifications (run_id, player_id, email, type, payload)
+                     VALUES ($1,$2,$3,$4,$5)`,
+                    [run.id, target.player_id, targetEmail, notifType, JSON.stringify({ msg: notifMsg, attackType, attackerName: player.username, cellId, ts: Date.now() })]
+                );
+            } catch (err) {
+                console.warn('sabotage notification failed:', err.message);
+            }
+
             await emitRunEconomy(io, run.id);
         });
     });
@@ -1056,7 +1076,7 @@ function registerHandlers(io, socket) {
                     await db.query(
                         `INSERT INTO notifications (run_id, player_id, email, type, payload)
                          VALUES ($1,$2,$3,$4,$5)`,
-                        [socket.runId, pid, email, 'chat', { id, from: player.username, text: cleanText, gifUrl: cleanGifUrl, ts: now }]
+                        [socket.runId, pid, email, 'chat', JSON.stringify({ id, from: player.username, text: cleanText, gifUrl: cleanGifUrl, ts: now })]
                     );
                 }
             } catch (err) {
