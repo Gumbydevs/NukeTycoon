@@ -1,4 +1,4 @@
-// -- Server connection ---------------------------------------------------------
+﻿// ── Server connection ─────────────────────────────────────────────────────────
 // Set SERVER_URL to your Railway service URL when deploying.
 // During local development the server runs on port 3001.
 const SERVER_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
@@ -8,8 +8,8 @@ const SERVER_URL = window.location.hostname === 'localhost' || window.location.h
 let socket = null;
 let _authJWT = null;     // stored JWT for all socket events
 let _localPlayerId = null;
-const DEFAULT_PLAYER_AVATAR = '??';
-const AVATAR_OPTIONS = ['??', '?????', '?????', '?????', '??', '??', '??', '??'];
+const DEFAULT_PLAYER_AVATAR = '☢️';
+const AVATAR_OPTIONS = ['☢️', '🧑‍🚀', '👩‍🔬', '👨‍🔬', '🤖', '🦊', '🐺', '🐉'];
 const ADMIN_KEY_STORAGE = 'nukwar_admin_key';
 
 /**
@@ -46,7 +46,7 @@ function connectSocket() {
     });
 
     socket.on('connect', () => {
-        console.log('?? Connected to server');
+        console.log('☢️ Connected to server');
         // Restore session on page reload
         const saved = localStorage.getItem('nuke_jwt');
         if (saved) socket.emit('auth:reconnect', { jwt: saved });
@@ -54,7 +54,7 @@ function connectSocket() {
 
     socket.on('disconnect', (reason) => {
         console.warn('Server disconnected:', reason);
-        addNotification('warning', '?? Lost connection to server. Reconnecting�');
+        addNotification('warning', '⚠️ Lost connection to server. Reconnecting…');
     });
 
     socket.on('connect_error', (err) => {
@@ -63,7 +63,7 @@ function connectSocket() {
             (document.getElementById('loginError').textContent = 'Cannot reach server. Check your connection.');
     });
 
-    // -- Auth events -----------------------------------------------------
+    // ── Auth events ─────────────────────────────────────────────────────
     socket.on('auth:code_sent', ({ email }) => {
         if (typeof NukeSounds !== 'undefined') NukeSounds.codeSent();
         document.getElementById('loginStep1').style.display = 'none';
@@ -111,14 +111,14 @@ function connectSocket() {
         else if (el1) el1.textContent = message;
     });
 
-    // -- Run events ------------------------------------------------------
+    // ── Run events ──────────────────────────────────────────────────────
     socket.on('run:state', ({ run, buildings, players, scores, playerState, falloutZones, nuclearThreats, yourWallet, isNewJoiner, serverTime, terrain, deposits }) => {
         // Store server clock for interpolation
         if (serverTime) {
             game._serverTime = serverTime;
             game._serverTimeLocal = Date.now();
             const offset = serverTime - Date.now();
-            console.log('[clock] server?client offset:', offset + 'ms (' + (offset / 1000).toFixed(1) + 's)');
+            console.log('[clock] server→client offset:', offset + 'ms (' + (offset / 1000).toFixed(1) + 's)');
         }
         // Set authoritative run state from server
         game._serverAuthoritative = true;
@@ -214,7 +214,7 @@ function connectSocket() {
                 score: 0
             });
         }
-        addNotification('info', `?? ${player.username} joined the run.`);
+        addNotification('info', `👤 ${player.username} joined the run.`);
     });
 
     socket.on('run:join_error', ({ message }) => {
@@ -245,7 +245,7 @@ function connectSocket() {
         updateUI();
         updateFalloutVisualization();
 
-        // -- Per-building income/maintenance floats (server-authoritative path) --
+        // ── Per-building income/maintenance floats (server-authoritative path) ──
         // Throttle: show floats every 5 ticks (~5 s) so they aren't spammy.
         game._buildingFloatTick = (game._buildingFloatTick || 0) + 1;
         if (playerState && game._buildingFloatTick >= 5) {
@@ -273,7 +273,7 @@ function connectSocket() {
             game._pendingBuildingIncome = (game._pendingBuildingIncome || 0)
                 + (parseInt(playerState.last_income, 10) || 0);
         }
-        // ------------------------------------------------------------------------
+        // ────────────────────────────────────────────────────────────────────────
     });
 
     // Server says these buildings finished construction
@@ -304,7 +304,7 @@ function connectSocket() {
                     cell.classList.add('build-complete');
                     setTimeout(() => cell.classList.remove('build-complete'), 900);
                 }
-                addNotification('success', `? ${displayNames[type] || type} construction complete!`);
+                addNotification('success', `✅ ${displayNames[type] || type} construction complete!`);
             }
         });
     });
@@ -335,11 +335,11 @@ function connectSocket() {
     });
 
     socket.on('run:new', ({ runId, runNumber }) => {
-        addNotification('info', `?? Run #${runNumber} has started! Entering lobby�`);
+        addNotification('info', `🔄 Run #${runNumber} has started! Entering lobby…`);
         // Clear cached terrain so the new run's terrain arrives fresh from the server
         game._serverTerrain = null;
         game._serverDeposits = null;
-        // Reset local game state then rejoin � server will return isNewJoiner=true
+        // Reset local game state then rejoin — server will return isNewJoiner=true
         // for the new run, which triggers the buy-in lobby automatically.
         game.buildings = [];
         game.enemyBuildings = [];
@@ -363,21 +363,21 @@ function connectSocket() {
         startGame(true);
     });
 
-    // -- Building events -------------------------------------------------
+    // ── Building events ─────────────────────────────────────────────────
     socket.on('building:placed', ({ building, ownerName, placedBy }) => {
         const isMyBuilding = placedBy === getLocalPlayerId();
         if (isMyBuilding) {
-            // Server confirmed our placement � render it locally now
+            // Server confirmed our placement — render it locally now
             const _existingBld = game.buildings.find(b => b.id === building.cell_id);
             if (_existingBld && _existingBld._pendingServerConfirm) {
-                // Optimistic build was waiting � apply server timing now
+                // Optimistic build was waiting — apply server timing now
                 applyServerBuildingTiming(_existingBld, building);
                 _existingBld._pendingServerConfirm = false;
                 if (building.type === 'storage') game.maxStorage += 1000;
                 renderBuilding(_existingBld.id, _existingBld.type, true, _existingBld);
                 scheduleConstructionTimers(_existingBld, true);
                 calculateProximity();
-                addNotification('success', `??? ${displayNames[building.type] || building.type} construction started.`);
+                addNotification('success', `🛠️ ${displayNames[building.type] || building.type} construction started.`);
                 updateUI();
             } else if (!_existingBld) {
                 console.log('[building:placed] raw server row keys:', Object.keys(building), 'construction_ends_at:', building.construction_ends_at, 'placed_at:', building.placed_at);
@@ -397,13 +397,13 @@ function connectSocket() {
                 scheduleConstructionTimers(bObj, true);
                 calculateProximity();
                 if (building.type === 'storage') game.maxStorage += 1000;
-                addNotification('success', `??? ${displayNames[building.type] || building.type} construction started.`);
+                addNotification('success', `🛠️ ${displayNames[building.type] || building.type} construction started.`);
                 updateUI();
             } // end else (!_existingBld)
             game.selectedMode = null;
             return;
         }
-        // Another player placed a building � render it as an enemy building
+        // Another player placed a building — render it as an enemy building
         if (!game.enemyBuildings.find(b => b.id === building.cell_id)) {
             const bObj = applyServerBuildingTiming({
                 id: building.cell_id,
@@ -446,10 +446,10 @@ function connectSocket() {
                 };
                 game.buildings.push(_ghost);
                 renderQueuedGhost(pb.id, pb.type, qPos);
-                addNotification('info', `? ${displayNames[pb.type] || pb.type} re-queued � construction slot busy.`);
+                addNotification('info', `⏳ ${displayNames[pb.type] || pb.type} re-queued — construction slot busy.`);
             }
         } else {
-            addNotification('danger', `? ${message}`);
+            addNotification('danger', `❌ ${message}`);
         }
         if (/occupied/i.test(message) && socket?.connected && _authJWT) {
             socket.emit('run:join', { jwt: _authJWT });
@@ -462,7 +462,7 @@ function connectSocket() {
         restoreEmptyCell(cellId);
         calculateProximity();
         updateUI();
-        addNotification('info', `?? Server cleared cell ${cellId}${cleared ? ` (${cleared} row${cleared === 1 ? '' : 's'})` : ''}.`);
+        addNotification('info', `🧹 Server cleared cell ${cellId}${cleared ? ` (${cleared} row${cleared === 1 ? '' : 's'})` : ''}.`);
     });
 
     socket.on('admin:buildings_reset', ({ cellIds, cleared }) => {
@@ -471,7 +471,7 @@ function connectSocket() {
         game.enemyBuildings = [];
         calculateProximity();
         updateUI();
-        addNotification('warning', `?? Server reset ${cleared || 0} active building${cleared === 1 ? '' : 's'} for testing.`);
+        addNotification('warning', `🧪 Server reset ${cleared || 0} active building${cleared === 1 ? '' : 's'} for testing.`);
     });
 
     socket.on('admin:run_reset', () => {
@@ -480,7 +480,7 @@ function connectSocket() {
         initGrid();
         calculateProximity();
         updateUI();
-        addNotification('warning', '?? The live Railway run was reset. Rejoin the new round if needed.');
+        addNotification('warning', '🔄 The live Railway run was reset. Rejoin the new round if needed.');
     });
 
     socket.on('run:config_update', ({ run_length }) => {
@@ -507,7 +507,7 @@ function connectSocket() {
         updateUI();
     });
 
-    // -- Sabotage events -------------------------------------------------
+    // ── Sabotage events ─────────────────────────────────────────────────
     socket.on('sabotage:applied', ({ attackType, cellId, attackerName, attackerId,
                                       disableUntil, stolenAmount, destroyedCells, falloutDuration }) => {
         const isMe = attackerId === getLocalPlayerId();
@@ -528,12 +528,12 @@ function connectSocket() {
             });
         }
         if (!isMe) {
-            addNotification('warning', `?? ${attackerName} executed a ${attackType} attack!`);
+            addNotification('warning', `⚔️ ${attackerName} executed a ${attackType} attack!`);
         }
         updateUI();
     });
 
-    // -- Wallet sync -----------------------------------------------------
+    // ── Wallet sync ─────────────────────────────────────────────────────
     socket.on('player:wallet_update', ({ token_balance }) => {
         const prev = game.playerWallet;
         game.playerWallet = token_balance;
@@ -554,7 +554,7 @@ function connectSocket() {
         updateUI();
     });
 
-    // -- Username rename --------------------------------------------------
+    // ── Username rename ──────────────────────────────────────────────────
     socket.on('player:rename_success', ({ username, avatar, jwt }) => {
         if (jwt) {
             _authJWT = jwt;
@@ -573,7 +573,7 @@ function connectSocket() {
         const setupMsg = document.getElementById('loginError3');
         if (setupMsg) {
             setupMsg.style.color = '#4CAF50';
-            setupMsg.textContent = 'Profile saved. Entering the game�';
+            setupMsg.textContent = 'Profile saved. Entering the game…';
         }
 
         if (game.pendingInitialProfileSetup) {
@@ -594,7 +594,7 @@ function connectSocket() {
     });
 
     socket.on('error', ({ message }) => {
-        addNotification('warning', `?? ${message}`);
+        addNotification('warning', `⚠️ ${message}`);
     });
 }
 
@@ -633,7 +633,7 @@ function _updateLobbyFromServerState(run, players, yourWallet) {
     }
 }
 
-// -- Game state ----------------------------------------------------------------
+// ── Game state ────────────────────────────────────────────────────────────────
 const game = {
     playerWallet: 50000,
     playerName: 'You',
@@ -652,7 +652,7 @@ const game = {
     round: 1,
     runLength: 3,                 // configurable: 3 days for standard run, adjust for events or shorter runs
     // Token economy
-    totalTokenSupply: 1000000000, // 1 billion � the hard cap; tokens are MINTED from this reserve
+    totalTokenSupply: 1000000000, // 1 billion — the hard cap; tokens are MINTED from this reserve
     tokensIssued: 0,              // total ever drawn from the 1B reserve (wallets + income rewards)
     tokensBurned: 0,              // permanently destroyed by in-game spending
     // circulating = tokensIssued - tokensBurned
@@ -668,24 +668,24 @@ const game = {
     falloutZones: [],             // { id, endTime } array for radiation zones
     nuclearThreats: [],           // track players who used nukes for prestige
 
-    // -- Buy-in / run entry ---------------------------------------------------
+    // ── Buy-in / run entry ───────────────────────────────────────────────────
     // Every player (human or bot) pays this once to enter a run.
     // A run = runLength rounds (default 3), each lasting one real 24-hour day.
     // Their buy-in seeds the prize pool and the bonding curve pool directly.
-    buyIn: 20000, // tunable � cost per player per run (in tokens)
+    buyIn: 20000, // tunable — cost per player per run (in tokens)
 
-    // -- Construction queue ----------------------------------------------------
+    // ── Construction queue ────────────────────────────────────────────────────
     // When a build is requested while another is in progress, queued here.
     // Each entry: { cellId, type }
     _buildQueue: [],
     buildQueueMax: 3,        // modifiable by game mechanics (upgrades, perks, etc.)
     buildSlots: 1,           // concurrent buildings under construction; modifiable by game mechanics
 
-    // -- Strike tracking -------------------------------------------------------
+    // ── Strike tracking ───────────────────────────────────────────────────────
     // Track nuke strikes per day for reset logic
     dayStrikes: 0,                // strikes used today (resets each day)
 
-    // -- Player registry -------------------------------------------------------
+    // ── Player registry ───────────────────────────────────────────────────────
     // Single source of truth for all players in the current round.
     // BACKEND_STUB: On a real multiplayer backend this list is populated server-
     //   side (e.g. via WebSocket 'round:players' event) before the round starts.
@@ -693,13 +693,13 @@ const game = {
     players: []
     // Each entry shape (see initPlayerRegistry for full object):
     // {
-    //   id        : string  � unique ID ('local' for the human, UUID for remote)
-    //   name      : string  � display name
-    //   isLocal   : bool    � true only for the player on this client
-    //   isBot     : bool    � true for AI-controlled players
-    //   wallet    : number  � token balance
-    //   paidBuyIn : bool    � has this player confirmed their entry fee?
-    //   score     : number  � updated each tick for leaderboard
+    //   id        : string  — unique ID ('local' for the human, UUID for remote)
+    //   name      : string  — display name
+    //   isLocal   : bool    — true only for the player on this client
+    //   isBot     : bool    — true for AI-controlled players
+    //   wallet    : number  — token balance
+    //   paidBuyIn : bool    — has this player confirmed their entry fee?
+    //   score     : number  — updated each tick for leaderboard
     // }
 };
 
@@ -738,20 +738,20 @@ game.market = {
     // ----- Bonding curve / AMM pool -----
     // tokenPool represents available liquidity. As tokens are burned, the pool
     // shrinks and price rises inversely: price = baseTokenPrice * (poolInitial / pool).
-    // When pool is 100% full  ? price = baseTokenPrice ($1.00)
-    // When pool is 50% full   ? price = $2.00
-    // When pool is 10% full   ? price = $10.00  (scarcity premium)
+    // When pool is 100% full  → price = baseTokenPrice ($1.00)
+    // When pool is 50% full   → price = $2.00
+    // When pool is 10% full   → price = $10.00  (scarcity premium)
     tokenPool: 1000,         // current available liquidity (tunable start)
-    tokenPoolInitial: 1000,  // reference size � never changes
+    tokenPoolInitial: 1000,  // reference size — never changes
     // Each token spent drains the pool: drain = cost / POOL_BURN_RATE
-    // Lower = more aggressive price impact. 50 ? 1 Mine (800t) drains 16 units.
+    // Lower = more aggressive price impact. 50 → 1 Mine (800t) drains 16 units.
     poolBurnRate: 50         // tunable
 };
 // per-second volatility is smaller (for stock-like per-second ticks)
 game.market.perSecondVol = game.market.volatility / 60;
 // demand model parameters (legacy diurnal drift, kept for flavour)
 game.market.baseDemand = 1000;
-game.market.driftFactor = 0.0002; // reduced � bonding curve is now the main price driver
+game.market.driftFactor = 0.0002; // reduced — bonding curve is now the main price driver
 
 // Building type definitions
 // Use emoji icons as a visual; we'll render monochrome SVG versions so they
@@ -761,11 +761,11 @@ const PLAYER_COLOR = '#ffb84d';
 const ENEMY_COLOR = '#888888';
 
 const buildingTypes = {
-    mine:      { cost: 800,  emoji: '??',  color: '#4CAF50', power: 0,   constructionTime: 1,   maintenanceCost: 2 },
-    processor: { cost: 1200, emoji: '??',  color: '#d98a3a', power: 0,   constructionTime: 1.5, maintenanceCost: 3 },
-    storage:   { cost: 1000, emoji: '???',  color: '#b08b4f', power: 0,   constructionTime: 2,   maintenanceCost: 2 },
-    plant:     { cost: 1000, emoji: '??',  color: '#ffb84d', power: 100, constructionTime: 2.2, maintenanceCost: 10 },
-    silo:      { cost: 6000, emoji: '??',  color: '#ff0000', power: 0,   constructionTime: 3.5, isWeapon: true, maintenanceCost: 25 }
+    mine:      { cost: 800,  emoji: '⛏️',  color: '#4CAF50', power: 0,   constructionTime: 1,   maintenanceCost: 2 },
+    processor: { cost: 1200, emoji: '🏭',  color: '#d98a3a', power: 0,   constructionTime: 1.5, maintenanceCost: 3 },
+    storage:   { cost: 1000, emoji: '🗄️',  color: '#b08b4f', power: 0,   constructionTime: 2,   maintenanceCost: 2 },
+    plant:     { cost: 1000, emoji: '☢️',  color: '#ffb84d', power: 100, constructionTime: 2.2, maintenanceCost: 10 },
+    silo:      { cost: 6000, emoji: '💥',  color: '#ff0000', power: 0,   constructionTime: 3.5, isWeapon: true, maintenanceCost: 25 }
 };
 
 // Display names used in UI (keep keys stable in logic)
@@ -777,15 +777,15 @@ const displayNames = {
     silo: 'Silo'
 };
 
-// Enemy list (legacy � kept for spawnEnemyBuildings; names are drawn from game.players bots)
+// Enemy list (legacy — kept for spawnEnemyBuildings; names are drawn from game.players bots)
 const enemies = [
     { name: 'PHANTOM_IX' },
     { name: 'NEUTRON_' }
 ];
 
-// -----------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
 // Player Registry
-// -----------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Build the player list for the current run.
@@ -802,7 +802,7 @@ const enemies = [
  */
 function initPlayerRegistry() {
     game.players = [
-        // -- Human player (this client) ---------------------------------------
+        // ── Human player (this client) ───────────────────────────────────────
         {
             id: 'local',
             name: game.playerName || 'You',
@@ -821,7 +821,7 @@ function initPlayerRegistry() {
         {
             id: 'bot-phantom',
             name: 'PHANTOM_IX',
-            avatar: '??',
+            avatar: '🤖',
             isLocal: false,
             isBot: true,
             wallet: 50000,
@@ -831,7 +831,7 @@ function initPlayerRegistry() {
         {
             id: 'bot-neutron',
             name: 'NEUTRON_',
-            avatar: '??',
+            avatar: '🐺',
             isLocal: false,
             isBot: true,
             wallet: 50000,
@@ -959,7 +959,7 @@ function scheduleConstructionTimers(building, isPlayerOwned) {
                 cell.classList.add('build-complete');
                 setTimeout(() => cell.classList.remove('build-complete'), 900);
             }
-            addNotification('success', `? ${displayNames[building.type] || building.type} construction complete!`);
+            addNotification('success', `✅ ${displayNames[building.type] || building.type} construction complete!`);
         }
     }, remaining + 200); // +200ms safety buffer
 }
@@ -986,7 +986,7 @@ function applyServerBuildingTiming(buildingRef, serverRow) {
     buildingRef.constructionEndsAtMs = (Number.isFinite(endsAtMs) && !alreadyComplete) ? endsAtMs : null;
     console.log('[applyServerBuildingTiming]', buildingRef.type, '| raw construction_ends_at:', serverRow?.construction_ends_at, '| parsed endsAtMs:', endsAtMs, '| alreadyComplete:', alreadyComplete, '| final constructionEndsAtMs:', buildingRef.constructionEndsAtMs);
     // Derive actual total duration from server timestamps when both are available.
-    // This is the authoritative value � server reality beats the buildingTypes constant.
+    // This is the authoritative value — server reality beats the buildingTypes constant.
     const serverDerivedTotalMs = (Number.isFinite(endsAtMs) && Number.isFinite(placedAtMs) && endsAtMs > placedAtMs)
         ? (endsAtMs - placedAtMs)
         : null;
@@ -1019,7 +1019,7 @@ function applyAuthoritativeServerState({ run, playerState, falloutZones, nuclear
         game.playerWallet = Number(wallet);
         // Keep _walletShown in sync with authoritative balance so the portfolio
         // calculation and the HUD wallet display use the same number.
-        // We don't show a floating text here � floats are only for explicit
+        // We don't show a floating text here — floats are only for explicit
         // spend/earn events (building placement, wallet_update events).
         game._walletShown = game.playerWallet;
     }
@@ -1182,14 +1182,14 @@ function applyServerScores(scores) {
  * BACKEND_STUB: In production, buy-in deduction and prize pool seeding are
  *   authorised server-side. This client call would be:
  *   socket.emit('run:buyin', { playerId: 'local', amount: game.buyIn });
- *   �and server broadcasts the updated prizePool back to all clients.
+ *   …and server broadcasts the updated prizePool back to all clients.
  */
 function initRun() {
     initPlayerRegistry();
 
-    // -- Issue starting wallets from the 1B reserve ------------------------------
-    // Every player�s starting wallet balance is minted from the 1B supply pool.
-    // This is the �purchase� event � tokens flow from reserve into circulation.
+    // ── Issue starting wallets from the 1B reserve ──────────────────────────────
+    // Every player’s starting wallet balance is minted from the 1B supply pool.
+    // This is the “purchase” event — tokens flow from reserve into circulation.
     // BACKEND_STUB: in production this issuance is authorised server-side and
     //   signed on-chain before wallets are credited.
     const startingWalletPerPlayer = 50000; // must match initPlayerRegistry wallet init
@@ -1213,7 +1213,7 @@ function initRun() {
     const prizeContrib = Math.floor(totalBuyIn * 0.80);
     game.prizePool += prizeContrib;
 
-    // 20% drains the bonding curve ? price starts slightly above floor
+    // 20% drains the bonding curve → price starts slightly above floor
     const poolDrain = Math.floor(totalBuyIn * 0.20) / game.market.poolBurnRate;
     game.market.tokenPool = Math.max(1, game.market.tokenPool - poolDrain);
 
@@ -1273,7 +1273,7 @@ function initGrid() {
     spawnEnemyBuildings();
 }
 
-// -- Live leaderboard / player list UI (throttled client-side rendering) --
+// ── Live leaderboard / player list UI (throttled client-side rendering) ──
 let _lastSidebarRender = 0;
 function formatNumber(n){ return typeof n === 'number' ? n.toLocaleString() : String(n); }
 function renderLiveSidebar() {
@@ -1289,9 +1289,9 @@ function renderLiveSidebar() {
             const avatar = escapeHtml(p.avatar || DEFAULT_PLAYER_AVATAR);
             const name = escapeHtml(p.name || 'Unknown');
             // For the local player use live values that match the HUD:
-            //   score  � always recalculate (same formula as top-bar Rank)
-            //   wallet � use _walletShown so it matches the top-bar Wallet display
-            //   buildings � use the live game.buildings array, not the stale server count
+            //   score  — always recalculate (same formula as top-bar Rank)
+            //   wallet — use _walletShown so it matches the top-bar Wallet display
+            //   buildings — use the live game.buildings array, not the stale server count
             const score = p.isLocal
                 ? formatNumber(Math.floor(calculateLeaderboardScore(p)))
                 : formatNumber(Math.floor(p.score || 0));
@@ -1318,7 +1318,7 @@ function renderLiveSidebar() {
                         <div class="left"><div style="width:28px;text-align:center;font-weight:700;color:#ffb84d;">${idx+1}</div><div class="avatar">${avatar}</div><div class="name">${name}</div></div>
                         <div style="display:flex;flex-direction:column;align-items:flex-end;min-width:96px;">
                             <div class="score">${score} <span style="font-size:10px;color:#888;font-weight:400;">pts</span></div>
-                            <div style="font-size:11px;color:#888;margin-top:4px;">${buildings} b � ${timeLabel}</div>
+                            <div style="font-size:11px;color:#888;margin-top:4px;">${buildings} b · ${timeLabel}</div>
                             <div style="font-size:11px;color:#888;margin-top:2px;">${wallet} tok</div>
                         </div>
                     </div>`;
@@ -1336,13 +1336,13 @@ function toggleLiveSidebar(expand) {
         root.classList.remove('collapsed');
         panel.style.display = 'block';
         btn.setAttribute('aria-expanded','true');
-        btn.textContent = '? Hide';
+        btn.textContent = '◀ Hide';
         renderLiveSidebar();
     } else {
         root.classList.add('collapsed');
         panel.style.display = 'none';
         btn.setAttribute('aria-expanded','false');
-        btn.textContent = '? Players';
+        btn.textContent = '▶ Players';
     }
 }
 
@@ -1444,14 +1444,14 @@ function generateTerrain(width, height) {
         out[y * width + centerX] = 'road';
     }
 
-    // 2 horizontal branches off the spine at random rows, random length (3�7 tiles each direction)
+    // 2 horizontal branches off the spine at random rows, random length (3–7 tiles each direction)
     const branchRows = [];
     while (branchRows.length < 2) {
         const row = 2 + Math.floor(rand() * (height - 4)); // avoid very top/bottom
         if (!branchRows.includes(row)) branchRows.push(row);
     }
     branchRows.forEach(row => {
-        const len = 3 + Math.floor(rand() * 5); // 3�7 tiles each side
+        const len = 3 + Math.floor(rand() * 5); // 3–7 tiles each side
         // mark the junction cell as a crossroads
         out[row * width + centerX] = 'road-x';
         for (let dx = 1; dx <= len; dx++) {
@@ -1665,7 +1665,7 @@ function initMenu() {
         let _lastToggleTs = 0;
         const debouncedToggle = (e) => {
             const now = Date.now();
-            if (now - _lastToggleTs < 600) return; // dedupe touchend ? synthesized click
+            if (now - _lastToggleTs < 600) return; // dedupe touchend → synthesized click
             _lastToggleTs = now;
             toggleHandler(e);
         };
@@ -1678,10 +1678,10 @@ function initMenu() {
         } catch (e) { }
     }
 
-    // Menu is a persistent toggle � only close via hamburger click, M key, or Escape.
+    // Menu is a persistent toggle — only close via hamburger click, M key, or Escape.
     // Do NOT add an outside-click handler; grid clicks must not dismiss the menu.
 
-    // Menu item actions � menu stays open after selection; click hamburger again to close
+    // Menu item actions — menu stays open after selection; click hamburger again to close
     document.querySelectorAll('.menu-item').forEach(mi => {
         mi.addEventListener('click', (e) => {
             if (typeof NukeSounds !== 'undefined') NukeSounds.uiTick();
@@ -1709,7 +1709,7 @@ function initMenu() {
     });
 }
 
-// -- Help UI: legend toggle, help modal, tabs -----------------------------
+// ── Help UI: legend toggle, help modal, tabs ─────────────────────────────
 const HELP_CONTENT = [
     { id: 'overview', title: 'Overview', html: `
         <h3>Overview</h3>
@@ -1942,7 +1942,7 @@ function placeOrSelect(id) {
     const cell = document.querySelector('[data-id="' + id + '"]');
 
     if (game.selectedMode === 'sabotage') {
-        // No enemy on this cell � nothing to target
+        // No enemy on this cell — nothing to target
         return;
     } else if (game.selectedMode === 'strike') {
         // Strike mode: target enemy buildings in AoE
@@ -1951,23 +1951,23 @@ function placeOrSelect(id) {
         // For building placement, check that cell is empty
         if (cell.innerHTML && cell.innerHTML !== '') return; // Already occupied
         if (socket?.connected && _authJWT) {
-            // Optimistic local render � show Workers En Route immediately while server confirms
+            // Optimistic local render — show Workers En Route immediately while server confirms
             const _type = game.selectedMode;
 
-            // Construction limit � queue if all build slots are busy
+            // Construction limit — queue if all build slots are busy
             const _activeBuilds = game.buildings.filter(b => b.isUnderConstruction).length;
             const _isBuilding = _activeBuilds >= (game.buildSlots ?? 1);
             if (_isBuilding) {
                 game._buildQueue = game._buildQueue || [];
                 const _maxQ = game.buildQueueMax ?? 3;
                 if (game._buildQueue.length >= _maxQ) {
-                    addNotification('danger', `?? Build queue full (max ${_maxQ}). Wait for a slot to open.`);
+                    addNotification('danger', `🚫 Build queue full (max ${_maxQ}). Wait for a slot to open.`);
                     game.selectedMode = null;
                     return;
                 }
                 game._buildQueue.push({ cellId: id, type: _type });
                 const qLen = game._buildQueue.length;
-                addNotification('info', `? ${displayNames[_type] || _type} queued (${qLen}/${_maxQ}) � will start when current build finishes.`);
+                addNotification('info', `⏳ ${displayNames[_type] || _type} queued (${qLen}/${_maxQ}) — will start when current build finishes.`);
                 // Ghost: insert into game.buildings so the cell is claimed & shows a visual
                 const _ghost = {
                     id,
@@ -2026,12 +2026,12 @@ function buildBuilding(id, type) {
             const cell = document.querySelector('[data-id="' + id + '"]');
             if (cell) {
                 const rect = cell.getBoundingClientRect();
-                const msg = `<div style="font-weight:700; color:#ff6b6b;">?? Weapons Grade Requirement</div>` +
+                const msg = `<div style="font-weight:700; color:#ff6b6b;">🔴 Weapons Grade Requirement</div>` +
                     `<div>You must have at least 1 completed Reactor to build a Silo.</div>`;
                 showTooltipAt(rect.right + 8, rect.top, msg);
             }
             console.warn('Cannot build silo without completed reactor');
-            addNotification('warning', '?? Silo blocked. You need at least 1 completed Reactor first.');
+            addNotification('warning', '🔴 Silo blocked. You need at least 1 completed Reactor first.');
             return;
         }
         
@@ -2041,12 +2041,12 @@ function buildBuilding(id, type) {
             const cell = document.querySelector('[data-id="' + id + '"]');
             if (cell) {
                 const rect = cell.getBoundingClientRect();
-                const msg = `<div style="font-weight:700; color:#ff6b6b;">?? Arsenal Limit Reached</div>` +
+                const msg = `<div style="font-weight:700; color:#ff6b6b;">🔴 Arsenal Limit Reached</div>` +
                     `<div>Maximum ${game.maxSilosPerRound} silo(s) per round.</div>`;
                 showTooltipAt(rect.right + 8, rect.top, msg);
             }
             console.warn('Exceeded max silos per round');
-            addNotification('warning', `?? Silo limit reached. Max ${game.maxSilosPerRound} per round.`);
+            addNotification('warning', `🔴 Silo limit reached. Max ${game.maxSilosPerRound} per round.`);
             return;
         }
     }
@@ -2067,20 +2067,20 @@ function buildBuilding(id, type) {
     const cost = buildingTypes[type].cost;
     if (game.playerWallet < cost) {
         console.warn('Insufficient funds');
-        addNotification('danger', `?? Not enough tokens to build ${displayNames[type] || type} (need ${cost.toLocaleString()}, have ${game.playerWallet.toLocaleString()}).`);
+        addNotification('danger', `💸 Not enough tokens to build ${displayNames[type] || type} (need ${cost.toLocaleString()}, have ${game.playerWallet.toLocaleString()}).`);
         return;
     }
 
     game.playerWallet -= cost;
     game.tokensBurned += cost;
     game.prizePool += Math.floor(cost * 0.10);
-    // show floating cost indicator � sync display to true wallet at this moment
+    // show floating cost indicator — sync display to true wallet at this moment
     game._walletShown = game.playerWallet;
     game._walletMarketBaseline = game.market.price;
     const _walletEl = document.getElementById('wallet');
     if (_walletEl) showFloatingText('-' + cost.toLocaleString(), '#ff6b6b', _walletEl);
     showBuildingFloat(id, '-' + cost.toLocaleString(), '#ff6b6b');
-    // drain liquidity pool ? pushes price up via bonding curve
+    // drain liquidity pool → pushes price up via bonding curve
     game.market.tokenPool = Math.max(1, game.market.tokenPool - cost / game.market.poolBurnRate);
     const _constrMs = (buildingTypes[type].constructionTime || 0) * 10000;
     const nowMs = serverNow();
@@ -2103,16 +2103,16 @@ function buildBuilding(id, type) {
 
     const _depositBonus = (type === 'mine') ? getDepositBonus(id) : null;
     const _roadBonus    = (type === 'plant' || type === 'processor') ? cellHasRoadNeighbor(id) : false;
-    let _buildMsg = `??? ${displayNames[type] || type} construction started. Cost: -${cost.toLocaleString()} tokens.`;
+    let _buildMsg = `🛠️ ${displayNames[type] || type} construction started. Cost: -${cost.toLocaleString()} tokens.`;
     if (_depositBonus !== null) {
-        const _qi = _depositBonus === 1.5 ? '?? On deposit (1.5� yield!)' :
-                    _depositBonus === 1.25 ? '?? Near deposit (1.25� yield)' :
-                    _depositBonus === 0.7  ? '?? Far from deposit (0.7� yield)' :
-                    '? Off-deposit (0.1� yield � consider moving!)';
+        const _qi = _depositBonus === 1.5 ? '💰 On deposit (1.5× yield!)' :
+                    _depositBonus === 1.25 ? '💰 Near deposit (1.25× yield)' :
+                    _depositBonus === 0.7  ? '⚠️ Far from deposit (0.7× yield)' :
+                    '❌ Off-deposit (0.1× yield — consider moving!)';
         _buildMsg += ` ${_qi}`;
     }
-    if (_roadBonus && type === 'plant')     _buildMsg += ' ??? Road access active (+22% income).';
-    if (_roadBonus && type === 'processor') _buildMsg += ' ??? Road access active (+15% throughput).';
+    if (_roadBonus && type === 'plant')     _buildMsg += ' 🛣️ Road access active (+22% income).';
+    if (_roadBonus && type === 'processor') _buildMsg += ' 🛣️ Road access active (+15% throughput).';
     addNotification('success', _buildMsg);
 
     if (type === 'storage') {
@@ -2139,7 +2139,7 @@ function showSabotageMenu(cellId) {
 
     const rect = cell.getBoundingClientRect();
 
-    // Compute viewport-safe position � prefer right of cell, fall back to left
+    // Compute viewport-safe position — prefer right of cell, fall back to left
     const menuW = 248; // slightly over min-width for safety margin
     const menuH = 220; // estimated max height
     const vw = window.innerWidth;
@@ -2182,7 +2182,7 @@ function showSabotageMenu(cellId) {
         border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         transition: background 0.1s;
     `;
-    tempOption.innerHTML = `<div style="font-weight:600; color:#ffa500;">?? Disable</div><div style="font-size:12px; color:#aaa; margin-top:2px;">Production -50% for 45s (costs $${tempDisableCost})</div>`;
+    tempOption.innerHTML = `<div style="font-weight:600; color:#ffa500;">⏸️ Disable</div><div style="font-size:12px; color:#aaa; margin-top:2px;">Production -50% for 45s (costs $${tempDisableCost})</div>`;
     tempOption.onmouseover = () => tempOption.style.background = 'rgba(255, 124, 0, 0.1)';
     tempOption.onmouseout = () => tempOption.style.background = '';
     tempOption.onclick = () => {
@@ -2200,7 +2200,7 @@ function showSabotageMenu(cellId) {
         border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         transition: background 0.1s;
     `;
-    stealOption.innerHTML = `<div style="font-weight:600; color:#4db8ff;">?? Steal</div><div style="font-size:12px; color:#aaa; margin-top:2px;">Steal ~50 U from enemy (costs $${stealCost})</div>`;
+    stealOption.innerHTML = `<div style="font-weight:600; color:#4db8ff;">💰 Steal</div><div style="font-size:12px; color:#aaa; margin-top:2px;">Steal ~50 U from enemy (costs $${stealCost})</div>`;
     stealOption.onmouseover = () => stealOption.style.background = 'rgba(77, 184, 255, 0.1)';
     stealOption.onmouseout = () => stealOption.style.background = '';
     stealOption.onclick = () => {
@@ -2218,7 +2218,7 @@ function showSabotageMenu(cellId) {
             color: #fff;
             transition: background 0.1s;
         `;
-        nukeOption.innerHTML = `<div style="font-weight:600; color:#ff4444;">?? NUKE</div><div style="font-size:12px; color:#aaa; margin-top:2px;">Destroy in AoE + fallout (costs $${nukeCost})</div>`;
+        nukeOption.innerHTML = `<div style="font-weight:600; color:#ff4444;">💥 NUKE</div><div style="font-size:12px; color:#aaa; margin-top:2px;">Destroy in AoE + fallout (costs $${nukeCost})</div>`;
         nukeOption.onmouseover = () => nukeOption.style.background = 'rgba(255, 0, 0, 0.2)';
         nukeOption.onmouseout = () => nukeOption.style.background = '';
         nukeOption.onclick = () => {
@@ -2233,7 +2233,7 @@ function showSabotageMenu(cellId) {
             color: #666;
             border-bottom: none;
         `;
-        nukeOption.innerHTML = `<div style="font-weight:600; color:#666;">?? NUKE (Locked)</div><div style="font-size:12px; color:#555; margin-top:2px;">Requires completed Silo</div>`;
+        nukeOption.innerHTML = `<div style="font-weight:600; color:#666;">💥 NUKE (Locked)</div><div style="font-size:12px; color:#555; margin-top:2px;">Requires completed Silo</div>`;
         menu.appendChild(nukeOption);
     }
 
@@ -2284,8 +2284,8 @@ function executeTemporaryDisable(cellId, cost) {
         enemy.disabled = { endTime: Date.now() + 45000, multiplier: 0.5 };
     }
 
-    console.info(`?? Temporary disable on ${enemy.type} for 45s`);
-    addNotification('warning', `?? Disabled enemy ${displayNames[enemy.type] || enemy.type}. Production cut to 50% for 45s.`);
+    console.info(`⏸️ Temporary disable on ${enemy.type} for 45s`);
+    addNotification('warning', `⏸️ Disabled enemy ${displayNames[enemy.type] || enemy.type}. Production cut to 50% for 45s.`);
     updateUI();
     game.selectedMode = null;
 }
@@ -2321,8 +2321,8 @@ function executeStealResources(cellId, cost) {
     const stolen = 25 + Math.random() * 50; // 25-75 uranium
     game.uraniumRaw += stolen;
 
-    console.info(`?? Stole ${stolen.toFixed(1)} uranium from enemy`);
-    addNotification('success', `?? Stole ${stolen.toFixed(1)} U from enemy ${displayNames[enemy.type] || enemy.type}.`);
+    console.info(`💰 Stole ${stolen.toFixed(1)} uranium from enemy`);
+    addNotification('success', `💰 Stole ${stolen.toFixed(1)} U from enemy ${displayNames[enemy.type] || enemy.type}.`);
     updateUI();
     game.selectedMode = null;
 }
@@ -2335,7 +2335,7 @@ function executeNuclearStrike(targetId) {
     // Check cooldown
     if (game.dayStrikes >= game.maxSilosPerRound) {
         console.warn('Strike cooldown active');
-        addNotification('warning', '?? Nuclear strike on cooldown. Only 1 strike allowed per day.');
+        addNotification('warning', '⚠️ Nuclear strike on cooldown. Only 1 strike allowed per day.');
         return;
     }
     
@@ -2418,7 +2418,7 @@ function triggerNuclearExplosion(centerId) {
         }
     });
     
-    // Apply radiation fallout: -50% production for 120 seconds
+    // Apply radiation fallout: −50% production for 120 seconds
     const falloutTime = 120; // seconds
     const falloutRadius = strikeRadius + 1; // slightly larger radius
     game.buildings.forEach(b => {
@@ -2433,8 +2433,8 @@ function triggerNuclearExplosion(centerId) {
         }
     });
     
-    console.info(`?? Nuclear strike at cell ${centerId}! ${destroyed.length} enemy buildings destroyed.`);
-    addNotification('danger', `?? Nuclear strike! ${destroyed.length} enemy building${destroyed.length !== 1 ? 's' : ''} destroyed. Watch for fallout.`);
+    console.info(`💥 Nuclear strike at cell ${centerId}! ${destroyed.length} enemy buildings destroyed.`);
+    addNotification('danger', `💥 Nuclear strike! ${destroyed.length} enemy building${destroyed.length !== 1 ? 's' : ''} destroyed. Watch for fallout.`);
 }
 
 /**
@@ -2487,8 +2487,8 @@ function renderBuilding(id, type, isPlayer, building) {
     const pendingConfirm = !!(building?.isUnderConstruction && !endsAt);
 
     if (pendingConfirm) {
-        // No server timing yet � show building emoji dimmed while awaiting confirmation
-        const _pendingEmoji = buildingTypes[type]?.emoji || '???';
+        // No server timing yet — show building emoji dimmed while awaiting confirmation
+        const _pendingEmoji = buildingTypes[type]?.emoji || '🏗️';
         const _pendingTint = isPlayer ? PLAYER_COLOR : ENEMY_COLOR;
         cell.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;"><span class="icon-emoji" style="font-size:20px;opacity:0.45;color:${_pendingTint};">${_pendingEmoji}</span></div>`;
     } else if (stillBuilding) {
@@ -2646,7 +2646,7 @@ function calculatePower() {
     });
 
     // Simplified: power is computed from plants and proximity; do NOT modify
-    // uraniumRaw/uraniumRefined here � production/consumption is handled in productionTick.
+    // uraniumRaw/uraniumRefined here — production/consumption is handled in productionTick.
     return totalPower;
 }
 
@@ -2694,14 +2694,14 @@ function updateUI() {
     const incomeEl = document.getElementById('income');
     if (incomeEl) incomeEl.textContent = (game.lastIncome || 0).toLocaleString();
 
-    // portfolio value = wallet + uranium * market.price � updates every tick so it breathes with market
+    // portfolio value = wallet + uranium * market.price — updates every tick so it breathes with market
     const portfolioEl = document.getElementById('portfolio');
     if (portfolioEl) {
         const value = game.playerWallet + ((game.uraniumRaw + game.uraniumRefined) * game.market.price);
         setPortfolioDisplay(value);
     }
 
-    // live rank � recalculated every UI update from the shared player list
+    // live rank — recalculated every UI update from the shared player list
     const rankEl = document.getElementById('rank');
     if (rankEl && game.players && game.players.length) {
         const localId = getLocalPlayerId();
@@ -2807,8 +2807,8 @@ function formatPrizePool(tokens, compact = true) {
 
 /**
  * Format a uranium quantity:
- *  - Under 1000 ? always show 2 decimal places (e.g. "0.00", "45.72")
- *  - 1 000+ ? compact suffix with 2dp    (e.g. "1.50K", "2.30M")
+ *  - Under 1000 → always show 2 decimal places (e.g. "0.00", "45.72")
+ *  - 1 000+ → compact suffix with 2dp    (e.g. "1.50K", "2.30M")
  */
 function formatUranium(n) {
     if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
@@ -2854,20 +2854,20 @@ function authenticate() {
     if (socket?.connected && _authJWT) {
         socket.emit('run:join', { jwt: _authJWT });
     } else {
-        // Server unavailable � fall back to single-player mode
+        // Server unavailable — fall back to single-player mode
         showLobby();
     }
 }
 
-// -----------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
 // Lobby
-// -----------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Show the pre-run lobby modal.
  * When server-connected, called only for offline/fallback. The live path goes:
- *   authenticate() ? socket.emit('run:join') ? run:state event ?
- *     _updateLobbyFromServerState() ? lobbyModal shown.
+ *   authenticate() → socket.emit('run:join') → run:state event →
+ *     _updateLobbyFromServerState() → lobbyModal shown.
  * The offline path calls showLobby() directly with bot players.
  */
 function showLobby() {
@@ -2908,15 +2908,15 @@ function showLobby() {
 }
 
 /**
- * Player confirmed buy-in � deduct tokens, seed pools, launch run.
+ * Player confirmed buy-in — deduct tokens, seed pools, launch run.
  */
 function confirmBuyIn() {
     if (socket?.connected && _authJWT) {
-        // Server-mode: send buy-in confirmation � server deducts and responds with run:buyin_ok.
+        // Server-mode: send buy-in confirmation — server deducts and responds with run:buyin_ok.
         const errEl = document.getElementById('lobbyError');
         if (errEl) errEl.textContent = '';
         const btn = document.getElementById('lobbyConfirmBtn');
-        if (btn) { btn.disabled = true; btn.textContent = 'Processing�'; }
+        if (btn) { btn.disabled = true; btn.textContent = 'Processing…'; }
         socket.emit('run:confirm_buyin', { jwt: _authJWT });
         // Safety re-enable in case server never responds
         setTimeout(() => { if (btn) { btn.disabled = false; btn.textContent = `Confirm Buy-In`; } }, 8000);
@@ -3006,7 +3006,7 @@ function showProfile() {
     const statsEl = document.getElementById('profileStats');
     if (statsEl) {
         const portfolio = (game.playerWallet + ((game.uraniumRaw + game.uraniumRefined) * game.market.price)) || 0;
-        statsEl.textContent = `Tokens: ${game.playerWallet.toLocaleString()} � Raw: ${formatUranium(game.uraniumRaw)} / Ref: ${formatUranium(game.uraniumRefined)} � Portfolio: ${Math.round(portfolio).toLocaleString()} tokens`;
+        statsEl.textContent = `Tokens: ${game.playerWallet.toLocaleString()} — Raw: ${formatUranium(game.uraniumRaw)} / Ref: ${formatUranium(game.uraniumRefined)} — Portfolio: ${Math.round(portfolio).toLocaleString()} tokens`;
     }
     modal.style.display = 'flex';
 }
@@ -3118,7 +3118,7 @@ function requestLoginCode() {
         return;
     }
     const btn = document.getElementById('loginSendBtn');
-    if (btn) { btn.disabled = true; btn.textContent = 'Sending�'; }
+    if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
     socket.emit('auth:request', { email }, (res) => {
         if (btn) { btn.disabled = false; btn.textContent = 'Send Code'; }
         if (!res || !res.ok) {
@@ -3155,7 +3155,7 @@ function loginWithPassword() {
     }
     if (errEl) errEl.textContent = '';
     const btn = document.getElementById('loginPasswordBtn');
-    if (btn) { btn.disabled = true; btn.textContent = 'Signing in�'; }
+    if (btn) { btn.disabled = true; btn.textContent = 'Signing in…'; }
     socket.emit('auth:login_password', { email, password: pw }, (res) => {
         if (btn) { btn.disabled = false; btn.textContent = 'Login'; }
         if (!res || !res.ok) {
@@ -3184,7 +3184,7 @@ function signupWithPassword() {
     }
     if (errEl) errEl.textContent = '';
     const btn = document.getElementById('signupPasswordBtn');
-    if (btn) { btn.disabled = true; btn.textContent = 'Creating�'; }
+    if (btn) { btn.disabled = true; btn.textContent = 'Creating…'; }
     socket.emit('auth:signup_password', { email, password: pw, username }, (res) => {
         if (btn) { btn.disabled = false; btn.textContent = 'Create Account'; }
         if (!res || !res.ok) {
@@ -3205,7 +3205,7 @@ function verifyLoginCode() {
     }
     if (errEl) errEl.textContent = '';
     const btn = document.getElementById('loginVerifyBtn');
-    if (btn) { btn.disabled = true; btn.textContent = 'Verifying�'; }
+    if (btn) { btn.disabled = true; btn.textContent = 'Verifying…'; }
     socket.emit('auth:verify', { email, code }, (res) => {
         if (btn) { btn.disabled = false; btn.textContent = 'Verify'; }
         if (!res || !res.ok) {
@@ -3282,7 +3282,7 @@ document.addEventListener('DOMContentLoaded', function() {
             NukeSounds.prime();
             const nowEnabled = !NukeSounds.isEnabled();
             NukeSounds.setEnabled(nowEnabled);
-            soundToggleBtn.textContent = nowEnabled ? '??' : '??';
+            soundToggleBtn.textContent = nowEnabled ? '🔊' : '🔇';
             soundToggleBtn.title = nowEnabled ? 'Mute sound' : 'Unmute sound';
             if (nowEnabled) NukeSounds.uiTick();
         });
@@ -3316,7 +3316,7 @@ function showMobileMenu() {
     const s = document.getElementById('mobileMenuStats');
     if (s) {
         const portfolio = (game.playerWallet + ((game.uraniumRaw + game.uraniumRefined) * game.market.price)) || 0;
-        s.innerHTML = `Round: ${game.round} � Tokens: ${game.playerWallet.toLocaleString()} � Raw: ${formatUranium(game.uraniumRaw)} / Ref: ${formatUranium(game.uraniumRefined)} � Portfolio: ${Math.round(portfolio).toLocaleString()} tokens`;
+        s.innerHTML = `Round: ${game.round} — Tokens: ${game.playerWallet.toLocaleString()} — Raw: ${formatUranium(game.uraniumRaw)} / Ref: ${formatUranium(game.uraniumRefined)} — Portfolio: ${Math.round(portfolio).toLocaleString()} tokens`;
     }
     modal.style.display = 'block';
     document.body.classList.add('mobile-menu-open');
@@ -3338,36 +3338,36 @@ function toggleMobileMenu() {
 /**
  * Start simulation intervals for production and clock.
  * Always tears down old intervals first so this is safe to call multiple times
- * (e.g. reconnect, return-to-menu ? new game).
+ * (e.g. reconnect, return-to-menu → new game).
  */
 function startSimLoops() {
-    // -- Tear down any lingering intervals first --------------------------
+    // ── Tear down any lingering intervals first ──────────────────────────
     if (game._productionInterval) { clearInterval(game._productionInterval); game._productionInterval = null; }
     if (game._clockInterval)      { clearInterval(game._clockInterval);      game._clockInterval = null; }
 
-    // production tick � drives resource production (1 Hz)
+    // production tick — drives resource production (1 Hz)
     game._productionInterval = setInterval(productionTick, 1000);
 
-    // clock tick � advances simulated minutes based on minutesPerSecond (2 Hz)
+    // clock tick — advances simulated minutes based on minutesPerSecond (2 Hz)
     game._lastClockTS = Date.now();
     game._clockInterval = setInterval(clockTick, 500);
 
-    // construction animation � independent rAF loop, cannot be blocked
+    // construction animation — independent rAF loop, cannot be blocked
     if (!game._constructionRAFRunning) {
         game._constructionRAFRunning = true;
         requestAnimationFrame(constructionAnimLoop);
     }
 
-    // bot AI loop � bots build and sabotage dynamically
+    // bot AI loop — bots build and sabotage dynamically
     startBotAI();
 }
 
 /**
- * Construction animation loop � runs via requestAnimationFrame (~60 fps).
+ * Construction animation loop — runs via requestAnimationFrame (~60 fps).
  *
  * Uses ONE field as the source of truth: building.constructionEndsAtMs.
- * If that timestamp is set and in the future ? building is under construction.
- * If that timestamp is in the past or null ? building is complete.
+ * If that timestamp is set and in the future → building is under construction.
+ * If that timestamp is in the past or null → building is complete.
  *
  * This is completely independent of productionTick so construction can never
  * get stuck even if other game loops are blocked.
@@ -3385,7 +3385,7 @@ function constructionAnimLoop() {
     const now = serverNow();
     const localNow = Date.now(); // for throttling only (not for timestamp comparisons)
 
-    // Throttled diagnostic � fires every 2 seconds
+    // Throttled diagnostic — fires every 2 seconds
     if (!game._constructionRAFLastDiag || localNow - game._constructionRAFLastDiag > 2000) {
         game._constructionRAFLastDiag = localNow;
         const diag = [];
@@ -3408,7 +3408,7 @@ function constructionAnimLoop() {
             const b = buildings[i];
             if (!b) continue;
 
-            // -- Ensure constructionEndsAtMs is set for any under-construction building --
+            // ── Ensure constructionEndsAtMs is set for any under-construction building ──
             if (!b.constructionEndsAtMs && b.isUnderConstruction) {
                 // Fallback: derive from constructionTotalMs or buildingTypes
                 const fb = b.constructionTotalMs || (Number(buildingTypes[b.type]?.constructionTime) || 0) * 10000;
@@ -3416,7 +3416,7 @@ function constructionAnimLoop() {
                     const remaining = b.constructionTimeRemainingMs || fb;
                     b.constructionEndsAtMs = now + remaining;
                     b.constructionTotalMs = fb;
-                    console.warn('[constructionRAF] FALLBACK: derived endsAtMs for', b.type, 'cell', b.id, '? endsAt', b.constructionEndsAtMs, 'totalMs', fb);
+                    console.warn('[constructionRAF] FALLBACK: derived endsAtMs for', b.type, 'cell', b.id, '→ endsAt', b.constructionEndsAtMs, 'totalMs', fb);
                 }
             }
 
@@ -3429,7 +3429,7 @@ function constructionAnimLoop() {
             }
 
             if (b.constructionEndsAtMs <= now) {
-                // -- Construction finished -------------------------------------
+                // ── Construction finished ─────────────────────────────────────
                 console.log('[constructionRAF] COMPLETE', b.type, 'cell', b.id);
                 b.isUnderConstruction = false;
                 b.constructionTimeRemaining = 0;
@@ -3442,7 +3442,7 @@ function constructionAnimLoop() {
                     cell.classList.add('build-complete');
                     setTimeout(() => cell.classList.remove('build-complete'), 900);
                     if (typeof NukeSounds !== 'undefined') NukeSounds.buildComplete();
-                    addNotification('success', `? ${displayNames[b.type] || b.type} construction complete!`);
+                    addNotification('success', `✅ ${displayNames[b.type] || b.type} construction complete!`);
                     // Fill any newly-freed slots from the queue
                     setTimeout(() => {
                         const _freeSlots = (game.buildSlots ?? 1) - game.buildings.filter(b2 => b2.isUnderConstruction).length;
@@ -3454,7 +3454,7 @@ function constructionAnimLoop() {
                 continue;
             }
 
-            // -- Still building ? re-render at throttled rate (10 fps) --------
+            // ── Still building → re-render at throttled rate (10 fps) ────────
             b.isUnderConstruction = true;
             // Throttle to every 100ms per building to avoid excessive DOM churn
             if (b._lastConstructionRender && (localNow - b._lastConstructionRender) < 100) continue;
@@ -3481,7 +3481,7 @@ function constructionAnimLoop() {
 function renderQueuedGhost(cellId, type, queuePos) {
     const cell = document.querySelector(`[data-id="${cellId}"]`);
     if (!cell) return;
-    const emoji = buildingTypes[type]?.emoji || '???';
+    const emoji = buildingTypes[type]?.emoji || '🏗️';
     cell.className = 'cell queued-ghost';
     const terrain = game.terrain?.[cellId] || 'grass';
     cell.classList.add('terrain-' + terrain);
@@ -3507,7 +3507,7 @@ function dispatchQueuedBuild({ cellId, type }) {
     const _realConflict = game.buildings.find(b => b.id === cellId && !b._queued)
         || game.enemyBuildings.find(b => b.id === cellId);
     if (_realConflict) {
-        addNotification('warning', `?? Queued ${displayNames[type] || type} cell was occupied � skipped.`);
+        addNotification('warning', `⚠️ Queued ${displayNames[type] || type} cell was occupied — skipped.`);
         if (_ghostEntry) {
             game.buildings.splice(_ghostIdx, 1);
             restoreEmptyCell(cellId);
@@ -3518,7 +3518,7 @@ function dispatchQueuedBuild({ cellId, type }) {
         }
         return;
     }
-    // Promote ghost ? optimistic active build
+    // Promote ghost → optimistic active build
     if (_ghostEntry) {
         _ghostEntry._queued = false;
         _ghostEntry._pendingServerConfirm = true;
@@ -3529,7 +3529,7 @@ function dispatchQueuedBuild({ cellId, type }) {
         _ghostEntry.constructionEndsAtMs = null;
         renderBuilding(cellId, type, true, _ghostEntry);
     } else {
-        // Ghost missing (e.g. page reload) � create fresh optimistic entry
+        // Ghost missing (e.g. page reload) — create fresh optimistic entry
         const _optimistic = {
             id: cellId,
             type,
@@ -3558,7 +3558,7 @@ function dispatchQueuedBuild({ cellId, type }) {
         _pos++;
     });
     const remaining = (game._buildQueue || []).length;
-    addNotification('info', `?? Starting queued ${displayNames[type] || type}${remaining > 0 ? ` (${remaining} still queued)` : ''}.`);
+    addNotification('info', `🔨 Starting queued ${displayNames[type] || type}${remaining > 0 ? ` (${remaining} still queued)` : ''}.`);
 }
 
 /**
@@ -3611,9 +3611,9 @@ function productionTick() {
         }
     });
 
-    // -- Mines ? uraniumRaw ----------------------------------------------------
+    // ── Mines → uraniumRaw ────────────────────────────────────────────────────
     // Each mine independently yields a small random amount per tick (organic feel).
-    // Range 0.10�0.35 U/sec per mine, average ~0.22.
+    // Range 0.10–0.35 U/sec per mine, average ~0.22.
     // Fallout zones reduce production by 50% if affected.
     // Deposit bonus: on deposit 1.5x, adjacent 1.25x, far 0.3x
     let produced = 0;
@@ -3645,7 +3645,7 @@ function productionTick() {
     game.dailyProduced += actualProduced;
     game.uraniumRaw += actualProduced;
 
-    // -- Processors ? convert raw into refined ---------------------------------
+    // ── Processors → convert raw into refined ─────────────────────────────────
     // Each processor converts a small random trickle per tick (avg ~0.15 U/sec).
     // No processor = no refined uranium = no plant income.
     // Fallout zones reduce production by 50% if affected.
@@ -3672,7 +3672,7 @@ function productionTick() {
     game.uraniumRaw     -= actualConverted;
     game.uraniumRefined += actualConverted;
 
-    // -- Plants ? consume refined uranium, generate income ---------------------
+    // ── Plants → consume refined uranium, generate income ─────────────────────
     const fuelPerPlantPerTick = 0.03 + Math.random() * 0.06; // avg ~0.06 U/sec per plant
     const requiredFuel = totalPlants * fuelPerPlantPerTick;
     let fuelConsumed = 0;
@@ -3700,7 +3700,7 @@ function productionTick() {
             if (_incomeEl) showFloatingText('+' + Math.round(game._pendingIncomeDisplay).toLocaleString(), '#4CAF50', _incomeEl);
         }
 
-        // -- Per-building income/maintenance floats ----------------------------
+        // ── Per-building income/maintenance floats ────────────────────────────
         // Show over player buildings only; stagger slightly so they don't stack.
         const _completedBuildings = game.buildings.filter(b => !b.isUnderConstruction && !b._queued);
         const _activePlants = _completedBuildings.filter(b => b.type === 'plant');
@@ -3717,13 +3717,13 @@ function productionTick() {
                 setTimeout(() => showBuildingFloat(b.id, '-' + _mc, '#ff6b6b'), _delay + 300);
             }
         });
-        // ---------------------------------------------------------------------
+        // ─────────────────────────────────────────────────────────────────────
 
         game._pendingIncomeDisplay = 0;
         game._incomeTickCount = 0;
     }
     if (income > 0) {
-        // Income rewards are new tokens minted from the 1B reserve � real issuance event.
+        // Income rewards are new tokens minted from the 1B reserve — real issuance event.
         game.tokensIssued += income;
         // Minting also drains the bonding curve pool (new supply = scarcity pressure).
         game.market.tokenPool = Math.max(1, game.market.tokenPool - income / game.market.poolBurnRate);
@@ -3743,11 +3743,11 @@ function productionTick() {
  * Small per-second market tick to simulate stock-like movement.
  *
  * Price model (two components):
- *  1. Bonding curve anchor � the "fair value" based on pool depletion + real issuance.
- *     poolFactor  = tokenPoolInitial / pool         � run-level scarcity (fast-moving)
- *     issueFactor = 1 + (tokensIssued / 1B) � 1000 � macro supply pressure (slow-moving)
- *     bondingPrice = baseTokenPrice � poolFactor � issueFactor
- *  2. Random walk noise � price oscillates around bondingPrice via mean-reversion.
+ *  1. Bonding curve anchor — the "fair value" based on pool depletion + real issuance.
+ *     poolFactor  = tokenPoolInitial / pool         — run-level scarcity (fast-moving)
+ *     issueFactor = 1 + (tokensIssued / 1B) × 1000 — macro supply pressure (slow-moving)
+ *     bondingPrice = baseTokenPrice × poolFactor × issueFactor
+ *  2. Random walk noise — price oscillates around bondingPrice via mean-reversion.
  *     Prevents the chart from being a boring straight line.
  */
 function tickMarket() {
@@ -3766,7 +3766,7 @@ function tickMarket() {
     const z = Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
     const noise = z * vol * game.market.price;
 
-    // 3. Diurnal demand drift (legacy flavour � small contribution)
+    // 3. Diurnal demand drift (legacy flavour — small contribution)
     const supply = calculatePower();
     const diurnal = Math.sin((game.time.hour / 24) * Math.PI * 2) * 0.2;
     const demand = Math.max(10, game.market.baseDemand * (1 + diurnal));
@@ -3881,10 +3881,10 @@ function onDayAdvance() {
     const _power = calculatePower();
     addNotification(
         'info',
-        `?? Day ${game.time.day - 1} recap: ` +
-        `Income +${game.dailyIncome.toLocaleString()} tokens � ` +
-        `Mined ${formatUranium(game.dailyProduced)} U � ` +
-        `Power ${_power.toFixed(1)} MW � ` +
+        `📅 Day ${game.time.day - 1} recap: ` +
+        `Income +${game.dailyIncome.toLocaleString()} tokens · ` +
+        `Mined ${formatUranium(game.dailyProduced)} U · ` +
+        `Power ${_power.toFixed(1)} MW · ` +
         `Prize pool ${formatPrizePool(game.prizePool)}`
     );
 
@@ -3907,7 +3907,7 @@ function onRoundEnd(roundNumber) {
  * Shows comprehensive final leaderboard with player stats, game economy, and run statistics
  */
 function onRunEnd() {
-    console.info('?? RUN COMPLETE! All rounds finished.');
+    console.info('🔥 RUN COMPLETE! All rounds finished.');
 
     // In multiplayer, use the server-authoritative payouts; otherwise fall back to local distribution.
     const prizeAwards = game._serverPrizeAwards || distributePrizePool();
@@ -4014,12 +4014,12 @@ function onRunEnd() {
     
     // Build leaderboard with detailed player stats
     let leaderboardHTML = finalScores.map((p, i) => {
-        const medal = ['?? 1ST', '?? 2ND', '?? 3RD'][i] || `#${i+1}`;
+        const medal = ['🥇 1ST', '🥈 2ND', '🥉 3RD'][i] || `#${i+1}`;
         const color = p.isLocal ? '#ffb84d' : '#ccc';
         const you = p.isLocal ? ' (YOU)' : '';
         const award = prizeAwards[p.name];
         const prizeHTML = award
-            ? `<div style="color:#4CAF50; font-weight:bold;">?? Prize: +${award.toLocaleString()} tokens</div>`
+            ? `<div style="color:#4CAF50; font-weight:bold;">🏆 Prize: +${award.toLocaleString()} tokens</div>`
             : '';
         return `
             <div style="margin-bottom: 12px; padding: 12px; background: rgba(255,255,255,0.05); border-left: 3px solid ${color}; border-radius: 4px;">
@@ -4032,7 +4032,7 @@ function onRunEnd() {
                     <div><strong>Portfolio:</strong> $${p.portfolio.toFixed(2)}</div>
                     <div><strong>Wallet:</strong> ${p.wallet.toLocaleString()} tokens</div>
                     <div><strong>Power:</strong> ${p.power.toFixed(1)} MW</div>
-                    <div><strong>Buildings:</strong> ${p.totalBuildings} (${p.buildingStats.mines}?? ${p.buildingStats.processors}?? ${p.buildingStats.storage}??? ${p.buildingStats.plants}??)</div>
+                    <div><strong>Buildings:</strong> ${p.totalBuildings} (${p.buildingStats.mines}⛏️ ${p.buildingStats.processors}🏭 ${p.buildingStats.storage}🗄️ ${p.buildingStats.plants}☢️)</div>
                     <div><strong>Uranium:</strong> ${formatUranium(p.uranium)}</div>
                 </div>
             </div>
@@ -4042,7 +4042,7 @@ function onRunEnd() {
     content.innerHTML = `
         <div style="text-align: center; margin-bottom: 20px;">
             <div style="font-size: 22px; font-weight: bold; color: #ffb84d; margin-bottom: 6px;">
-                ${isPlayerWinner ? '?? YOU WIN THE RUN! ??' : '?? RUN OVER ??'}
+                ${isPlayerWinner ? '🎉 YOU WIN THE RUN! 🎉' : '💥 RUN OVER 💥'}
             </div>
                 <div style="font-size: 12px; color: #888;">
                 Completed ${game.runLength} rounds | Market Price: $${game.market.price.toFixed(2)} | Prize Pool: ${formatPrizePool(game.prizePool)}
@@ -4052,7 +4052,7 @@ function onRunEnd() {
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
             <!-- Winner Highlight -->
             <div style="padding: 12px; background: rgba(255,184,77,0.1); border: 1px solid #ffb84d; border-radius: 4px;">
-                <div style="font-weight: bold; color: #ffb84d; margin-bottom: 6px;">?? Champion</div>
+                <div style="font-weight: bold; color: #ffb84d; margin-bottom: 6px;">🏆 Champion</div>
                 <div style="font-size: 12px; color: #ccc; margin-bottom: 4px;"><strong>${winner.name}</strong></div>
                 <div style="font-size: 11px; color: #888;">Score: ${winner.score.toFixed(1)}</div>
                 <div style="font-size: 11px; color: #888;">Portfolio: $${winner.portfolio.toFixed(2)}</div>
@@ -4060,7 +4060,7 @@ function onRunEnd() {
             
             <!-- Global Economy Stats -->
             <div style="padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid #333; border-radius: 4px;">
-                <div style="font-weight: bold; color: #ffb84d; margin-bottom: 6px;">?? Global Economy</div>
+                <div style="font-weight: bold; color: #ffb84d; margin-bottom: 6px;">📊 Global Economy</div>
                 <div style="font-size: 11px; color: #aaa; line-height: 1.6;">
                     Circulating: ${formatSupply(circ)}<br/>
                     Burned: ${formatSupply(game.tokensBurned)}<br/>
@@ -4071,27 +4071,27 @@ function onRunEnd() {
         </div>
         
         <div style="margin-bottom: 20px; padding: 12px; background: rgba(255,255,255,0.03); border-top: 1px solid #333; border-bottom: 1px solid #333;">
-            <div style="font-weight: bold; color: #ffb84d; margin-bottom: 12px;">?? Final Leaderboard</div>
+            <div style="font-weight: bold; color: #ffb84d; margin-bottom: 12px;">🏅 Final Leaderboard</div>
             ${leaderboardHTML}
         </div>
         
         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 20px; font-size: 11px;">
             <div style="padding: 10px; background: rgba(76,175,80,0.1); border-left: 2px solid #4CAF50; border-radius: 4px;">
-                <div style="color: #4CAF50; font-weight: bold; margin-bottom: 4px;">?? Production</div>
+                <div style="color: #4CAF50; font-weight: bold; margin-bottom: 4px;">⛏️ Production</div>
                 <div style="color: #888;">Mines: ${game.buildings.filter(b => b.type === 'mine').length}</div>
                 <div style="color: #888;">Processors: ${game.buildings.filter(b => b.type === 'processor').length}</div>
                 <div style="color: #888;">Uranium: ${formatUranium(game.uraniumRaw + game.uraniumRefined)}</div>
             </div>
             
             <div style="padding: 10px; background: rgba(255,184,77,0.1); border-left: 2px solid #ffb84d; border-radius: 4px;">
-                <div style="color: #ffb84d; font-weight: bold; margin-bottom: 4px;">?? Power</div>
+                <div style="color: #ffb84d; font-weight: bold; margin-bottom: 4px;">☢️ Power</div>
                 <div style="color: #888;">Reactors: ${game.buildings.filter(b => b.type === 'plant').length}</div>
                 <div style="color: #888;">Total Power: ${calculatePower().toFixed(1)} MW</div>
                 <div style="color: #888;">Storage: ${game.buildings.filter(b => b.type === 'storage').length}</div>
             </div>
             
             <div style="padding: 10px; background: rgba(255,107,107,0.1); border-left: 2px solid #ff6b6b; border-radius: 4px;">
-                <div style="color: #ff6b6b; font-weight: bold; margin-bottom: 4px;">?? Sabotage</div>
+                <div style="color: #ff6b6b; font-weight: bold; margin-bottom: 4px;">💣 Sabotage</div>
                 <div style="color: #888;">Enemy Buildings: ${game.enemyBuildings.length}</div>
                 <div style="color: #888;">Tokens Burned: ${formatSupply(game.tokensBurned)}</div>
                 <div style="color: #888;">Prize Pool: ${formatPrizePool(game.prizePool)}</div>
@@ -4109,7 +4109,7 @@ function onRunEnd() {
                 cursor: pointer;
                 font-family: monospace;
                 font-size: 14px;
-            ">? Return to Menu</button>
+            ">↻ Return to Menu</button>
         </div>
     `;
     
@@ -4124,7 +4124,7 @@ function returnToMenu() {
     const modal = document.getElementById('runEndModal');
     if (modal) modal.remove();
     
-    // Stop the simulation loops � null out refs so startSimLoops can recreate them
+    // Stop the simulation loops — null out refs so startSimLoops can recreate them
     if (game._productionInterval) { clearInterval(game._productionInterval); game._productionInterval = null; }
     if (game._clockInterval)      { clearInterval(game._clockInterval);      game._clockInterval = null; }
     if (game._botInterval)        { clearInterval(game._botInterval);        game._botInterval = null; }
@@ -4236,7 +4236,7 @@ function onCellHover(id, e) {
 
     // If hovering over a deposit cell (no buildings), show deposit info
     if (!player && !enemy && deposit && !game.selectedMode) {
-        content = `<div style="font-weight:700; color:#FFD700;">?? Uranium Deposit</div>` +
+        content = `<div style="font-weight:700; color:#FFD700;">🚩 Uranium Deposit</div>` +
             `<div style="color:#FFA500; margin-top:4px;">Build mines here for 1.5x yield!</div>` +
             `<div style="color:#AAA; font-size:12px; margin-top:4px;">1 tile: 1.25x | 2 tiles: 0.7x | 3+: 0.1x</div>`;
         showTooltipAt(rect.right + 8, rect.top, content);
@@ -4259,18 +4259,18 @@ function onCellHover(id, e) {
         const icon = (buildingTypes[type] && buildingTypes[type].emoji) ? buildingTypes[type].emoji + ' ' : '';
         const mc = buildingTypes[type]?.maintenanceCost || 0;
         content = `<div style="font-weight:700;">${icon}Place: ${label}</div>` +
-            `<div>?? Cost: ${(buildingTypes[type]?.cost || 0).toLocaleString()} tokens</div>` +
-            `<div style="color:#ff9944;">?? Operating: ${mc.toLocaleString()} tokens/tick</div>` +
+            `<div>💰 Cost: ${(buildingTypes[type]?.cost || 0).toLocaleString()} tokens</div>` +
+            `<div style="color:#ff9944;">⚙️ Operating: ${mc.toLocaleString()} tokens/tick</div>` +
             `<div>📐 Same-type neighbors: ${same} (${same>0? '+'+(same*11)+'% efficiency': 'no bonus'})</div>` +
             `<div>⚠️ Nearby enemies: ${pen}</div>`;
         
         // Add deposit bonus info for mines
         if (type === 'mine') {
             const depositBonus = getDepositBonus(id);
-            const depositInfo = depositBonus === 1.5 ? '?? On deposit: 1.5x yield!' : 
-                               depositBonus === 1.25 ? '?? 1 tile away: 1.25x yield' : 
-                               depositBonus === 0.7 ? '?? 2 tiles away: 0.7x yield' :
-                               '?? 3+ tiles away: 0.1x yield (terrible!)';
+            const depositInfo = depositBonus === 1.5 ? '💰 On deposit: 1.5x yield!' : 
+                               depositBonus === 1.25 ? '💰 1 tile away: 1.25x yield' : 
+                               depositBonus === 0.7 ? '💰 2 tiles away: 0.7x yield' :
+                               '⛰️ 3+ tiles away: 0.1x yield (terrible!)';
             content += `<div style="color:${depositBonus > 0.5 ? '#FFD700' : '#FF6B6B'}; font-weight:600;">${depositInfo}</div>`;
         }
         
@@ -4281,7 +4281,7 @@ function onCellHover(id, e) {
         }
         if (type === 'processor') {
             const hasRoad = cellHasRoadNeighbor(id);
-            content += `<div style="color:${hasRoad ? '#4CAF50' : '#888'};">`+
+            content += `<div style="color:${hasRoad ? '#4CAF50' : '#888'};">` +
                 `🛣️ Road access: ${hasRoad ? '+15% throughput if built here ✓' : 'no road bonus here'}</div>`;
         }
         showTooltipAt(rect.right + 8, rect.top, content);
@@ -4300,8 +4300,8 @@ function onCellHover(id, e) {
         const icon = (buildingTypes[type] && buildingTypes[type].emoji) ? buildingTypes[type].emoji + ' ' : '';
         const ownerLabel = `<span style="display:inline-flex;align-items:center;gap:6px;color:#4CAF50;">${avatarBadge(game.playerAvatar)} ${escapeHtml(game.playerName || 'You')} <span style="font-size:10px;color:#aaa;">(You)</span></span>`;
         const mcOwned = buildingTypes[type]?.maintenanceCost || 0;
-        content = `<div style="font-weight:700;">${icon}${label} � ${ownerLabel}</div>` +
-            `<div style="color:#ff9944;">?? Operating: ${mcOwned.toLocaleString()} tokens/tick</div>` +
+        content = `<div style="font-weight:700;">${icon}${label} — ${ownerLabel}</div>` +
+            `<div style="color:#ff9944;">⚙️ Operating: ${mcOwned.toLocaleString()} tokens/tick</div>` +
             `<div>📐 Same-type neighbors: ${same} (${same>0? '+'+(same*11)+'%': 'none'})</div>` +
             `<div>⚠️ Nearby enemies: ${pen}</div>`;
         
@@ -4313,7 +4313,7 @@ function onCellHover(id, e) {
                                    depositBonus === 1.25 ? '1 tile from deposit' : 
                                    depositBonus === 0.7 ? '2 tiles from deposit' : 
                                    '3+ tiles from deposit';
-            content += `<div style="color:${depositBonus > 0.5 ? '#FFD700' : '#FF6B6B'}; font-weight:600; margin-top:4px;">?? Mining: ${miningRatePercent}% efficiency</div>` +
+            content += `<div style="color:${depositBonus > 0.5 ? '#FFD700' : '#FF6B6B'}; font-weight:600; margin-top:4px;">⛏️ Mining: ${miningRatePercent}% efficiency</div>` +
                       `<div style="color:#AAA; font-size:12px;">${depositDistInfo}</div>`;
         }
         
@@ -4324,7 +4324,7 @@ function onCellHover(id, e) {
         }
         if (type === 'processor') {
             const hasRoad = cellHasRoadNeighbor(id);
-            content += `<div style="color:${hasRoad ? '#4CAF50' : '#888'};">`+
+            content += `<div style="color:${hasRoad ? '#4CAF50' : '#888'};">` +
                 `🛣️ Road access: ${hasRoad ? '+15% throughput ✓' : 'none'}</div>`;
         }
         showTooltipAt(rect.right + 8, rect.top, content);
@@ -4350,24 +4350,25 @@ function onCellHover(id, e) {
         let statusLine = '';
         if (enemy.disabled && enemy.disabled.endTime > now) {
             const secsLeft = Math.ceil((enemy.disabled.endTime - now) / 1000);
-            statusLine += `<div style="color:#ffb84d; margin-top:4px;">?? Disabled � ${secsLeft}s remaining (${Math.round((1 - enemy.disabled.multiplier) * 100)}% penalty)</div>`;
+            statusLine += `<div style="color:#ffb84d; margin-top:4px;">⏸️ Disabled — ${secsLeft}s remaining (${Math.round((1 - enemy.disabled.multiplier) * 100)}% penalty)</div>`;
         }
         content = `<div style="font-weight:700;">${icon}${label}</div>` +
             `<div style="margin-top:2px;">Owner: ${ownerTag}</div>` +
             `<div style="color:#888; font-size:11px;">${ownerBuildings} building${ownerBuildings !== 1 ? 's' : ''} total</div>` +
             statusLine +
-            `<div style="margin-top:6px; color:#ff6b6b;">?? Sabotage cost: ${sabotageCost.toLocaleString()} tokens</div>` +
+            `<div style="margin-top:6px; color:#ff6b6b;">💥 Sabotage cost: ${sabotageCost.toLocaleString()} tokens</div>` +
             `<div style="color:#aaa; font-size:11px;">Click to open sabotage menu</div>`;
         showTooltipAt(rect.right + 8, rect.top, content);
         return;
     }
 
-    // Road cell � show bonus hint even on empty road tiles
+    // Road cell — show bonus hint even on empty road tiles
     if (game.terrain && (game.terrain[id] === 'road' || game.terrain[id] === 'road-h' || game.terrain[id] === 'road-x')) {
-        content = `<div style="font-weight:700; color:#aaa;">??? Road Tile</div>` +
+        content = `<div style="font-weight:700; color:#aaa;">🛣️ Road Tile</div>` +
             `<div>Buildings close to a road gain logistics bonuses.</div>` +
-            `<div style="color:#4CAF50;">?? Adjacent Reactors: +22% income</div>` +
-            `<div style="color:#4CAF50;">?? Adjacent Plants: +15% throughput</div>`;
+            `<div style="color:#4CAF50;">☢️ Adjacent Reactors: +22% income</div>` +
+            `<div style="color:#4CAF50;">🏭 Adjacent Plants: +15% throughput</div>`;
+
         showTooltipAt(rect.right + 8, rect.top, content);
         return;
     }
@@ -4485,14 +4486,14 @@ function showEndOfDaySummary() {
         <div style="margin-top:8px; border-top:1px solid #333; padding-top:8px;">
             <strong>Token Economy</strong>
         </div>
-        <div>Circulating supply: ${formatSupply(circ)} <span style="color:#555; font-size:10px;">(issued - burned)</span></div>
+        <div>Circulating supply: ${formatSupply(circ)} <span style="color:#555; font-size:10px;">(issued − burned)</span></div>
         <div>Available in reserve: ${formatSupply(available)} <span style="color:#555; font-size:10px;">of 1B</span></div>
         <div>Tokens issued (total): ${formatSupply(game.tokensIssued)}</div>
         <div>Tokens burned (total): ${formatSupply(game.tokensBurned)}</div>
         <div style="margin-top:6px;">
             <strong style="color:#ffb84d;">Prize Pool: ${formatPrizePool(game.prizePool)}</strong>
         </div>
-        <div style="font-size:11px; color:#888;">Prize pool split � 1st: 50% � 2nd: 30% � 3rd: 20% &nbsp;|&nbsp; 20% of buy-ins retained as platform fee</div>
+        <div style="font-size:11px; color:#888;">Prize pool split — 1st: 50% · 2nd: 30% · 3rd: 20% &nbsp;|&nbsp; 20% of buy-ins retained as platform fee</div>
     `;
 
     // build leaderboard from game.players
@@ -4511,11 +4512,11 @@ function showEndOfDaySummary() {
     });
     entries.sort((a, b) => b.score - a.score);
     lb.innerHTML = entries.map((r, i) => {
-        const medal = ['??','??','??'][i] || `#${i+1}`;
+        const medal = ['🥇','🥈','🥉'][i] || `#${i+1}`;
         const color = r.isLocal ? '#ffb84d' : '#ccc';
         return `<div style="margin-bottom:6px; color:${color};">` +
-            `<strong>${medal} ${r.name}</strong> � ` +
-            `Score: ${r.score.toFixed(1)} � ` +
+            `<strong>${medal} ${r.name}</strong> — ` +
+            `Score: ${r.score.toFixed(1)} — ` +
             `Portfolio: $${r.portfolio.toFixed(2)}` +
             `</div>`;
     }).join('');
@@ -4540,43 +4541,43 @@ function addButtonTooltips() {
             const label = displayNames[typeKey] || btn.textContent.trim();
             let content = '<div style="font-weight:700;">' + label + '</div>';
             if (btn.id === 'actionsMenuBtn') {
-                content = '<div style="font-weight:700;">? Action Menu</div>';
+                content = '<div style="font-weight:700;">☰ Action Menu</div>';
                 content += '<div>Click to build structures or perform actions.</div>';
-                content += '<div style="margin-top:4px; color:#888; font-size:11px;">?? Build � ?? Sabotage</div>';
+                content += '<div style="margin-top:4px; color:#888; font-size:11px;">⛏️ Build · 💥 Sabotage</div>';
                 content += '<div style="margin-top:4px; color:#ffb84d; font-size:11px;">Press <b>M</b> to toggle</div>';
             } else if (typeKey === 'mine' || /mine/i.test(typeKey)) {
-                content = '<div style="font-weight:700;">?? ' + label + '</div>';
+                content = '<div style="font-weight:700;">⛏️ ' + label + '</div>';
                 content += '<div>Place a Mine to extract raw uranium from the ground.</div>';
-                content += '<div>?? Cost: ' + buildingTypes.mine.cost + ' tokens</div>';
+                content += '<div>💰 Cost: ' + buildingTypes.mine.cost + ' tokens</div>';
             } else if (typeKey === 'processor' || /process/i.test(typeKey)) {
-                content = '<div style="font-weight:700;">?? ' + label + '</div>';
+                content = '<div style="font-weight:700;">🏭 ' + label + '</div>';
                 content += '<div>Refines raw uranium into fuel for Reactors.</div>';
-                content += '<div>?? Cost: ' + buildingTypes.processor.cost + ' tokens</div>';
+                content += '<div>💰 Cost: ' + buildingTypes.processor.cost + ' tokens</div>';
             } else if (typeKey === 'storage' || /store/i.test(typeKey)) {
-                content = '<div style="font-weight:700;">??? ' + label + '</div>';
+                content = '<div style="font-weight:700;">🗄️ ' + label + '</div>';
                 content += '<div>Increases your uranium storage capacity.</div>';
-                content += '<div>?? Cost: ' + buildingTypes.storage.cost + ' tokens</div>';
+                content += '<div>💰 Cost: ' + buildingTypes.storage.cost + ' tokens</div>';
             } else if (typeKey === 'plant' || /plant/i.test(typeKey)) {
-                content = '<div style="font-weight:700;">?? ' + label + '</div>';
+                content = '<div style="font-weight:700;">☢️ ' + label + '</div>';
                 content += '<div>Consumes refined uranium to generate power &amp; income.</div>';
-                content += '<div>??? Place near a road for +22% income bonus.</div>';
-                content += '<div>?? Cost: ' + buildingTypes.plant.cost + ' tokens</div>';
+                content += '<div>🛣️ Place near a road for +22% income bonus.</div>';
+                content += '<div>💰 Cost: ' + buildingTypes.plant.cost + ' tokens</div>';
             } else if (typeKey === 'sabotage' || /sabotage/i.test(typeKey)) {
-                content = '<div style="font-weight:700;">?? Sabotage</div>';
+                content = '<div style="font-weight:700;">💥 Sabotage</div>';
                 content += '<div>Sabotage an enemy building.</div>';
                 content += '<div>Click Sabotage then click an enemy cell.</div>';
-                content += '<div>?? Cost varies by target type.</div>';
+                content += '<div>⚠️ Cost varies by target type.</div>';
             } else if (typeKey === 'silo' || /silo/i.test(typeKey)) {
-                content = '<div style="font-weight:700;">?? Silo</div>';
-                content += '<div>Missile Silo � the ultimate weapon. Requires at least 1 completed Reactor to build.</div>';
-                content += `<div>??Build cost: ${buildingTypes.silo.cost} tokens � Construction: ${buildingTypes.silo.constructionTime}s</div>`;
-                content += `<div>?? Limit: ${game.maxSilosPerRound} per round. Using a nuke costs a large portion of your wallet.</div>`;
+                content = '<div style="font-weight:700;">💥 Silo</div>';
+                content += '<div>Missile Silo — the ultimate weapon. Requires at least 1 completed Reactor to build.</div>';
+                content += `<div>💰Build cost: ${buildingTypes.silo.cost} tokens — Construction: ${buildingTypes.silo.constructionTime}s</div>`;
+                content += `<div>⚠️ Limit: ${game.maxSilosPerRound} per round. Using a nuke costs a large portion of your wallet.</div>`;
             } else if (typeKey === 'dev' || /dev/i.test(typeKey)) {
-                content = '<div style="font-weight:700;">?? Dev Tools</div>';
+                content = '<div style="font-weight:700;">🔧 Dev Tools</div>';
                 content += '<div>Advance time, change simulation speed for testing.</div>';
             } else if (btn.id === 'notifBellBtn') {
                 const unread = (game.notifications || []).filter(n => !n.read).length;
-                content = '<div style="font-weight:700;">?? Notifications</div>';
+                content = '<div style="font-weight:700;">🔔 Notifications</div>';
                 content += `<div>${unread > 0 ? unread + ' unread' : 'No new notifications'}. Click to open.</div>`;
             }
             const rect = btn.getBoundingClientRect();
@@ -4597,7 +4598,7 @@ function addButtonTooltips() {
             showTooltipAt(rect.right + 8, rect.top, content);
         });
         btn.addEventListener('mousemove', (e) => {
-            // Bell and hamburger tooltips are anchored � don't reposition on mouse move
+            // Bell and hamburger tooltips are anchored — don't reposition on mouse move
             if (btn.id === 'notifBellBtn' || btn.id === 'actionsMenuBtn') return;
             const x = e.clientX + 12; const y = e.clientY + 12;
             repositionTooltip(x, y);
@@ -4616,33 +4617,33 @@ function addButtonTooltips() {
                 const label = displayNames[typeKey] || mi.textContent.trim();
                 let content = '<div style="font-weight:700;">' + label + '</div>';
                 if (typeKey === 'mine' || /mine/i.test(typeKey)) {
-                    content = '<div style="font-weight:700;">?? ' + label + '</div>';
+                    content = '<div style="font-weight:700;">⛏️ ' + label + '</div>';
                     content += '<div>Place a Mine to extract raw uranium from the ground.</div>';
-                    content += '<div>?? Cost: ' + buildingTypes.mine.cost + ' tokens</div>';
+                    content += '<div>💰 Cost: ' + buildingTypes.mine.cost + ' tokens</div>';
                 } else if (typeKey === 'processor' || /process/i.test(typeKey)) {
-                    content = '<div style="font-weight:700;">?? ' + label + '</div>';
+                    content = '<div style="font-weight:700;">🏭 ' + label + '</div>';
                     content += '<div>Refines raw uranium into fuel for Reactors.</div>';
-                    content += '<div>?? Cost: ' + buildingTypes.processor.cost + ' tokens</div>';
+                    content += '<div>💰 Cost: ' + buildingTypes.processor.cost + ' tokens</div>';
                 } else if (typeKey === 'storage' || /store/i.test(typeKey)) {
-                    content = '<div style="font-weight:700;">??? ' + label + '</div>';
+                    content = '<div style="font-weight:700;">🗄️ ' + label + '</div>';
                     content += '<div>Increases your uranium storage capacity.</div>';
-                    content += '<div>?? Cost: ' + buildingTypes.storage.cost + ' tokens</div>';
+                    content += '<div>💰 Cost: ' + buildingTypes.storage.cost + ' tokens</div>';
                 } else if (typeKey === 'plant' || /plant/i.test(typeKey)) {
-                    content = '<div style="font-weight:700;">?? ' + label + '</div>';
+                    content = '<div style="font-weight:700;">☢️ ' + label + '</div>';
                     content += '<div>Consumes refined uranium to generate power &amp; income.</div>';
-                    content += '<div>??? Place near a road for +22% income bonus.</div>';
-                    content += '<div>?? Cost: ' + buildingTypes.plant.cost + ' tokens</div>';
+                    content += '<div>🛣️ Place near a road for +22% income bonus.</div>';
+                    content += '<div>💰 Cost: ' + buildingTypes.plant.cost + ' tokens</div>';
                 } else if (typeKey === 'sabotage' || /sabotage/i.test(typeKey)) {
-                    content = '<div style="font-weight:700;">?? Sabotage</div>';
+                    content = '<div style="font-weight:700;">💥 Sabotage</div>';
                     content += '<div>Sabotage an enemy building.</div>';
                     content += '<div>Click Sabotage then click an enemy cell.</div>';
-                    content += '<div>?? Cost varies by target type.</div>';
+                    content += '<div>⚠️ Cost varies by target type.</div>';
                 } else if (typeKey === 'silo' || /silo/i.test(typeKey)) {
-                    content = '<div style="font-weight:700;">?? Silo</div>';
+                    content = '<div style="font-weight:700;">💥 Silo</div>';
                     content += '<div>Nukes. The ultimate weapon.</div>';
                     content += '<div>Requires 1 completed Reactor to build.</div>';
-                    content += '<div>?? Cost: ' + buildingTypes.silo.cost + ' tokens</div>';
-                    content += '<div>?? Limit: ' + game.maxSilosPerRound + ' per round</div>';
+                    content += '<div>💰 Cost: ' + buildingTypes.silo.cost + ' tokens</div>';
+                    content += '<div>⚠️ Limit: ' + game.maxSilosPerRound + ' per round</div>';
                 }
                 // Anchor tooltip to the LEFT of the actions menu, vertically centered to the item
                 const menuRect = menu ? menu.getBoundingClientRect() : null;
@@ -4704,7 +4705,7 @@ async function serverAdminRequest(path, options = {}) {
     if (input) setAdminKey(input.value);
     const key = getAdminKey();
     if (!key) {
-        addNotification('warning', '?? Enter the Railway ADMIN_KEY in the Dev panel first.');
+        addNotification('warning', '🔐 Enter the Railway ADMIN_KEY in the Dev panel first.');
         return null;
     }
 
@@ -4713,7 +4714,7 @@ async function serverAdminRequest(path, options = {}) {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
         const message = data.error || `Server admin request failed (${response.status}).`;
-        addNotification('danger', `? ${message}`);
+        addNotification('danger', `❌ ${message}`);
         throw new Error(message);
     }
     return data;
@@ -4731,7 +4732,7 @@ async function adminClearCellPrompt() {
     if (value === null) return;
     const cellId = Number(value);
     if (!Number.isInteger(cellId) || cellId < 0 || cellId > 399) {
-        addNotification('warning', '?? Enter a valid cell ID from 0 to 399.');
+        addNotification('warning', '⚠️ Enter a valid cell ID from 0 to 399.');
         return;
     }
 
@@ -4739,7 +4740,7 @@ async function adminClearCellPrompt() {
         method: 'POST',
         body: JSON.stringify({ cellId }),
     });
-    if (data) addNotification('success', `?? Cleared Railway cell ${cellId}.`);
+    if (data) addNotification('success', `🧹 Cleared Railway cell ${cellId}.`);
 }
 
 async function adminResetActiveBuildings() {
@@ -4748,7 +4749,7 @@ async function adminResetActiveBuildings() {
         method: 'POST',
         body: JSON.stringify({}),
     });
-    if (data) addNotification('success', `?? Reset ${data.cleared || 0} active building(s) on Railway.`);
+    if (data) addNotification('success', `🧪 Reset ${data.cleared || 0} active building(s) on Railway.`);
 }
 
 function syncBotToggleUI() {
@@ -4795,7 +4796,7 @@ function setAIBotsEnabled(enabled) {
         removedBuildings.forEach((b) => restoreEmptyCell(b.id));
         game.enemyBuildings = (game.enemyBuildings || []).filter(b => !botIds.has(b.ownerId) && !botNames.has(b.owner));
 
-        addNotification('info', '?? AI bots disabled for testing. Bot buildings were removed.');
+        addNotification('info', '🧪 AI bots disabled for testing. Bot buildings were removed.');
     } else {
         const hasBots = (game.players || []).some(p => p.isBot);
         if (!hasBots) {
@@ -4803,17 +4804,17 @@ function setAIBotsEnabled(enabled) {
                 // Offline: reinitialise the whole registry (bots + local player)
                 initPlayerRegistry();
             } else {
-                // Online: server owns game.players � just inject bots directly
+                // Online: server owns game.players — just inject bots directly
                 game.players = game.players || [];
                 game.players.push(
-                    { id: 'bot-phantom', name: 'PHANTOM_IX', avatar: '??', isLocal: false, isBot: true, wallet: 50000, score: 0, total_buildings: 0 },
-                    { id: 'bot-neutron',  name: 'NEUTRON_',   avatar: '??', isLocal: false, isBot: true, wallet: 50000, score: 0, total_buildings: 0 }
+                    { id: 'bot-phantom', name: 'PHANTOM_IX', avatar: '🤖', isLocal: false, isBot: true, wallet: 50000, score: 0, total_buildings: 0 },
+                    { id: 'bot-neutron',  name: 'NEUTRON_',   avatar: '🐺', isLocal: false, isBot: true, wallet: 50000, score: 0, total_buildings: 0 }
                 );
             }
             spawnEnemyBuildings();
         }
         startBotAI();
-        addNotification('info', '?? AI bots enabled.');
+        addNotification('info', '🤖 AI bots enabled.');
     }
 
     syncBotToggleUI();
@@ -4859,9 +4860,9 @@ function setSimSpeed(minutesPerSecond) {
     game._lastClockTS = Date.now();
 }
 
-// -----------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
 // Game Juice: floating text, toasts, day transition
-// -----------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Show a small "+120" / "-800" floating label that drifts upward from anchorEl
@@ -4871,12 +4872,12 @@ function setSimSpeed(minutesPerSecond) {
  * Smoothly animate the wallet display from its current shown value to `target`.
  * Uses requestAnimationFrame so the number counts up/down fluidly instead of
  * jumping on every production tick. A new call mid-animation just updates the
- * target � the animation re-aims without restarting.
+ * target — the animation re-aims without restarting.
  */
 /**
  * Smoothly animate the portfolio display toward `target`, and pulse green/red
  * when the value moves up or down. Portfolio is driven by market price every
- * UI tick so it naturally breathes � this just makes the movement silky.
+ * UI tick so it naturally breathes — this just makes the movement silky.
  */
 function setPortfolioDisplay(target) {
     const el = document.getElementById('portfolio');
@@ -4927,7 +4928,7 @@ function setWalletDisplay(target) {
     if (game._walletAnimFrame) return;
     const startVal = game._walletDisplayed;
     const startTime = performance.now();
-    const duration = 600; // ms � long enough to feel smooth, short enough to stay accurate
+    const duration = 600; // ms — long enough to feel smooth, short enough to stay accurate
     function step(now) {
         const t = Math.min(1, (now - startTime) / duration);
         const ease = 1 - Math.pow(1 - t, 3); // ease-out cubic
@@ -4970,7 +4971,7 @@ function showFloatingText(text, color, anchorEl) {
         rect = fallback ? fallback.getBoundingClientRect()
                         : { left: window.innerWidth / 2, top: 48, width: 0, height: 0 };
     }
-    // Center horizontally over the anchor, sit just above it � then clamp to viewport
+    // Center horizontally over the anchor, sit just above it — then clamp to viewport
     const cx = Math.max(30, Math.min(window.innerWidth - 30, rect.left + rect.width / 2));
     el.style.left = cx + 'px';
     el.style.top  = (rect.top + rect.height / 2) + 'px';
@@ -4979,7 +4980,7 @@ function showFloatingText(text, color, anchorEl) {
 }
 
 /**
- * showToast � thin alias kept for backwards compat. Prefer addNotification().
+ * showToast — thin alias kept for backwards compat. Prefer addNotification().
  */
 function showToast(text, color) {
     const typeMap = { '#4CAF50': 'success', '#ff6b6b': 'danger', '#ffb84d': 'warning' };
@@ -4987,7 +4988,7 @@ function showToast(text, color) {
 }
 
 /**
- * Show a "Workers En Route�" floating label centered on a grid cell that
+ * Show a "Workers En Route…" floating label centered on a grid cell that
  * zooms in, holds briefly, then scales up and fades away.
  */
 function showWorkersEnRouteFloat(cellId) {
@@ -5010,7 +5011,7 @@ function showWorkersEnRouteFloat(cellId) {
         'text-shadow:0 0 8px #e0c97a88, 0 1px 3px #000c',
         'white-space:nowrap'
     ].join(';');
-    el.textContent = '?? Workers En Route�';
+    el.textContent = '🚧 Workers En Route…';
     el.style.left = (rect.left + rect.width  / 2) + 'px';
     el.style.top  = (rect.top  + rect.height / 2) + 'px';
     document.body.appendChild(el);
@@ -5048,11 +5049,11 @@ function showBuildingFloat(cellId, text, color) {
 }
 
 /**
- * _flashToast � internal ephemeral bottom-center flash.
+ * _flashToast — internal ephemeral bottom-center flash.
  * Only creates the DOM element; persistence is handled by addNotification / the drawer.
  */
 function _flashToast(message, type) {
-    // Strip emoji/markdown noise for the brief flash � keep it short
+    // Strip emoji/markdown noise for the brief flash — keep it short
     const typeColors = { success: '#4CAF50', danger: '#ff6b6b', warning: '#ffb84d', info: '#7ec8e3' };
     const color = typeColors[type] || '#fff';
     // If a toast is already showing, remove it so the new one starts fresh
@@ -5068,13 +5069,13 @@ function _flashToast(message, type) {
     setTimeout(() => el.remove(), 3050);
 }
 
-// -----------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
 // Notification System
 // Single entry point: addNotification(type, message, data)
 // Backend-ready: a WebSocket handler just calls addNotification() directly.
 //   e.g.  socket.on('notification', ({ type, message, data }) =>
 //               addNotification(type, message, data));
-// -----------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Initialise notifications array on game object so it persists across ticks
 if (!game.notifications) game.notifications = [];
@@ -5159,7 +5160,7 @@ function renderNotifications() {
                 <span class="notif-msg" style="color:${color};">${notif.message}</span>
                 <span class="notif-time">${dateStr} ${timeStr}</span>
             </div>
-            <button class="notif-dismiss" data-id="${notif.id}" title="Dismiss">?</button>
+            <button class="notif-dismiss" data-id="${notif.id}" title="Dismiss">✕</button>
         `;
         el.querySelector('.notif-dismiss').addEventListener('click', (e) => {
             e.stopPropagation();
@@ -5259,9 +5260,9 @@ function showDayTransition(day) {
     setTimeout(() => el.remove(), 2200);
 }
 
-// -----------------------------------------------------------------------------
-// Bot AI � bots dynamically build and occasionally sabotage the player
-// -----------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
+// Bot AI — bots dynamically build and occasionally sabotage the player
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Start the bot AI interval. Called once per run from startSimLoops().
@@ -5340,5 +5341,5 @@ function botSabotagePlayer(bot, targets) {
         setTimeout(() => { cell.style.outline = ''; cell.style.outlineOffset = ''; }, 800);
     }
 
-    addNotification('danger', `?? ${bot.name} sabotaged your ${displayNames[target.type] || target.type}!`);
+    addNotification('danger', `⚠️ ${bot.name} sabotaged your ${displayNames[target.type] || target.type}!`);
 }
