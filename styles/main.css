@@ -560,7 +560,7 @@ body.mobile-menu-open .dropdown { display: none !important; }
 }
 
 .cell.has-deposit::after {
-    content: 'ðŸš©';
+    content: '🚩';
     position: absolute;
     font-size: 9px;
     opacity: 0.7;
