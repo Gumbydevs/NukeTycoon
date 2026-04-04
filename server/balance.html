@@ -118,13 +118,13 @@
             <option value="meters">Meters</option>
           </select>
           <label style="width:160px;margin-left:12px">Enemy building bonus</label>
-          <input id="proximity_enemy_bonus" type="number" step="0.01" class="small" style="width:100px" />
+          <input id="proximity_enemy_bonus" type="number" step="0.01" class="small" style="width:100px" placeholder="not hooked up" />
         </div>
         <div style="margin-top:8px" class="row">
           <label style="width:160px">Same-type building bonus</label>
-          <input id="proximity_same_type_bonus" type="number" step="0.01" class="small" style="width:100px" />
+          <input id="proximity_same_type_bonus" type="number" step="0.01" class="small" style="width:100px" placeholder="not hooked up" />
           <label style="width:160px;margin-left:12px">Road proximity bonus</label>
-          <input id="proximity_road_bonus" type="number" step="0.01" class="small" style="width:100px" />
+          <input id="proximity_road_bonus" type="number" step="0.01" class="small" style="width:100px" placeholder="not hooked up" />
         </div>
 
         <h4 class="section">Grid <button id="toggleGrid" class="small btn-ghost" style="margin-left:8px">Expand</button></h4>
@@ -525,6 +525,13 @@
     // Auto-load
     loadAll();
     loadBenchmarks();
+
+    // Initially hide section bodies so the "Expand" labels reflect state
+    const initiallyHidden = ['gameSettingsBody','gridBody','economyBody','productionBody','sabotageBody','buildingRulesBody','snapshotCardBody','benchCardBody','auditCardBody'];
+    initiallyHidden.forEach(id => {
+      const el = $(id);
+      if (el) el.style.display = 'none';
+    });
   </script>
 </body>
 </html>
