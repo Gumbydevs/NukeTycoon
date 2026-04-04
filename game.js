@@ -1872,46 +1872,53 @@ function initMenu() {
 const HELP_CONTENT = [
     { id: 'overview', title: 'Overview', html: `
         <h3>Overview</h3>
-        <p>NUKEWAR is a strategy game where players build and manage facilities on a shared map. Place mines to extract raw ore. Use processors to refine raw ore into refined material. Build reactors to convert refined material into power and income. Store material in storage to avoid losing it when production spikes.</p>
-        <p>Each run consists of several rounds. Players pay an entry fee to join a run. Tokens fund the prize pool. Manage your resources and expand your infrastructure to earn the top score.</p>
+        <p>NUKEWAR is a shared strategy game where players build and run facilities on a single map. You place buildings to gather raw material, refine it, and turn it into income. Your goal is to grow your operation so you finish the run with the highest score.</p>
+        <p>Each game is a run made of multiple rounds. Players pay a small entry fee to join. Those tokens go into the prize pool for the run. Play smart to earn the largest share at the end.</p>
+    `},
+    { id: 'how-it-works', title: 'How the Game Works', html: `
+        <h3>How the Game Works</h3>
+        <p>On your turn you place buildings and manage production. Mines produce raw ore. Processors turn raw ore into refined material. Plants use refined material to generate power and income. Storage protects material when production spikes.</p>
+        <p>Rounds advance automatically. Your buildings run each round and update production and income. Plan placement and upgrades so your production chain keeps moving.</p>
     `},
     { id: 'buildings', title: 'Buildings', html: `
         <h3>Buildings</h3>
-        <p>Mine: extracts raw ore from terrain. Place on deposits for higher yield.</p>
-        <p>Plant: consumes refined material to generate power and income. Plants provide steady revenue when active.</p>
-        <p>Processor: converts raw ore into refined material used by plants.</p>
-        <p>Storage: holds raw or refined material to increase your cap. Higher storage reduces waste.</p>
-        <p>Silo: a high cost building with special effects. Use with care.</p>
+        <p>Mine: extracts raw ore from the ground. Put mines on deposit cells for better output.</p>
+        <p>Processor: converts raw ore into refined material that plants need.</p>
+        <p>Plant: consumes refined material to produce power and tokens.</p>
+        <p>Storage: holds raw or refined material so you do not lose production when rates fluctuate.</p>
+        <p>Silo: a high cost structure with specialized benefits. Use when you need extra capacity or effects.</p>
     `},
     { id: 'resources', title: 'Resources', html: `
         <h3>Resources</h3>
-        <p>Raw ore: mined from the map. Refined material: produced by processors from raw ore. Tokens: the in game currency used for buying buildings and paying the entry fee.</p>
-        <p>Keep an eye on storage. If your storage is full, production can be lost.</p>
+        <p>Raw ore comes from mines. Refined material comes from processors. Tokens are the currency used to buy buildings and to pay the entry fee.</p>
+        <p>Keep an eye on your storage level. If storage fills up, new production can be lost. Manage flows so processors and plants stay balanced.</p>
     `},
-    { id: 'economy', title: 'Economy', html: `
-        <h3>Economy</h3>
-        <p>Entry fees seed the prize pool. A fraction of in game spends also funds the prize pool. The market price is influenced by a simple liquidity pool model. Large token drains increase the price.</p>
-        <p>Watch your wallet and the market price to plan buys and sells.</p>
+    { id: 'economy', title: 'Economy and Prize Pool', html: `
+        <h3>Economy and Prize Pool</h3>
+        <p>Entry fees and a portion of in game spending fund the prize pool for each run. The market price changes with trading activity. Large token movements affect the market price.</p>
+        <p>Plan purchases and sells around the market price to get the most value for your tokens and to grow your final score.</p>
     `},
-    { id: 'rounds', title: 'Rounds', html: `
+    { id: 'rounds', title: 'Rounds and Runs', html: `
         <h3>Rounds and Runs</h3>
-        <p>A run is a series of rounds. Each round represents one simulated day. Rounds advance automatically. Plan construction and resource flows across the run to maximize your final score.</p>
+        <p>A run includes several rounds that simulate time passing. Buildings operate each round and update your production and wallet. At the end of the run the prize pool is distributed based on final rankings.</p>
+        <p>Focus on steady growth and avoid one time moves that leave you empty late in the run.</p>
     `},
     { id: 'controls', title: 'Controls', html: `
         <h3>Controls</h3>
-        <p>Click a cell to place or select a building. Use the action menu to pick building types. On small screens use the mobile menu. Press Escape to close modals or cancel actions.</p>
+        <p>Click a map cell to select or place a building. Use the action menu to choose building types. On mobile use the menu designed for small screens. Press Escape to close any open panel or cancel the current action.</p>
     `},
-    { id: 'multiplayer', title: 'Multiplayer', html: `
-        <h3>Multiplayer</h3>
-        <p>Players compete on the same shared map. Buildings placed by others appear as enemy buildings. Leaderboard ranks players by buildings and wallet size. Network state is synced from the server for fairness.</p>
+    { id: 'multiplayer', title: 'Playing with Others', html: `
+        <h3>Playing with Others</h3>
+        <p>All players share the same map. Buildings placed by other players appear on your view. The leaderboard shows who is leading based on building value and wallet size. The server keeps the game state synchronized so play is fair.</p>
     `},
-    { id: 'tips', title: 'Tips', html: `
-        <h3>Tips</h3>
+    { id: 'tips', title: 'Practical Tips', html: `
+        <h3>Practical Tips</h3>
         <ul>
-            <li>Place mines on or near deposits for better yield.</li>
-            <li>Balance processors and plants to avoid bottlenecks.</li>
-            <li>Use storage to smooth production spikes.</li>
-            <li>Watch the market and plan purchases when price is low.</li>
+            <li>Put mines on deposit cells for higher output.</li>
+            <li>Balance processors and plants so material flows smoothly.</li>
+            <li>Use storage to protect production when rates spike.</li>
+            <li>Watch the market price and buy when the price is favorable.</li>
+            <li>Expand steadily rather than spending everything at once.</li>
         </ul>
     `}
 ];
