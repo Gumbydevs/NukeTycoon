@@ -186,7 +186,8 @@ CREATE INDEX IF NOT EXISTS idx_chat_run_ts ON chat_messages(run_id, ts);
 CREATE TABLE IF NOT EXISTS notifications (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     run_id      UUID REFERENCES runs(id),
-    player_id   UUID NOT NULL REFERENCES players(id),
+    player_id   UUID REFERENCES players(id),
+    email       TEXT NOT NULL,
     type        TEXT NOT NULL,
     payload     JSONB DEFAULT '{}',
     read        BOOLEAN DEFAULT FALSE,

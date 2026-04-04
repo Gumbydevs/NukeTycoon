@@ -411,7 +411,7 @@ function registerHandlers(io, socket) {
             // Fetch recent chat and notifications for this player (by email)
             const chatRes = await db.query('SELECT * FROM chat_messages WHERE run_id = $1 ORDER BY ts ASC LIMIT 200', [run.id]);
             // Fetch notifications by player email instead of player_id
-            const notesRes = await db.query('SELECT n.id, n.type, n.payload, n.created_at, n.read FROM notifications n JOIN players p ON n.player_id = p.id WHERE p.email = $1 ORDER BY n.created_at ASC', [player.email]);
+            const notesRes = await db.query('SELECT id, type, payload, created_at, read FROM notifications WHERE email = $1 ORDER BY created_at ASC', [player.email]);
             const queueRes = await db.query('SELECT cell_id, type, queued_at, player_id FROM build_queue WHERE run_id = $1 ORDER BY queued_at ASC', [run.id]);
 
             socket.emit('run:state', {
