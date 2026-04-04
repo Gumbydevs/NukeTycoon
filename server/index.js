@@ -218,6 +218,17 @@ app.get('/economy', (_req, res) => {
     res.sendFile(path.join(__dirname, 'economy.html'));
 });
 
+// Public endpoint exposing the running app version (reads root package.json)
+app.get('/api/version', (_req, res) => {
+    try {
+        const rootPkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+        const ver = rootPkg && rootPkg.version ? String(rootPkg.version) : '0.0.0';
+        res.json({ ok: true, version: ver });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: 'Unable to read version' });
+    }
+});
+
 // Separate Balance UI — limited scope admin page for tuning economy
 app.get('/balance', (_req, res) => {
     res.sendFile(path.join(__dirname, 'balance.html'));

@@ -192,6 +192,34 @@ body.authenticated .container {
 /* Conversion modal tweaks (keeps consistent with other modals) */
 #conversionModal > div { box-shadow: 0 10px 30px rgba(0,0,0,0.6); }
 
+/* Connection indicator (radioactive emoji) */
+.conn-indicator {
+    display: inline-block;
+    margin-left: 8px;
+    font-size: 16px;
+    transition: filter 0.25s ease, transform 0.25s ease;
+    filter: drop-shadow(0 0 0 rgba(0,0,0,0));
+}
+.conn-indicator.off {
+    filter: drop-shadow(0 0 6px rgba(255,0,0,0.9)) saturate(1.2);
+    transform: scale(1.05);
+}
+.conn-indicator.on {
+    filter: drop-shadow(0 0 8px rgba(80,255,100,0.95)) saturate(1.6);
+    transform: scale(1.1);
+}
+
+/* App version in top-right */
+.app-version {
+    color: #d6d6d6;
+    font-size: 12px;
+    margin-left: 10px;
+    align-self: center;
+    padding: 4px 6px;
+    border-radius: 4px;
+    background: rgba(0,0,0,0.18);
+}
+
 .avatar-picker {
     display: flex;
     flex-wrap: wrap;

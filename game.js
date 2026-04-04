@@ -29,6 +29,37 @@ const DEFAULT_PLAYER_AVATAR = '☢️';
 const AVATAR_OPTIONS = ['☢️', '🧑‍🚀', '👩‍🔬', '👨‍🔬', '🤖', '🦊', '🐺', '🐉'];
 const ADMIN_KEY_STORAGE = 'nukwar_admin_key';
 
+// Connection indicator UI helper
+function setConnectionIndicator(connected) {
+    try {
+        const el = document.getElementById('connIndicator');
+        if (!el) return;
+        el.classList.remove('on', 'off');
+        if (connected) {
+            el.classList.add('on');
+            el.setAttribute('title', 'Connected to server');
+        } else {
+            el.classList.add('off');
+            el.setAttribute('title', 'Disconnected from server');
+        }
+    } catch (e) { /* ignore */ }
+}
+
+// Fetch and display app version from server
+function fetchAndDisplayVersion() {
+    try {
+        fetch('/api/version', { cache: 'no-store' })
+            .then(r => r.json())
+            .then(j => {
+                const v = (j && j.version) ? j.version : null;
+                const el = document.getElementById('appVersion');
+                if (el) el.textContent = v ? `v${v}` : 'v?';
+            }).catch(() => {
+                const el = document.getElementById('appVersion'); if (el) el.textContent = 'v?';
+            });
+    } catch (e) { /* ignore */ }
+}
+
 /**
  * Returns the current server time, interpolated between ticks.
  * All construction timestamp comparisons MUST use this, never raw Date.now().
@@ -65,6 +96,7 @@ function connectSocket() {
     socket.on('connect', () => {
         console.log('☢️ Connected to server');
         // Restore session on page reload
+        setConnectionIndicator(true);
         const saved = localStorage.getItem('nuke_jwt');
         if (saved) {
             game._isReconnecting = true;
@@ -164,11 +196,13 @@ function connectSocket() {
 
     socket.on('disconnect', (reason) => {
         console.warn('Server disconnected:', reason);
+        setConnectionIndicator(false);
         addNotification('warning', '⚠️ Lost connection to server. Reconnecting…');
     });
 
     socket.on('connect_error', (err) => {
         console.error('Socket connect error:', err.message);
+        setConnectionIndicator(false);
         document.getElementById('loginError') &&
             (document.getElementById('loginError').textContent = 'Cannot reach server. Check your connection.');
     });
@@ -3809,6 +3843,10 @@ function verifyLoginCode() {
 document.addEventListener('DOMContentLoaded', function() {
     // Connect to the server immediately on page load
     connectSocket();
+
+    // Update UI elements: fetch app version and initialize connection indicator
+    fetchAndDisplayVersion();
+    setConnectionIndicator(false);
 
     // Wire login step 1
     const sendBtn  = document.getElementById('loginSendBtn');

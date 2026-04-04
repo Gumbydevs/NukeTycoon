@@ -199,7 +199,7 @@
 
     <div class="container">
         <div class="top-bar">
-            <div class="top-bar-title">NUKEWAR</div>
+            <div class="top-bar-title">NUKEWAR <span id="connIndicator" class="conn-indicator" title="Server connection status">☢️</span></div>
 
                 <!-- Compact stats for small-screen mobile view (populated by JS) -->
                 <div id="mobileStatsCompact" class="mobile-stats-compact"></div>
@@ -266,6 +266,7 @@
                     <div class="menu-section">
                         <button class="menu-item" id="soundToggleMenuItem">🔊 Toggle Sound</button>
                     </div>
+                    <div id="appVersion" class="app-version" title="App version">v?</div>
                 </div>
             </div>
             <button class="btn" id="devToggle" onclick="toggleDevPanel()" style="display:none;">Dev</button>
