@@ -221,8 +221,15 @@ app.get('/economy', (_req, res) => {
 // Public endpoint exposing the running app version (reads root package.json)
 app.get('/api/version', (_req, res) => {
     try {
-        const rootPkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
-        const ver = rootPkg && rootPkg.version ? String(rootPkg.version) : '0.0.0';
+        let ver = '0.0.0';
+        // Try root package.json first, fall back to server/package.json
+        const candidates = [path.join(__dirname, '..', 'package.json'), path.join(__dirname, 'package.json')];
+        for (const p of candidates) {
+            try {
+                const pkg = JSON.parse(fs.readFileSync(p, 'utf8'));
+                if (pkg && pkg.version) { ver = String(pkg.version); break; }
+            } catch (e) { /* try next */ }
+        }
         res.json({ ok: true, version: ver });
     } catch (err) {
         res.status(500).json({ ok: false, error: 'Unable to read version' });

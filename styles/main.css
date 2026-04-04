@@ -242,6 +242,9 @@ body.authenticated .container {
     z-index: 10001;
 }
 
+/* Ensure top-bar is positioning context for absolute version box */
+.top-bar { position: relative; }
+
 /* Changelog modal tweaks */
 .modal { display:flex; }
 .modal .modal-card { border: 1px solid rgba(255,255,255,0.03); }
