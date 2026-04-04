@@ -49,7 +49,10 @@ function connectSocket() {
         console.log('☢️ Connected to server');
         // Restore session on page reload
         const saved = localStorage.getItem('nuke_jwt');
-        if (saved) socket.emit('auth:reconnect', { jwt: saved });
+        if (saved) {
+            game._isReconnecting = true;
+            socket.emit('auth:reconnect', { jwt: saved });
+        }
     });
 
     socket.on('disconnect', (reason) => {
@@ -92,6 +95,20 @@ function connectSocket() {
         }
 
         game.pendingInitialProfileSetup = false;
+
+        // If this was a silent reconnect on page load, stay on landing page —
+        // pre-fill the email and focus the password field so user just clicks Login.
+        if (game._isReconnecting) {
+            game._isReconnecting = false;
+            const emailInput = document.getElementById('loginEmail');
+            if (emailInput) emailInput.value = player.email || '';
+            const authSub = document.querySelector('.lp-auth-sub');
+            if (authSub) authSub.textContent = `Welcome back, ${player.username || 'Commander'}. Enter your password to continue.`;
+            const pwInput = document.getElementById('loginPassword');
+            if (pwInput) pwInput.focus();
+            return;
+        }
+
         authenticate();
     });
 
