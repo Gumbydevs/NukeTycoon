@@ -724,7 +724,7 @@ const game = {
     tokensPerUSD: 2000,
     runEnded: false,              // flag to prevent multiple onRunEnd() calls
     siloStrikes: 0,               // number of strikes used this round
-    maxSilosPerRound: 1,          // max number of strikes allowed per round
+    maxSilosPerRound: 999,        // DEV: unlimited for testing (restore to 1 before prod)
     lastStrikeTime: -999,         // track cooldown (ticks between strikes)
     strikesCooldown: 20,          // minimum ticks between strikes
     falloutZones: [],             // { id, endTime } array for radiation zones
@@ -2398,7 +2398,7 @@ function executeNuclearStrike(targetId) {
     // Check cooldown
     if (game.dayStrikes >= game.maxSilosPerRound) {
         console.warn('Strike cooldown active');
-        addNotification('warning', '⚠️ Nuclear strike on cooldown. Only 1 strike allowed per day.');
+        addNotification('warning', '⚠️ Nuclear strike on cooldown. Strike limit reached.');
         return;
     }
     
