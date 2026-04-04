@@ -336,17 +336,16 @@ function connectSocket() {
         }
 
         // Chat history (persisted)
-        if (Array.isArray(arguments[0].chatMessages)) {
-            const msgs = arguments[0].chatMessages || [];
-            game.chatMessages = msgs;
+        if (Array.isArray(chatMessages)) {
+            game.chatMessages = chatMessages;
             const msgsEl = document.getElementById('chatMessages');
             if (msgsEl) msgsEl.innerHTML = '';
             game.chatMessages.forEach(m => renderChatMessage(m));
         }
 
         // Unread notifications
-        if (Array.isArray(arguments[0].notifications)) {
-            game.notifications = (arguments[0].notifications || []).map(n => ({
+        if (Array.isArray(notifications)) {
+            game.notifications = (notifications || []).map(n => ({
                 id: n.id,
                 type: n.type || 'info',
                 message: (n.payload && typeof n.payload === 'object') ? (n.payload.text || JSON.stringify(n.payload)) : String(n.payload || ''),
