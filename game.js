@@ -1,4 +1,19 @@
-﻿// ── Server connection ─────────────────────────────────────────────────────────
+﻿// Demolish/sell a placed building (player-owned only)
+function demolishBuilding(id) {
+    // Only send request to server; UI will update on server event
+    if (socket?.connected && _authJWT) {
+        socket.emit('building:demolish', { jwt: _authJWT, cellId: id });
+    }
+}
+
+// Cancel a queued building (player-owned only)
+function cancelQueuedBuild(cellId) {
+    // Only send request to server; UI will update on server event
+    if (socket?.connected && _authJWT) {
+        socket.emit('building:cancel_queue', { jwt: _authJWT, cellId });
+    }
+}
+// ── Server connection ─────────────────────────────────────────────────────────
 // Set SERVER_URL to your Railway service URL when deploying.
 // During local development the server runs on port 3001.
 const SERVER_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
@@ -33,6 +48,53 @@ function getLocalPlayerId() {
 }
 
 function connectSocket() {
+        // ── Building demolish/cancel events ───────────────────────────────
+        socket.on('building:demolished', ({ cellId, playerId, refund }) => {
+            // Only update if this is our building
+            if (playerId !== getLocalPlayerId()) return;
+            // Remove from grid and game state
+            const idx = game.buildings.findIndex(b => b.id == cellId && !b._queued);
+            if (idx !== -1) {
+                const building = game.buildings[idx];
+                game.buildings.splice(idx, 1);
+                restoreEmptyCell(cellId);
+                if (refund > 0) {
+                    addNotification('info', `💸 Sold ${displayNames[building.type] || building.type} for ${refund.toLocaleString()} tokens.`);
+                } else {
+                    addNotification('info', `🗑️ Demolished ${displayNames[building.type] || building.type}.`);
+                }
+                updateUI && updateUI();
+            }
+        });
+
+        socket.on('building:queue_cancelled', ({ cellId, playerId, refund }) => {
+            if (playerId !== getLocalPlayerId()) return;
+            // Remove from build queue
+            const qIdx = (game._buildQueue || []).findIndex(q => q.cellId == cellId);
+            if (qIdx !== -1) {
+                const q = game._buildQueue[qIdx];
+                game._buildQueue.splice(qIdx, 1);
+                // Remove ghost from buildings
+                const ghostIdx = game.buildings.findIndex(b => b.id == cellId && b._queued);
+                if (ghostIdx !== -1) {
+                    game.buildings.splice(ghostIdx, 1);
+                    restoreEmptyCell(cellId);
+                }
+                if (refund > 0) {
+                    addNotification('info', `⏪ Canceled queued ${displayNames[q.type] || q.type}, refunded ${refund.toLocaleString()} tokens.`);
+                } else {
+                    addNotification('info', `⏪ Canceled queued ${displayNames[q.type] || q.type}.`);
+                }
+                // Re-render queue positions
+                let _pos = 1;
+                (game._buildQueue || []).forEach(q => {
+                    const _g = game.buildings.find(b => b.id === q.cellId && b._queued);
+                    if (_g) { _g._queuePosition = _pos; renderQueuedGhost(q.cellId, q.type, _pos); }
+                    _pos++;
+                });
+                updateUI && updateUI();
+            }
+        });
     socket = io(SERVER_URL, {
         transports: ['websocket', 'polling'],
         rememberUpgrade: true,
@@ -52,6 +114,48 @@ function connectSocket() {
         if (saved) {
             game._isReconnecting = true;
             socket.emit('auth:reconnect', { jwt: saved });
+        }
+    });
+
+    socket.on('building:queued', ({ cellId, playerId, type }) => {
+        // Render queued ghost when server confirms queue entry
+        const localId = getLocalPlayerId();
+        const isMine = playerId === localId;
+        // Update server-side queue for local player
+        if (isMine) {
+            game._buildQueue = game._buildQueue || [];
+            game._buildQueue.push({ cellId, type });
+            const qLen = game._buildQueue.length;
+            const _ghost = {
+                id: cellId,
+                type: type,
+                owner: game.playerName || 'You',
+                ownerId: getLocalPlayerId() || 'local',
+                ownerAvatar: game.playerAvatar || DEFAULT_PLAYER_AVATAR,
+                isUnderConstruction: false,
+                constructionEndsAtMs: null,
+                _queued: true,
+                _queuePosition: qLen,
+            };
+            game.buildings.push(_ghost);
+            renderQueuedGhost(cellId, type, qLen);
+            addNotification('info', `⏳ ${displayNames[type] || type} queued (${qLen}/${game.buildQueueMax || 3}).`);
+            updateUI && updateUI();
+        } else {
+            // For other players, show a queued ghost for their building
+            const _ghost = {
+                id: cellId,
+                type: type,
+                owner: 'Enemy',
+                ownerId: playerId,
+                ownerAvatar: DEFAULT_PLAYER_AVATAR,
+                isUnderConstruction: false,
+                _queued: true,
+            };
+            if (!game.enemyBuildings.find(b => b.id === cellId) && !game.buildings.find(b => b.id === cellId)) {
+                game.enemyBuildings.push(_ghost);
+                renderQueuedGhost(cellId, type, null);
+            }
         }
     });
 
@@ -228,6 +332,74 @@ function connectSocket() {
             const modal = document.getElementById('lobbyModal');
             if (modal) modal.style.display = 'none';
             startGame(true); // true = server-mode, skip initRun/initGrid
+        }
+
+        // Chat history (persisted)
+        if (Array.isArray(arguments[0].chatMessages)) {
+            const msgs = arguments[0].chatMessages || [];
+            const msgsEl = document.getElementById('chatMessages');
+            if (msgsEl) msgsEl.innerHTML = '';
+            msgs.forEach(m => renderChatMessage(m));
+        }
+
+        // Unread notifications
+        if (Array.isArray(arguments[0].notifications)) {
+            game.notifications = (arguments[0].notifications || []).map(n => ({
+                id: n.id,
+                type: n.type || 'info',
+                message: (n.payload && typeof n.payload === 'object') ? (n.payload.text || JSON.stringify(n.payload)) : String(n.payload || ''),
+                timestamp: new Date(n.created_at).getTime(),
+                read: false,
+                data: n.payload || null,
+            })).concat(game.notifications || []);
+            if (!game.notifications) game.notifications = [];
+            renderNotifications();
+        }
+
+        // Server-side build queue (persisted)
+        if (Array.isArray(arguments[0].buildQueue)) {
+            const q = arguments[0].buildQueue || [];
+            // Clear local queue and rebuild from server truth
+            game._buildQueue = [];
+            // Remove any queued ghosts first
+            game.buildings = (game.buildings || []).filter(b => !b._queued);
+            q.forEach((entry) => {
+                const cellId = entry.cell_id || entry.cellId || entry.cell;
+                const type = entry.type;
+                const playerId = entry.player_id || entry.playerId;
+                if (playerId === getLocalPlayerId()) {
+                    game._buildQueue.push({ cellId, type });
+                    const qLen = game._buildQueue.length;
+                    const _ghost = {
+                        id: cellId,
+                        type: type,
+                        owner: game.playerName || 'You',
+                        ownerId: getLocalPlayerId() || 'local',
+                        ownerAvatar: game.playerAvatar || DEFAULT_PLAYER_AVATAR,
+                        isUnderConstruction: false,
+                        constructionEndsAtMs: null,
+                        _queued: true,
+                        _queuePosition: qLen,
+                    };
+                    game.buildings.push(_ghost);
+                    renderQueuedGhost(cellId, type, qLen);
+                } else {
+                    const _ghost = {
+                        id: cellId,
+                        type: type,
+                        owner: 'Enemy',
+                        ownerId: playerId,
+                        ownerAvatar: DEFAULT_PLAYER_AVATAR,
+                        isUnderConstruction: false,
+                        _queued: true,
+                    };
+                    if (!game.enemyBuildings.find(b => b.id === cellId) && !game.buildings.find(b => b.id === cellId)) {
+                        game.enemyBuildings.push(_ghost);
+                        renderQueuedGhost(cellId, type, null);
+                    }
+                }
+            });
+            updateUI && updateUI();
         }
     });
 
@@ -2157,23 +2329,12 @@ function placeOrSelect(id) {
                     game.selectedMode = null;
                     return;
                 }
-                game._buildQueue.push({ cellId: id, type: _type });
-                const qLen = game._buildQueue.length;
-                addNotification('info', `⏳ ${displayNames[_type] || _type} queued (${qLen}/${_maxQ}) — will start when current build finishes.`);
-                // Ghost: insert into game.buildings so the cell is claimed & shows a visual
-                const _ghost = {
-                    id,
-                    type: _type,
-                    owner: game.playerName || 'You',
-                    ownerId: getLocalPlayerId() || 'local',
-                    ownerAvatar: game.playerAvatar || DEFAULT_PLAYER_AVATAR,
-                    isUnderConstruction: false,
-                    constructionEndsAtMs: null,
-                    _queued: true,
-                    _queuePosition: qLen,
-                };
-                game.buildings.push(_ghost);
-                renderQueuedGhost(id, _type, qLen);
+                // Server-side queue: request server to register the queued build.
+                if (socket?.connected && _authJWT) {
+                    socket.emit('building:queue', { jwt: _authJWT, cellId: id, type: _type });
+                } else {
+                    addNotification('danger', '⚠️ Not connected to server.');
+                }
                 game.selectedMode = null;
                 return;
             }
@@ -2679,10 +2840,12 @@ function renderBuilding(id, type, isPlayer, building) {
     const pendingConfirm = !!(building?.isUnderConstruction && !endsAt);
 
     if (pendingConfirm) {
-        // No server timing yet — show building emoji dimmed while awaiting confirmation
-        const _pendingEmoji = buildingTypes[type]?.emoji || '🏗️';
+        // No server timing yet 4 show building emoji dimmed while awaiting confirmation
+        const _pendingEmoji = buildingTypes[type]?.emoji || '\ud83c\udfd7\ufe0f';
         const _pendingTint = isPlayer ? PLAYER_COLOR : ENEMY_COLOR;
-        cell.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;"><span class="icon-emoji" style="font-size:20px;opacity:0.45;color:${_pendingTint};">${_pendingEmoji}</span></div>`;
+        cell.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;position:relative;">
+            <span class="icon-emoji" style="font-size:20px;opacity:0.45;color:${_pendingTint};">${_pendingEmoji}</span>
+        </div>`;
     } else if (stillBuilding) {
         const elapsed = now - (endsAt - totalMs);
         const progress = totalMs > 0 ? Math.max(0.02, Math.min(1, elapsed / totalMs)) : 0;
@@ -2718,13 +2881,19 @@ function renderBuilding(id, type, isPlayer, building) {
             building.isUnderConstruction = false;
         }
         const tint = isPlayer ? PLAYER_COLOR : ENEMY_COLOR;
+        let content = '';
         if (USE_SVG_ICONS || type === 'storage') {
             const svg = getIconSVG(type, tint);
-            cell.innerHTML = svg;
+            content = svg;
         } else {
             const emoji = buildingTypes[type].emoji || '';
-            cell.innerHTML = `<span class="icon-emoji" style="color:${tint};">${emoji}</span>`;
+            content = `<span class="icon-emoji" style="color:${tint};">${emoji}</span>`;
         }
+        // Add demolish/sell button for player's own buildings
+        if (isPlayer && building && !building._queued) {
+            content += `<button class="cell-action-btn demolish-btn" title="Demolish/Sell" style="position:absolute;top:2px;right:2px;font-size:12px;padding:1px 4px;z-index:3;" onclick="demolishBuilding('${id}')">✖</button>`;
+        }
+        cell.innerHTML = `<div style="position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;">${content}</div>`;
     }
 }
 
@@ -3805,6 +3974,7 @@ function renderQueuedGhost(cellId, type, queuePos) {
             <span style="font-size:18px;opacity:0.4;">${emoji}</span>
             <span style="position:absolute;bottom:1px;right:2px;font-size:9px;font-weight:700;
                          color:#ffb84d;text-shadow:0 0 3px #000;line-height:1;">#${queuePos}</span>
+            <button class="cell-action-btn cancel-queue-btn" title="Cancel queued build" style="position:absolute;top:2px;right:2px;font-size:12px;padding:1px 4px;z-index:3;" onclick="cancelQueuedBuild('${cellId}')">✖</button>
         </div>`;
 }
 
@@ -6096,13 +6266,29 @@ function renderNotifications() {
 
 /** Mark all as read (called when drawer opens) */
 function markAllRead() {
+    // Mark all read locally and notify server (best-effort)
     game.notifications.forEach(n => { n.read = true; });
     document.querySelectorAll('.notif-item.notif-unread').forEach(el => el.classList.remove('notif-unread'));
     const badge = document.getElementById('notifBadge');
     if (badge) badge.style.display = 'none';
+    if (socket?.connected && _authJWT) {
+        fetch(`${SERVER_URL}/api/notifications/mark_read`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _authJWT },
+            body: JSON.stringify({ all: true }),
+        }).catch(() => {});
+    }
 }
 
 function dismissNotification(id) {
+    // Mark read server-side (best-effort) then remove locally
+    if (socket?.connected && _authJWT) {
+        fetch(`${SERVER_URL}/api/notifications/mark_read`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _authJWT },
+            body: JSON.stringify({ ids: [id] }),
+        }).catch(() => {});
+    }
     game.notifications = game.notifications.filter(n => n.id !== id);
     const el = document.querySelector(`.notif-item[data-id="${id}"]`);
     if (el) {
@@ -6146,6 +6332,14 @@ function closeNotifications() {
 }
 
 function clearAllNotifications() {
+    // Mark all read server-side (best-effort) then clear locally
+    if (socket?.connected && _authJWT) {
+        fetch(`${SERVER_URL}/api/notifications/mark_read`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _authJWT },
+            body: JSON.stringify({ all: true }),
+        }).catch(() => {});
+    }
     game.notifications = [];
     const list = document.getElementById('notifList');
     if (list) list.querySelectorAll('.notif-item').forEach(el => el.remove());

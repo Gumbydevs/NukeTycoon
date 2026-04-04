@@ -157,6 +157,43 @@ CREATE TABLE IF NOT EXISTS economy_snapshots (
 );
 CREATE INDEX IF NOT EXISTS idx_economy_snapshots_run ON economy_snapshots(run_id, run_day);
 
+-- ── Build queue (server-side queue for queued builds) ──────────────────────
+CREATE TABLE IF NOT EXISTS build_queue (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    run_id      UUID NOT NULL REFERENCES runs(id),
+    player_id   UUID NOT NULL REFERENCES players(id),
+    cell_id     INTEGER NOT NULL,
+    type        TEXT NOT NULL,
+    queued_at   TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_build_queue_run ON build_queue(run_id, queued_at);
+
+-- ── Chat messages (persist across sessions per run) ───────────────────────
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id          TEXT PRIMARY KEY,
+    run_id      UUID NOT NULL REFERENCES runs(id),
+    player_id   UUID NOT NULL REFERENCES players(id),
+    username    TEXT,
+    avatar      TEXT,
+    avatar_photo TEXT,
+    text        TEXT,
+    gif_url     TEXT,
+    ts          BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_chat_run_ts ON chat_messages(run_id, ts);
+
+-- ── Notifications for offline players (persisted)
+CREATE TABLE IF NOT EXISTS notifications (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    run_id      UUID REFERENCES runs(id),
+    player_id   UUID NOT NULL REFERENCES players(id),
+    type        TEXT NOT NULL,
+    payload     JSONB DEFAULT '{}',
+    read        BOOLEAN DEFAULT FALSE,
+    created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_player ON notifications(player_id, read);
+
 -- ── All-time market records (persist across runs) ─────────────────────────────
 CREATE TABLE IF NOT EXISTS alltime_market_records (
     stat_key    TEXT PRIMARY KEY,

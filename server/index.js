@@ -7,6 +7,7 @@ const fs         = require('fs');
 const path       = require('path');
 const db         = require('./db');
 const { setupGameLoop, getActiveRun, createNewRun, setNextRunLength, getNextRunLength, BUILDING_RULES, setBuildingRules, saveBuildingRulesToDB, loadBuildingRulesFromDB, calculateScores, updateAlltimeMarketRecords } = require('./gameLoop');
+const { verifyJWT } = require('./auth');
 const { registerHandlers } = require('./socket/handlers');
 
 let dbReady = false;
@@ -146,6 +147,28 @@ app.use(cors({
     origin: allowedOrigins.includes('*') ? '*' : allowedOrigins,
 }));
 app.use(express.json());
+
+function getJwtFromReq(req) {
+    const auth = req.headers['authorization'];
+    if (typeof auth === 'string' && auth.toLowerCase().startsWith('bearer ')) return auth.slice(7).trim();
+    if (req.query && req.query.jwt) return req.query.jwt;
+    return null;
+}
+
+async function requireJwtPlayer(req, res, next) {
+    const token = getJwtFromReq(req);
+    if (!token) return res.status(401).json({ error: 'Missing JWT.' });
+    const decoded = verifyJWT(token);
+    if (!decoded) return res.status(401).json({ error: 'Invalid or expired token.' });
+    try {
+        const result = await db.query('SELECT * FROM players WHERE id = $1', [decoded.id]);
+        if (result.rows.length === 0) return res.status(401).json({ error: 'Player not found.' });
+        req.player = result.rows[0];
+        next();
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+}
 
 // Health check — Railway uses this to verify the service is alive
 app.get('/health', (_req, res) => res.json({ ok: true, dbReady, ts: new Date().toISOString() }));
@@ -391,6 +414,36 @@ app.post('/admin/api/reset-run', requireAdmin, async (_req, res) => {
         });
 
         res.json({ ok: true, newRun, status: await getAdminSnapshot() });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ── Notifications API ─────────────────────────────────────────────────────
+// Fetch player's notifications (requires JWT in Authorization: Bearer <token>)
+app.get('/api/notifications', requireJwtPlayer, async (req, res) => {
+    try {
+        const player = req.player;
+        const rows = await db.query('SELECT id, run_id, type, payload, read, created_at FROM notifications WHERE player_id = $1 ORDER BY created_at DESC LIMIT 200', [player.id]);
+        res.json({ notifications: rows.rows });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Mark notifications read. Body: { ids: [id,...] } or { all: true }
+app.post('/api/notifications/mark_read', requireJwtPlayer, async (req, res) => {
+    try {
+        const player = req.player;
+        const ids = Array.isArray(req.body?.ids) ? req.body.ids : null;
+        const all = !!req.body?.all;
+        if (!all && (!ids || ids.length === 0)) return res.status(400).json({ error: 'Provide ids or set all=true.' });
+        if (all) {
+            await db.query('UPDATE notifications SET read = TRUE WHERE player_id = $1', [player.id]);
+        } else {
+            await db.query('UPDATE notifications SET read = TRUE WHERE player_id = $1 AND id = ANY($2::uuid[])', [player.id, ids]);
+        }
+        res.json({ ok: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

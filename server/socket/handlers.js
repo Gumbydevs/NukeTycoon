@@ -63,6 +63,165 @@ async function emitRunEconomy(io, runId) {
 }
 
 function registerHandlers(io, socket) {
+    // ── BUILDING DEMOLISH ─────────────────────────────────────────────
+    socket.on('building:demolish', async ({ jwt, cellId }, ack) => {
+        await requireAuth(socket, jwt, async (decoded, player) => {
+            // Validate input
+            if (typeof cellId !== 'number' || cellId < 0 || cellId > 399) {
+                socket.emit('building:demolish_error', { message: 'Invalid cell.' });
+                if (typeof ack === 'function') ack({ ok: false, error: 'Invalid cell.' });
+                return;
+            }
+            const run = await getActiveRun();
+            if (!run) {
+                socket.emit('building:demolish_error', { message: 'No active run.' });
+                if (typeof ack === 'function') ack({ ok: false, error: 'No active run.' });
+                return;
+            }
+            // Must be enrolled in the run
+            const membership = await db.query(
+                'SELECT id FROM run_players WHERE run_id = $1 AND player_id = $2',
+                [run.id, player.id]
+            );
+            if (membership.rows.length === 0) {
+                socket.emit('building:demolish_error', { message: 'You are not in this run.' });
+                if (typeof ack === 'function') ack({ ok: false, error: 'Not in run.' });
+                return;
+            }
+            // Find the building
+            const buildingRes = await db.query(
+                'SELECT * FROM buildings WHERE run_id = $1 AND cell_id = $2 AND player_id = $3 AND is_active = TRUE',
+                [run.id, cellId, player.id]
+            );
+            if (buildingRes.rows.length === 0) {
+                socket.emit('building:demolish_error', { message: 'No owned building at that cell.' });
+                if (typeof ack === 'function') ack({ ok: false, error: 'No owned building at cell.' });
+                return;
+            }
+            const building = buildingRes.rows[0];
+            // Only allow demolish if not under construction (or allow refund if under construction)
+            const now = Date.now();
+            const isUnderConstruction = building.construction_ends_at && new Date(building.construction_ends_at).getTime() > now;
+            let refund = 0;
+            if (isUnderConstruction) {
+                // Optional: partial refund for canceling construction
+                refund = Math.floor((BUILDING_RULES[building.type]?.cost || 0) * 0.75); // 75% refund
+            }
+            // Deactivate building
+            await db.query(
+                'UPDATE buildings SET is_active = FALSE, destroyed_at = NOW() WHERE id = $1',
+                [building.id]
+            );
+            // Refund if applicable
+            if (refund > 0) {
+                await db.query(
+                    'UPDATE players SET token_balance = token_balance + $1 WHERE id = $2',
+                    [refund, player.id]
+                );
+            }
+            // Broadcast update
+            io.to(`run:${run.id}`).emit('building:demolished', {
+                cellId,
+                playerId: player.id,
+                refund,
+            });
+            // Send wallet update
+            if (refund > 0) {
+                const walletRes = await db.query('SELECT token_balance FROM players WHERE id = $1', [player.id]);
+                socket.emit('player:wallet_update', { token_balance: parseInt(walletRes.rows[0]?.token_balance, 10) || 0 });
+            }
+            await emitRunEconomy(io, run.id);
+            if (typeof ack === 'function') ack({ ok: true, refund });
+        });
+    });
+
+    // ── BUILDING CANCEL QUEUE ─────────────────────────────────────────
+    socket.on('building:cancel_queue', async ({ jwt, cellId }, ack) => {
+        await requireAuth(socket, jwt, async (decoded, player) => {
+            // Validate input
+            if (typeof cellId !== 'number' || cellId < 0 || cellId > 399) {
+                socket.emit('building:cancel_queue_error', { message: 'Invalid cell.' });
+                if (typeof ack === 'function') ack({ ok: false, error: 'Invalid cell.' });
+                return;
+            }
+            const run = await getActiveRun();
+            if (!run) {
+                socket.emit('building:cancel_queue_error', { message: 'No active run.' });
+                if (typeof ack === 'function') ack({ ok: false, error: 'No active run.' });
+                return;
+            }
+            // Must be enrolled in the run
+            const membership = await db.query(
+                'SELECT id FROM run_players WHERE run_id = $1 AND player_id = $2',
+                [run.id, player.id]
+            );
+            if (membership.rows.length === 0) {
+                socket.emit('building:cancel_queue_error', { message: 'You are not in this run.' });
+                if (typeof ack === 'function') ack({ ok: false, error: 'Not in run.' });
+                return;
+            }
+            // First, check server-side queue entries for this cell
+            const qRes = await db.query('SELECT * FROM build_queue WHERE run_id = $1 AND cell_id = $2 AND player_id = $3', [run.id, cellId, player.id]);
+            if (qRes.rows.length > 0) {
+                // Remove queue entry and refund full cost
+                const q = qRes.rows[0];
+                await db.query('DELETE FROM build_queue WHERE id = $1', [q.id]);
+                const refund = Math.floor((BUILDING_RULES[q.type]?.cost || 0));
+                await db.query('UPDATE players SET token_balance = token_balance + $1 WHERE id = $2', [refund, player.id]);
+                io.to(`run:${run.id}`).emit('building:queue_cancelled', {
+                    cellId,
+                    playerId: player.id,
+                    refund,
+                });
+                const walletRes = await db.query('SELECT token_balance FROM players WHERE id = $1', [player.id]);
+                socket.emit('player:wallet_update', { token_balance: parseInt(walletRes.rows[0]?.token_balance, 10) || 0 });
+                await emitRunEconomy(io, run.id);
+                if (typeof ack === 'function') ack({ ok: true, refund });
+                return;
+            }
+            // Find the building (must be under construction)
+            const buildingRes = await db.query(
+                'SELECT * FROM buildings WHERE run_id = $1 AND cell_id = $2 AND player_id = $3 AND is_active = TRUE',
+                [run.id, cellId, player.id]
+            );
+            if (buildingRes.rows.length === 0) {
+                socket.emit('building:cancel_queue_error', { message: 'No owned building at that cell.' });
+                if (typeof ack === 'function') ack({ ok: false, error: 'No owned building at cell.' });
+                return;
+            }
+            const building = buildingRes.rows[0];
+            const now = Date.now();
+            const isUnderConstruction = building.construction_ends_at && new Date(building.construction_ends_at).getTime() > now;
+            if (!isUnderConstruction) {
+                socket.emit('building:cancel_queue_error', { message: 'Building is not under construction.' });
+                if (typeof ack === 'function') ack({ ok: false, error: 'Not under construction.' });
+                return;
+            }
+            // Refund most of the cost
+            const refund = Math.floor((BUILDING_RULES[building.type]?.cost || 0) * 0.75); // 75% refund
+            // Deactivate building
+            await db.query(
+                'UPDATE buildings SET is_active = FALSE, destroyed_at = NOW() WHERE id = $1',
+                [building.id]
+            );
+            // Refund
+            await db.query(
+                'UPDATE players SET token_balance = token_balance + $1 WHERE id = $2',
+                [refund, player.id]
+            );
+            // Broadcast update
+            io.to(`run:${run.id}`).emit('building:queue_cancelled', {
+                cellId,
+                playerId: player.id,
+                refund,
+            });
+            // Send wallet update
+            const walletRes = await db.query('SELECT token_balance FROM players WHERE id = $1', [player.id]);
+            socket.emit('player:wallet_update', { token_balance: parseInt(walletRes.rows[0]?.token_balance, 10) || 0 });
+            await emitRunEconomy(io, run.id);
+            if (typeof ack === 'function') ack({ ok: true, refund });
+        });
+    });
 
     // ── AUTH ─────────────────────────────────────────────────────────────────
 
@@ -249,6 +408,11 @@ function registerHandlers(io, socket) {
             const meState = isNewJoiner ? null : ((snapshot?.playerStates || []).find((row) => row.player_id === player.id) || null);
             const mePlayer = (snapshot?.players || []).find((row) => row.id === player.id);
 
+            // Fetch recent chat and unread notifications for this player
+            const chatRes = await db.query('SELECT * FROM chat_messages WHERE run_id = $1 ORDER BY ts ASC LIMIT 200', [run.id]);
+            const notesRes = await db.query('SELECT id, type, payload, created_at FROM notifications WHERE player_id = $1 AND read = FALSE ORDER BY created_at ASC', [player.id]);
+            const queueRes = await db.query('SELECT cell_id, type, queued_at, player_id FROM build_queue WHERE run_id = $1 ORDER BY queued_at ASC', [run.id]);
+
             socket.emit('run:state', {
                 run: snapshot?.run,
                 buildings: snapshot?.buildings || [],
@@ -262,6 +426,9 @@ function registerHandlers(io, socket) {
                 serverTime: Date.now(),
                 terrain: snapshot?.terrain || null,
                 deposits: snapshot?.deposits || null,
+                chatMessages: chatRes.rows || [],
+                notifications: notesRes.rows || [],
+                buildQueue: queueRes.rows || [],
             });
             // Always send current building rules so tooltips/costs are accurate
             socket.emit('run:building_config', { buildingRules: BUILDING_RULES });
@@ -457,6 +624,98 @@ function registerHandlers(io, socket) {
             // Send authoritative wallet balance back to the placing player only
             socket.emit('player:wallet_update', { token_balance: newWallet });
             await emitRunEconomy(io, run.id);
+        });
+    });
+
+    // ── BUILDING QUEUE ADD (server-side queuing) ──────────────────────────
+    socket.on('building:queue', async ({ jwt, cellId, type }, ack) => {
+        await requireAuth(socket, jwt, async (decoded, player) => {
+            if (typeof cellId !== 'number' || cellId < 0 || cellId > 399) {
+                socket.emit('building:queue_error', { message: 'Invalid cell.' });
+                if (typeof ack === 'function') ack({ ok: false, error: 'Invalid cell.' });
+                return;
+            }
+            if (!VALID_TYPES.includes(type)) {
+                socket.emit('building:queue_error', { message: 'Invalid building type.' });
+                if (typeof ack === 'function') ack({ ok: false, error: 'Invalid type.' });
+                return;
+            }
+            const run = await getActiveRun();
+            if (!run) {
+                socket.emit('building:queue_error', { message: 'No active run.' });
+                if (typeof ack === 'function') ack({ ok: false, error: 'No active run.' });
+                return;
+            }
+
+            const membership = await db.query(
+                'SELECT id FROM run_players WHERE run_id = $1 AND player_id = $2',
+                [run.id, player.id]
+            );
+            if (membership.rows.length === 0) {
+                socket.emit('building:queue_error', { message: 'You are not in this run.' });
+                if (typeof ack === 'function') ack({ ok: false, error: 'Not in run.' });
+                return;
+            }
+
+            // Cell must not be occupied
+            const occupied = await db.query(
+                'SELECT id FROM buildings WHERE run_id = $1 AND cell_id = $2 AND is_active = TRUE',
+                [run.id, cellId]
+            );
+            if (occupied.rows.length > 0) {
+                socket.emit('building:queue_error', { message: 'That cell is already occupied.' });
+                if (typeof ack === 'function') ack({ ok: false, error: 'Cell occupied.' });
+                return;
+            }
+
+            // Ensure not already queued for this cell
+            const alreadyQ = await db.query('SELECT id FROM build_queue WHERE run_id = $1 AND cell_id = $2', [run.id, cellId]);
+            if (alreadyQ.rows.length > 0) {
+                socket.emit('building:queue_error', { message: 'Cell already queued.' });
+                if (typeof ack === 'function') ack({ ok: false, error: 'Already queued.' });
+                return;
+            }
+
+            // Wallet check and deduct immediately (server-side authoritative)
+            const cost = BUILDING_RULES[type].cost;
+            const playerRow = await db.query('SELECT token_balance FROM players WHERE id = $1', [player.id]);
+            const balance = parseInt(playerRow.rows[0]?.token_balance, 10) || 0;
+            if (balance < cost) {
+                socket.emit('building:queue_error', { message: 'Not enough tokens.' });
+                if (typeof ack === 'function') ack({ ok: false, error: 'Not enough tokens.' });
+                return;
+            }
+
+            // Deduct cost and contribute to prize pool / burn tokens (same as place)
+            await db.query('UPDATE players SET token_balance = token_balance - $1 WHERE id = $2', [cost, player.id]);
+            const prizeContribution = Math.floor(cost * 0.10);
+            await db.query(
+                `UPDATE runs
+                 SET prize_pool = prize_pool + $1,
+                     tokens_burned = tokens_burned + $2,
+                     market_token_pool = GREATEST(1, market_token_pool - $3)
+                 WHERE id = $4`,
+                [prizeContribution, cost, cost / MARKET_POOL_BURN_RATE, run.id]
+            );
+
+            // Insert queue row
+            await db.query(
+                'INSERT INTO build_queue (run_id, player_id, cell_id, type) VALUES ($1,$2,$3,$4)',
+                [run.id, player.id, cellId, type]
+            );
+
+            // Broadcast queued ghost to room (clients will render ghost for queue)
+            io.to(`run:${run.id}`).emit('building:queued', {
+                cellId,
+                playerId: player.id,
+                type,
+            });
+
+            // Send authoritative wallet back to player
+            const walletRes = await db.query('SELECT token_balance FROM players WHERE id = $1', [player.id]);
+            socket.emit('player:wallet_update', { token_balance: parseInt(walletRes.rows[0]?.token_balance, 10) || 0 });
+            await emitRunEconomy(io, run.id);
+            if (typeof ack === 'function') ack({ ok: true });
         });
     });
 
@@ -726,8 +985,9 @@ function registerHandlers(io, socket) {
 
             if (!cleanText && !cleanGifUrl) return;
 
+            const id = now.toString(36) + Math.random().toString(36).slice(2, 5);
             const payload = {
-                id: now.toString(36) + Math.random().toString(36).slice(2, 5),
+                id,
                 playerId: player.id,
                 username: player.username,
                 avatar: player.avatar || DEFAULT_AVATAR,
@@ -737,7 +997,35 @@ function registerHandlers(io, socket) {
                 ts: now,
             };
 
+            // Persist chat message
+            try {
+                await db.query(
+                    `INSERT INTO chat_messages (id, run_id, player_id, username, avatar, avatar_photo, text, gif_url, ts)
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+                    [id, socket.runId, player.id, player.username, player.avatar || DEFAULT_AVATAR, player.avatar_photo || null, cleanText, cleanGifUrl, now]
+                );
+            } catch (err) {
+                console.warn('chat persist failed:', err.message);
+            }
+
             io.to(`run:${socket.runId}`).emit('chat:message', payload);
+
+            // Create offline notifications for run members not currently connected
+            try {
+                const sockets = await io.in(`run:${socket.runId}`).fetchSockets();
+                const onlineIds = new Set(sockets.map(s => s.playerId).filter(Boolean));
+                const runPlayersRes = await db.query('SELECT player_id FROM run_players WHERE run_id = $1', [socket.runId]);
+                const toNotify = runPlayersRes.rows.map(r => r.player_id).filter(pid => !onlineIds.has(pid) && pid !== player.id);
+                for (const pid of toNotify) {
+                    await db.query(
+                        `INSERT INTO notifications (run_id, player_id, type, payload)
+                         VALUES ($1,$2,$3,$4)`,
+                        [socket.runId, pid, 'chat', JSON.stringify({ id, from: player.username, text: cleanText, ts: now })]
+                    );
+                }
+            } catch (err) {
+                console.warn('chat notify failed:', err.message);
+            }
         });
     });
 
