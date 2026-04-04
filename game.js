@@ -2375,6 +2375,18 @@ function renderBuilding(id, type, isPlayer, building) {
     if (!cell) return; // grid cell not in DOM (grid may have been rebuilt)
     cell.className = 'cell owned ' + type + (isPlayer ? ' owned-player' : ' owned-enemy');
 
+    // ── Workers En Route: hard override — nothing can bypass this ───────
+    if (building?._workersEnRouteUntil && Date.now() < building._workersEnRouteUntil) {
+        const emoji = buildingTypes[type]?.emoji || '';
+        cell.innerHTML = `
+            <div style="position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;">
+                <span class="icon-emoji" style="font-size: 18px; opacity: 0.5;">${emoji}</span>
+                <span style="font-size: 8px; color: #aaa; text-align: center; line-height: 1.2; padding: 0 2px;">Workers<br>En Route…</span>
+            </div>
+        `;
+        return;
+    }
+
     // Use only the wall-clock end timestamp to decide construction state.
     // Uses serverNow() so we compare against server clock, not local clock.
     const now = serverNow();
@@ -2384,14 +2396,11 @@ function renderBuilding(id, type, isPlayer, building) {
         (Number(buildingTypes[type]?.constructionTime) || 0) * 10000;
     const endsAt = building?.constructionEndsAtMs || null;
     const stillBuilding = !!(endsAt && endsAt > now);
-    // Pending = under construction but server hasn't confirmed timing yet,
-    // OR within the guaranteed 15-second Workers En Route display window.
-    const pendingConfirm = !!(building?.isUnderConstruction &&
-        (!endsAt || (building._workersEnRouteUntil && Date.now() < building._workersEnRouteUntil)));
+    const pendingConfirm = !!(building?.isUnderConstruction && !endsAt);
 
     if (pendingConfirm) {
-        // Server confirmation not yet received — show flavor text
-        const emoji = buildingTypes[type].emoji || '';
+        // No server timing yet — show flavor text
+        const emoji = buildingTypes[type]?.emoji || '';
         cell.innerHTML = `
             <div style="position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;">
                 <span class="icon-emoji" style="font-size: 18px; opacity: 0.5;">${emoji}</span>
@@ -3315,17 +3324,17 @@ function constructionAnimLoop() {
             const b = buildings[i];
             if (!b) continue;
 
+            // ── Workers En Route window: re-render at low rate, skip all other logic ──
+            if (b._workersEnRouteUntil && localNow < b._workersEnRouteUntil) {
+                if (!b._lastConstructionRender || (localNow - b._lastConstructionRender) >= 500) {
+                    b._lastConstructionRender = localNow;
+                    renderBuilding(b.id, b.type, isPlayerOwned, b);
+                }
+                continue;
+            }
+
             // ── Ensure constructionEndsAtMs is set for any under-construction building ──
             if (!b.constructionEndsAtMs && b.isUnderConstruction) {
-                // Skip fallback if waiting for server confirmation — show Workers En Route
-                if (b._pendingServerConfirm || (b._workersEnRouteUntil && localNow < b._workersEnRouteUntil)) {
-                    // Re-render to keep Workers En Route text visible
-                    if (!b._lastConstructionRender || (localNow - b._lastConstructionRender) >= 500) {
-                        b._lastConstructionRender = localNow;
-                        renderBuilding(b.id, b.type, isPlayerOwned, b);
-                    }
-                    continue;
-                }
                 // Fallback: derive from constructionTotalMs or buildingTypes
                 const fb = b.constructionTotalMs || (Number(buildingTypes[b.type]?.constructionTime) || 0) * 10000;
                 if (fb > 0) {
@@ -3334,15 +3343,6 @@ function constructionAnimLoop() {
                     b.constructionTotalMs = fb;
                     console.warn('[constructionRAF] FALLBACK: derived endsAtMs for', b.type, 'cell', b.id, '→ endsAt', b.constructionEndsAtMs, 'totalMs', fb);
                 }
-            }
-
-            // Still within Workers En Route window even if endsAtMs is set — keep showing flavor text
-            if (b._workersEnRouteUntil && localNow < b._workersEnRouteUntil && b.constructionEndsAtMs) {
-                if (!b._lastConstructionRender || (localNow - b._lastConstructionRender) >= 500) {
-                    b._lastConstructionRender = localNow;
-                    renderBuilding(b.id, b.type, isPlayerOwned, b);
-                }
-                continue;
             }
 
             if (!b.constructionEndsAtMs) continue;
