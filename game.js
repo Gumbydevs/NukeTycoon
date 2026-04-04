@@ -664,6 +664,7 @@ const game = {
     // When a build is requested while another is in progress, queued here.
     // Each entry: { cellId, type }
     _buildQueue: [],
+    buildQueueMax: 3,        // modifiable by game mechanics (upgrades, perks, etc.)
 
     // ── Strike tracking ───────────────────────────────────────────────────────
     // Track nuke strikes per day for reset logic
@@ -1942,9 +1943,15 @@ function placeOrSelect(id) {
             const _isBuilding = game.buildings.some(b => b.isUnderConstruction);
             if (_isBuilding) {
                 game._buildQueue = game._buildQueue || [];
+                const _maxQ = game.buildQueueMax ?? 3;
+                if (game._buildQueue.length >= _maxQ) {
+                    addNotification('danger', `🚫 Build queue full (max ${_maxQ}). Wait for a slot to open.`);
+                    game.selectedMode = null;
+                    return;
+                }
                 game._buildQueue.push({ cellId: id, type: _type });
                 const qLen = game._buildQueue.length;
-                addNotification('info', `⏳ ${displayNames[_type] || _type} queued (${qLen} in queue) — will start when current build finishes.`);
+                addNotification('info', `⏳ ${displayNames[_type] || _type} queued (${qLen}/${_maxQ}) — will start when current build finishes.`);
                 game.selectedMode = null;
                 return;
             }
@@ -4027,6 +4034,7 @@ function returnToMenu() {
     if (game._botInterval)        { clearInterval(game._botInterval);        game._botInterval = null; }
     game._constructionRAFRunning = false; // stops the rAF construction loop
     game._buildQueue = []; // clear stale queue on menu return
+    game.buildQueueMax = 3; // reset to base limit on menu return
     
     // Reset game state
     game.runEnded = false;
