@@ -1,4 +1,6 @@
-﻿// Demolish/sell a placed building (player-owned only)
+﻿    // DEBUG: Log received chat messages
+    console.log('Received chatMessages from server:', chatMessages);
+// Demolish/sell a placed building (player-owned only)
 function demolishBuilding(id) {
     // Only send request to server; UI will update on server event
     if (socket?.connected && _authJWT) {
@@ -336,12 +338,11 @@ function connectSocket() {
         }
 
         // Chat history (persisted)
-        if (Array.isArray(chatMessages)) {
-            game.chatMessages = chatMessages;
-            const msgsEl = document.getElementById('chatMessages');
-            if (msgsEl) msgsEl.innerHTML = '';
-            game.chatMessages.forEach(m => renderChatMessage(m));
-        }
+        // Always clear and render whatever is sent from the server
+        game.chatMessages = Array.isArray(chatMessages) ? chatMessages : [];
+        const msgsEl = document.getElementById('chatMessages');
+        if (msgsEl) msgsEl.innerHTML = '';
+        game.chatMessages.forEach(m => renderChatMessage(m));
 
         // Unread notifications
         if (Array.isArray(notifications)) {
