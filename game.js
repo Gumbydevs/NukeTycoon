@@ -248,7 +248,7 @@ function connectSocket() {
     });
 
     // ── Run events ──────────────────────────────────────────────────────
-    socket.on('run:state', ({ run, buildings, players, scores, playerState, falloutZones, nuclearThreats, yourWallet, isNewJoiner, serverTime, terrain, deposits }) => {
+    socket.on('run:state', ({ run, buildings, players, scores, playerState, falloutZones, nuclearThreats, yourWallet, isNewJoiner, serverTime, terrain, deposits, chatMessages, notifications }) => {
         // Store server clock for interpolation
         if (serverTime) {
             game._serverTime = serverTime;
