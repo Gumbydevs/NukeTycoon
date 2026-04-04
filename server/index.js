@@ -31,14 +31,8 @@ async function runMigration() {
 
         client = await db.connect();
         const sql = stripSqlComments(fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
-        const statements = sql
-            .split(';')
-            .map((statement) => statement.trim())
-            .filter(Boolean);
-
-        for (const statement of statements) {
-            await client.query(statement);
-        }
+        // Execute entire schema in one query to preserve dollar-quoted function bodies
+        await client.query(sql);
 
         dbReady = true;
         console.log('✅ Schema migration OK');
