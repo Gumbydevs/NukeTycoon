@@ -198,10 +198,8 @@ CREATE TABLE IF NOT EXISTS notifications (
 -- Ensure email column exists (for migration safety)
 ALTER TABLE notifications ADD COLUMN IF NOT EXISTS email TEXT;
 
--- Trigger: Always set notifications.email from player_id if not provided
 
-CREATE OR REPLACE FUNCTION set_notification_email()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION set_notification_email() RETURNS TRIGGER AS $$
 BEGIN
     IF NEW.email IS NULL OR NEW.email = '' THEN
         SELECT email INTO NEW.email FROM players WHERE id = NEW.player_id;
