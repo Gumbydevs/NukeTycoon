@@ -1399,6 +1399,7 @@ body.mobile-menu-open .dropdown { display: none !important; }
 .econ-stat-val.green { color: #4caf50; }
 .econ-stat-val.red   { color: #ff6b6b; }
 .econ-stat-val.amber { color: #ffb84d; }
+.econ-stat-sub   { font-size: 10px; font-weight: 400; color: #666; }
 .econ-divider { border-top: 1px solid #2b3440; padding-top: 6px; margin-top: 2px; }
 .econ-chain {
     display: flex; align-items: center; gap: 6px;
@@ -1411,7 +1412,7 @@ body.mobile-menu-open .dropdown { display: none !important; }
 .econ-chain-arrow { color: #2b3440; font-size: 16px; }
 .econ-bldg-list  { display: flex; flex-direction: column; gap: 2px; }
 .econ-bldg-header {
-    display: grid; grid-template-columns: 1fr 60px 110px;
+    display: grid; grid-template-columns: minmax(80px,1.5fr) 1fr 1.4fr;
     font-size: 10px; font-weight: 700; letter-spacing: 0.06em; color: #666;
     padding: 2px 6px 4px; text-transform: uppercase;
     border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 2px;
@@ -1419,7 +1420,7 @@ body.mobile-menu-open .dropdown { display: none !important; }
 .econ-bldg-header span:nth-child(2),
 .econ-bldg-header span:nth-child(3) { text-align: right; }
 .econ-bldg-row {
-    display: grid; grid-template-columns: 1fr 60px 110px;
+    display: grid; grid-template-columns: minmax(80px,1.5fr) 1fr 1.4fr;
     align-items: center;
     font-size: 12px; padding: 4px 6px; border-radius: 3px;
     background: rgba(255,255,255,0.02);

@@ -4857,7 +4857,10 @@ function refreshEconomyModal({ playerState, run, scores }) {
         chgEl.className = 'econ-price-chg ' + (chgAbs > 0 ? 'up' : chgAbs < 0 ? 'down' : '');
     }
 
-    _setText('em-prize',  (run?.prize_pool || 0).toLocaleString() + ' tokens');
+    const _prizeTokens = (run?.prize_pool || 0);
+    const _prizeUsd = (_prizeTokens * Number(run?.market_price || 0)).toFixed(2);
+    const _prizeEl = document.getElementById('em-prize');
+    if (_prizeEl) _prizeEl.innerHTML = _prizeTokens.toLocaleString() + ' tokens<br><span class="econ-stat-sub">≈ $' + Number(_prizeUsd).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) + ' USD</span>';
     _setText('em-issued', (parseInt(run?.tokens_issued, 10) || 0).toLocaleString());
     _setText('em-pool',   Math.round(run?.market_token_pool || 0).toLocaleString());
     _setText('em-circulating', (parseInt(run?.tokens_issued, 10) || 0).toLocaleString());

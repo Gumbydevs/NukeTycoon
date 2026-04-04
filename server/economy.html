@@ -579,7 +579,7 @@ function renderLeaderboard(players, scores, buildingRules) {
             <td><span class="rank-badge ${rankClass}">${rank}</span></td>
             <td class="avatar-cell">${p.avatar || '☢️'}</td>
             <td class="username-cell">${escHtml(p.username || 'Unknown')}</td>
-            <td class="balance-cell">${fmt(p.balance)}<span class="bar-mini" style="width:${Math.max(4,pct*0.8)}px;"></span></td>
+            <td class="balance-cell">${fmt(p.balance)}</td>
             <td class="income-cell">+${fmt(p.daily_income)}/day</td>
             <td>${p.mine_count}⛏️&nbsp;${p.processor_count}🏭&nbsp;${p.plant_count}☢️</td>
             <td class="score-cell">${fmt(p.score)}</td>
@@ -602,7 +602,7 @@ function renderAlltimeSection(at) {
     const r = (key) => at[key] || {};
     set('at-price-high',        r('price_high').value       != null ? '$' + Number(r('price_high').value).toFixed(4)      : '—', r('price_high').run_number);
     set('at-price-low',         r('price_low').value        != null ? '$' + Number(r('price_low').value).toFixed(4)       : '—', r('price_low').run_number);
-    set('at-prize-high',        r('prize_pool_high').value  != null ? fmt(r('prize_pool_high').value) + ' tokens'         : '—', r('prize_pool_high').run_number);
+    set('at-prize-high',        r('prize_pool_high').value  != null ? fmt(r('prize_pool_high').value) + ' tokens'  : '—', r('prize_pool_high').run_number);
     set('at-tokens-max',        r('tokens_issued_max').value != null ? fmt(r('tokens_issued_max').value)                  : '—', r('tokens_issued_max').run_number);
     set('at-peak-players',      r('peak_players').value     != null ? fmt(r('peak_players').value)                        : '—', r('peak_players').run_number);
     set('at-peak-bldg',         r('peak_buildings').value   != null ? fmt(r('peak_buildings').value)                      : '—', r('peak_buildings').run_number);
@@ -819,7 +819,8 @@ function updateTicker(data) {
         priceChg.textContent = sign(chgAbs) + ' (' + signPct(chgPct) + ')';
         priceChg.className = 'ticker-change ' + (chgAbs > 0 ? 'up' : chgAbs < 0 ? 'down' : 'flat');
     }
-    if (prizeEl)   prizeEl.textContent   = fmt(run.prize_pool) + ' tokens';
+    const prizeUsd = (Number(run.prize_pool) * Number(run.market_price)).toFixed(2);
+    if (prizeEl)   prizeEl.innerHTML = fmt(run.prize_pool) + '<br><span style="font-size:12px;color:var(--muted);">≈ $' + Number(prizeUsd).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) + ' USD</span>';
     if (playersEl) playersEl.textContent = (players?.length || 0) + ' active';
     if (dayEl)     dayEl.textContent     = `${run.current_day} / ${run.run_length}`;
 
