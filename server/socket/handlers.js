@@ -408,12 +408,10 @@ function registerHandlers(io, socket) {
             const meState = isNewJoiner ? null : ((snapshot?.playerStates || []).find((row) => row.player_id === player.id) || null);
             const mePlayer = (snapshot?.players || []).find((row) => row.id === player.id);
 
-            // Fetch recent chat and unread notifications for this player
+            // Fetch recent chat and notifications for this player (by email)
             const chatRes = await db.query('SELECT * FROM chat_messages WHERE run_id = $1 ORDER BY ts ASC LIMIT 200', [run.id]);
-            // Debug: print player.id and notification query result
-            console.log('[run:join] player.id:', player.id);
-            const notesRes = await db.query('SELECT id, type, payload, created_at, read FROM notifications WHERE player_id = $1 ORDER BY created_at ASC', [player.id]);
-            console.log('[run:join] notifications for player', player.id, ':', notesRes.rows);
+            // Fetch notifications by player email instead of player_id
+            const notesRes = await db.query('SELECT n.id, n.type, n.payload, n.created_at, n.read FROM notifications n JOIN players p ON n.player_id = p.id WHERE p.email = $1 ORDER BY n.created_at ASC', [player.email]);
             const queueRes = await db.query('SELECT cell_id, type, queued_at, player_id FROM build_queue WHERE run_id = $1 ORDER BY queued_at ASC', [run.id]);
 
             socket.emit('run:state', {
