@@ -1,6 +1,6 @@
 const { sendOTP, verifyOTP, verifyJWT, generateJWT, signupWithPassword, loginWithPassword } = require('../auth');
 const db = require('../db');
-const { getActiveRun, getRunSnapshot, ensureRunPlayerState, BUILDING_RULES, BUY_IN } = require('../gameLoop');
+const { getActiveRun, getRunSnapshot, ensureRunPlayerState, BUILDING_RULES, BUILD_SLOTS, BUY_IN } = require('../gameLoop');
 
 const DEFAULT_AVATAR = '☢️';
 const VALID_AVATARS = new Set(['☢️', '🧑‍🚀', '👩‍🔬', '👨‍🔬', '🤖', '🦊', '🐺', '🐉']);
@@ -410,7 +410,7 @@ function registerHandlers(io, socket) {
                    AND construction_ends_at > NOW()`,
                 [run.id, player.id]
             );
-            if (activeConstruction.rows.length > 0) {
+            if (activeConstruction.rows.length >= BUILD_SLOTS) {
                 socket.emit('building:place_error', {
                     message: 'Construction slot busy — wait for the current build to finish.',
                     code: 'CONSTRUCTION_LIMIT',

@@ -25,6 +25,7 @@ function getOrGenerateDeposits(runId) {
     return _depositsCache.get(runId);
 }
 const BUY_IN = 20000;
+const BUILD_SLOTS = 1; // concurrent buildings under construction per player; raise via future mechanics
 const GRID_COLS = 20;
 const GRID_ROWS = 20;
 const PROXIMITY_RANGE = 2;
@@ -834,6 +835,7 @@ module.exports = {
     getRunSnapshot,
     emitRunSnapshot,
     BUILDING_RULES,
+    BUILD_SLOTS,
     setBuildingRules,
     saveBuildingRulesToDB,
     loadBuildingRulesFromDB,

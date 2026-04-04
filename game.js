@@ -665,6 +665,7 @@ const game = {
     // Each entry: { cellId, type }
     _buildQueue: [],
     buildQueueMax: 3,        // modifiable by game mechanics (upgrades, perks, etc.)
+    buildSlots: 1,           // concurrent buildings under construction; modifiable by game mechanics
 
     // ── Strike tracking ───────────────────────────────────────────────────────
     // Track nuke strikes per day for reset logic
@@ -1939,8 +1940,9 @@ function placeOrSelect(id) {
             // Optimistic local render — show Workers En Route immediately while server confirms
             const _type = game.selectedMode;
 
-            // Construction limit: 1 active build at a time — queue if slot is busy
-            const _isBuilding = game.buildings.some(b => b.isUnderConstruction);
+            // Construction limit — queue if all build slots are busy
+            const _activeBuilds = game.buildings.filter(b => b.isUnderConstruction).length;
+            const _isBuilding = _activeBuilds >= (game.buildSlots ?? 1);
             if (_isBuilding) {
                 game._buildQueue = game._buildQueue || [];
                 const _maxQ = game.buildQueueMax ?? 3;
@@ -3409,11 +3411,13 @@ function constructionAnimLoop() {
                     setTimeout(() => cell.classList.remove('build-complete'), 900);
                     if (typeof NukeSounds !== 'undefined') NukeSounds.buildComplete();
                     addNotification('success', `✅ ${displayNames[b.type] || b.type} construction complete!`);
-                    // Dispatch the next queued build, if any
-                    if (game._buildQueue && game._buildQueue.length > 0) {
-                        const _next = game._buildQueue.shift();
-                        setTimeout(() => dispatchQueuedBuild(_next), 600);
-                    }
+                    // Fill any newly-freed slots from the queue
+                    setTimeout(() => {
+                        const _freeSlots = (game.buildSlots ?? 1) - game.buildings.filter(b2 => b2.isUnderConstruction).length;
+                        for (let _s = 0; _s < _freeSlots && game._buildQueue && game._buildQueue.length > 0; _s++) {
+                            dispatchQueuedBuild(game._buildQueue.shift());
+                        }
+                    }, 600);
                 }
                 continue;
             }
@@ -4035,6 +4039,7 @@ function returnToMenu() {
     game._constructionRAFRunning = false; // stops the rAF construction loop
     game._buildQueue = []; // clear stale queue on menu return
     game.buildQueueMax = 3; // reset to base limit on menu return
+    game.buildSlots = 1;    // reset to base concurrent build limit on menu return
     
     // Reset game state
     game.runEnded = false;
