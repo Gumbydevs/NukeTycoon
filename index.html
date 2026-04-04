@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NUKEWAR</title>
     <link rel="stylesheet" href="styles/main.css?v=20260404lp17">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' font-size='44'%3E%F0%9F%8C%82%3C/text%3E%3C/svg%3E">
 </head>
 <body>
     <!-- SVG turbulence filter — must be outside any overflow:hidden ancestor -->
@@ -144,11 +145,11 @@
                         <button class="lp-btn-primary" id="loginSendBtn">Send Code</button>
                     </div>
                     <div class="lp-divider"><span>or use password</span></div>
-                    <div class="lp-field-row">
-                        <input id="loginPassword" type="password" placeholder="Password" class="lp-input" autocomplete="current-password" />
-                        <button class="lp-btn-ghost" id="loginPasswordBtn">Login</button>
-                        <button class="lp-btn-ghost" id="signupPasswordBtn">Sign Up</button>
-                    </div>
+                    <form id="loginPasswordForm" class="lp-field-row" novalidate>
+                        <input id="loginPassword" name="password" type="password" placeholder="Password" class="lp-input" autocomplete="current-password" />
+                        <button type="button" class="lp-btn-ghost" id="loginPasswordBtn">Login</button>
+                        <button type="button" class="lp-btn-ghost" id="signupPasswordBtn">Sign Up</button>
+                    </form>
                     <label class="lp-remember-row">
                         <input type="checkbox" id="loginRememberMe" />
                         <span>Remember me</span>
@@ -251,7 +252,8 @@
                 <button class="btn menu-toggle" id="actionsMenuBtn" aria-haspopup="true" aria-expanded="false" title="Actions">☰</button>
                 <div class="dropdown" id="actionsMenu" aria-hidden="true" style="display:none;">
                     <div class="menu-section game-only">
-                        <div class="menu-section-title">Build</div>
+                        <div class="menu-section-title"> Actions</div>
+                        <button class="menu-item" data-type="hireSurveyor"><span class="menu-icon">🧭</span><span class="menu-label">Hire Surveyor</span></button>
                         <button class="menu-item" data-type="mine"><span class="menu-icon">⛏️</span><span class="menu-label">Mine</span></button>
                         <button class="menu-item" data-type="processor"><span class="menu-icon">🏭</span><span class="menu-label">Plant</span></button>
                         <button class="menu-item" data-type="storage"><span class="menu-icon"><svg viewBox="0 0 24 24" width="14" height="14" xmlns="http://www.w3.org/2000/svg"><ellipse cx="12" cy="4.5" rx="6" ry="2" fill="#b08b4f"/><rect x="6" y="4.5" width="12" height="13" rx="2" ry="2" fill="#b08b4f"/></svg></span><span class="menu-label">Storage</span></button>
@@ -259,8 +261,6 @@
                         <button class="menu-item" data-type="silo"><span class="menu-icon">⚛️</span><span class="menu-label">Silo</span></button>
                     </div>
                     <div class="menu-section">
-                        <div class="menu-section-title">Actions</div>
-                        <button class="menu-item game-only" data-type="sabotage">Sabotage</button>
                         <button class="menu-item" id="profileMenuItem">Profile</button>
                     </div>
                     <div class="menu-section">
@@ -382,7 +382,9 @@
         </div>
         <div style="border-top:1px solid #222; padding-top:10px;">
             <div style="margin-bottom:6px; font-weight:600; color:#ffb84d;">Railway Server</div>
-            <input id="adminKeyInput" type="password" placeholder="ADMIN_KEY" oninput="setAdminKey(this.value)" style="width:100%; padding:6px; background:#111; border:1px solid #333; color:#fff; margin-bottom:8px;" />
+            <form id="adminKeyForm" novalidate>
+                <input id="adminKeyInput" name="adminKey" type="password" placeholder="ADMIN_KEY" oninput="setAdminKey(this.value)" style="width:100%; padding:6px; background:#111; border:1px solid #333; color:#fff; margin-bottom:8px;" />
+            </form>
             <div style="display:flex; gap:8px; flex-wrap:wrap;">
                 <button class="btn" onclick="openServerAdmin()">Server Admin</button>
                 <button class="btn" onclick="adminClearCellPrompt()">Clear Cell</button>
@@ -491,7 +493,7 @@
                 <button class="btn" onclick="selectBuilding('processor')"><span class="icon-emoji">🏭</span>Plant</button>
                 <button class="btn" onclick="selectBuilding('storage')"><svg viewBox="0 0 24 24" width="14" height="14" xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle; margin-right:6px;"><ellipse cx="12" cy="4.5" rx="6" ry="2" fill="#b08b4f"/><rect x="6" y="4.5" width="12" height="13" rx="2" ry="2" fill="#b08b4f"/></svg>Storage</button>
                 <button class="btn" onclick="selectBuilding('plant')"><span class="icon-emoji">☢️</span>Reactor</button>
-                <button class="btn sabotage" onclick="selectBuilding('sabotage')">Sabotage</button>
+                
             </div>
         </div>
     </div>

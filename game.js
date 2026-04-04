@@ -3894,8 +3894,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Wire up changelog modal interactions
     const verEl = document.getElementById('appVersion');
     if (verEl) verEl.addEventListener('click', (e) => { e.preventDefault(); showChangelog(); });
-    const closeBtn = document.getElementById('changelogCloseBtn');
-    if (closeBtn) closeBtn.addEventListener('click', hideChangelog);
+    const changelogCloseBtnEl = document.getElementById('changelogCloseBtn');
+    if (changelogCloseBtnEl) changelogCloseBtnEl.addEventListener('click', hideChangelog);
     const changelogModal = document.getElementById('changelogModal');
     if (changelogModal) changelogModal.addEventListener('click', (e) => { if (e.target === changelogModal) hideChangelog(); });
 
@@ -4045,14 +4045,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Notification bell
     const bellBtn    = document.getElementById('notifBellBtn');
-    const closeBtn   = document.getElementById('notifCloseBtn');
+    const notifCloseBtnEl   = document.getElementById('notifCloseBtn');
     const clearBtn   = document.getElementById('notifClearBtn');
     if (bellBtn)  bellBtn.addEventListener('click', () => {
         const drawer = document.getElementById('notifDrawer');
         const isOpen = drawer && drawer.classList.contains('notif-drawer--open');
         isOpen ? closeNotifications() : openNotifications();
     });
-    if (closeBtn) closeBtn.addEventListener('click', closeNotifications);
+    if (notifCloseBtnEl) notifCloseBtnEl.addEventListener('click', closeNotifications);
     if (clearBtn) clearBtn.addEventListener('click', clearAllNotifications);
 
     // Close drawer when clicking outside of it
@@ -6232,7 +6232,7 @@ function initChatUI() {
 
     const panel       = document.getElementById('chatPanel');
     const toggleBtn   = document.getElementById('chatToggleBtn');
-    const closeBtn    = document.getElementById('chatCloseBtn');
+    const chatCloseBtnEl    = document.getElementById('chatCloseBtn');
     const input       = document.getElementById('chatInput');
     const sendBtn     = document.getElementById('chatSendBtn');
     const emojiBtn    = document.getElementById('chatEmojiBtn');
@@ -6272,7 +6272,7 @@ function initChatUI() {
     }
 
     if (toggleBtn) toggleBtn.addEventListener('click', openChat);
-    if (closeBtn)  closeBtn.addEventListener('click',  closeChat);
+    if (chatCloseBtnEl)  chatCloseBtnEl.addEventListener('click',  closeChat);
 
     // Send
     function doSend() {
