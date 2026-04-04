@@ -1902,7 +1902,7 @@ function placeOrSelect(id) {
                     constructionTotalMs: (buildingTypes[_type]?.constructionTime || 0) * 10000,
                     constructionEndsAtMs: null,    // filled in by building:placed confirmation
                     _pendingServerConfirm: true,   // show Workers En Route until server responds
-                    _workersEnRouteUntil: Date.now() + 15000, // enforce 15s minimum display
+                    _workersEnRouteUntil: Date.now() + 8000, // 8s display window
                     isUnderConstruction: true,
                 };
                 game.buildings.push(_optimistic);
@@ -2377,13 +2377,7 @@ function renderBuilding(id, type, isPlayer, building) {
 
     // ── Workers En Route: hard override — nothing can bypass this ───────
     if (building?._workersEnRouteUntil && Date.now() < building._workersEnRouteUntil) {
-        const emoji = buildingTypes[type]?.emoji || '';
-        cell.innerHTML = `
-            <div style="position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;">
-                <span class="icon-emoji" style="font-size: 18px; opacity: 0.5;">${emoji}</span>
-                <span style="font-size: 8px; color: #aaa; text-align: center; line-height: 1.2; padding: 0 2px;">Workers<br>En Route…</span>
-            </div>
-        `;
+        cell.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;"><span style="font-size:7px;color:#aaa;text-align:center;line-height:1.4;">Workers<br>En Route…</span></div>`;
         return;
     }
 
@@ -2400,13 +2394,7 @@ function renderBuilding(id, type, isPlayer, building) {
 
     if (pendingConfirm) {
         // No server timing yet — show flavor text
-        const emoji = buildingTypes[type]?.emoji || '';
-        cell.innerHTML = `
-            <div style="position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;">
-                <span class="icon-emoji" style="font-size: 18px; opacity: 0.5;">${emoji}</span>
-                <span style="font-size: 8px; color: #aaa; text-align: center; line-height: 1.2; padding: 0 2px;">Workers<br>En Route…</span>
-            </div>
-        `;
+        cell.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;"><span style="font-size:7px;color:#aaa;text-align:center;line-height:1.4;">Workers<br>En Route…</span></div>`;
     } else if (stillBuilding) {
         const elapsed = now - (endsAt - totalMs);
         const progress = totalMs > 0 ? Math.max(0.02, Math.min(1, elapsed / totalMs)) : 0;
