@@ -358,6 +358,8 @@ async function calculateScores(runId) {
         `SELECT
             rp.player_id,
             p.username,
+            p.avatar,
+            p.avatar_photo,
             p.token_balance,
             COUNT(CASE WHEN b.type = 'plant'     THEN 1 END)::int AS plant_count,
             COUNT(CASE WHEN b.type = 'mine'      THEN 1 END)::int AS mine_count,
@@ -384,6 +386,8 @@ async function calculateScores(runId) {
     return result.rows.map((r) => ({
         player_id: r.player_id,
         username: r.username,
+        avatar: r.avatar || '☢️',
+        avatar_photo: r.avatar_photo || null,
         token_balance: parseInt(r.token_balance, 10) || 0,
         plant_count: parseInt(r.plant_count, 10) || 0,
         mine_count: parseInt(r.mine_count, 10) || 0,
@@ -404,6 +408,7 @@ async function getRunSnapshot(runId) {
                 p.id,
                 p.username,
                 p.avatar,
+                p.avatar_photo,
                 p.token_balance,
                 rp.joined_at,
                 COALESCE(rps.score, 0) AS score,

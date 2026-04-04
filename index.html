@@ -287,7 +287,15 @@
             </div>
 
             <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px;">
-                <div id="profileAvatarDisplay" class="profile-avatar-display">☢️</div>
+                <div style="display:flex; flex-direction:column; align-items:center; gap:6px;">
+                    <div id="profilePhotoPreview" class="profile-photo-preview"></div>
+                    <label class="btn" style="cursor:pointer; font-size:11px; padding:3px 7px; white-space:nowrap;">
+                        📷 Upload
+                        <input type="file" id="profilePhotoInput" accept="image/jpeg,image/png,image/webp,image/gif" style="display:none;" />
+                    </label>
+                    <button class="btn" id="profilePhotoRemoveBtn" style="display:none; font-size:11px; padding:3px 7px;">Remove</button>
+                    <div id="profilePhotoMsg" style="color:#ff6b6b; font-size:10px; min-height:12px; text-align:center; max-width:72px;"></div>
+                </div>
                 <div style="flex:1;">
                     <div style="font-weight:700;">Player Name</div>
                     <div id="profileName" style="color:#ccc; margin-bottom:8px;">You</div>
@@ -295,22 +303,7 @@
                     <div id="profileWallet" style="color:#ccc;">$0</div>
                 </div>
             </div>
-
-            <div style="margin-bottom:12px;">
-                <div style="font-weight:700; margin-bottom:6px;">Profile Photo</div>
-                <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
-                    <div id="profilePhotoPreview" class="profile-photo-preview"></div>
-                    <div style="flex:1;">
-                        <label class="btn" style="cursor:pointer; display:inline-block; margin-bottom:6px;">
-                            📷 Upload Photo
-                            <input type="file" id="profilePhotoInput" accept="image/jpeg,image/png,image/webp,image/gif" style="display:none;" />
-                        </label>
-                        <button class="btn" id="profilePhotoRemoveBtn" style="display:none;">Remove Photo</button>
-                        <div id="profilePhotoMsg" style="color:#ff6b6b; font-size:11px; min-height:14px; margin-top:2px;"></div>
-                    </div>
-                </div>
-            </div>
-            <div style="margin-bottom:12px;">
+            <div id="profileEmojiSection" style="margin-bottom:12px;">
                 <div style="font-weight:700; margin-bottom:6px;">Profile Emoji</div>
                 <div id="profileAvatarPicker" class="avatar-picker" data-selected-avatar="☢️"></div>
             </div>

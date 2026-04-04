@@ -134,7 +134,6 @@ function connectSocket() {
             name:    p.username,
             avatar:  p.avatar || DEFAULT_PLAYER_AVATAR,
             photo:   p.avatar_photo || null,
-            isLocal: p.id === getLocalPlayerId(),
             isBot:   false,
             wallet:  parseInt(p.token_balance, 10) || 0,
             score:   0,
@@ -731,7 +730,7 @@ function _updateLobbyFromServerState(run, players, yourWallet) {
     if (list) {
         list.innerHTML = players.map(p =>
             `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #1e1e1e;gap:8px;">
-                <span style="display:inline-flex;align-items:center;gap:6px;color:${p.id === getLocalPlayerId() ? '#ffb84d' : '#888'};">${avatarBadge(p.avatar || DEFAULT_PLAYER_AVATAR)} ${escapeHtml(p.username)}</span>
+                <span style="display:inline-flex;align-items:center;gap:6px;color:${p.id === getLocalPlayerId() ? '#ffb84d' : '#888'};">${avatarBadge(p.avatar || DEFAULT_PLAYER_AVATAR, 18, p.avatar_photo || null)} ${escapeHtml(p.username)}</span>
                 <span style="color:#4CAF50;">${parseInt(p.token_balance,10).toLocaleString()} tokens</span>
             </div>`
         ).join('');
@@ -1436,7 +1435,7 @@ function renderLiveSidebar() {
             })();
 
             return `<div class="leaderboard-item" style="${highlight}">
-                        <div class="left"><div style="width:28px;text-align:center;font-weight:700;color:#ffb84d;">${idx+1}</div><div class="avatar">${avatar}</div><div class="name">${name}</div></div>
+                        <div class="left"><div style="width:28px;text-align:center;font-weight:700;color:#ffb84d;">${idx+1}</div><div class="avatar">${avatarBadge(p.avatar || DEFAULT_PLAYER_AVATAR, 22, p.photo || null)}</div><div class="name">${name}</div></div>
                         <div style="display:flex;flex-direction:column;align-items:flex-end;min-width:96px;">
                             <div class="score">${score} <span style="font-size:10px;color:#888;font-weight:400;">pts</span></div>
                             <div style="font-size:11px;color:#888;margin-top:4px;">${buildings} b · ${timeLabel}</div>
@@ -3031,7 +3030,7 @@ function showLobby() {
     if (list) {
         list.innerHTML = game.players.map(p =>
             `<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #1e1e1e; gap:8px;">
-                <span style="display:inline-flex;align-items:center;gap:6px;color:${p.isLocal ? '#ffb84d' : '#888'};">${avatarBadge(p.avatar || DEFAULT_PLAYER_AVATAR)} ${escapeHtml(p.name)}${p.isBot ? ' <span style="font-size:10px; color:#555;">[BOT]</span>' : ''}</span>
+                <span style="display:inline-flex;align-items:center;gap:6px;color:${p.isLocal ? '#ffb84d' : '#888'};">${avatarBadge(p.avatar || DEFAULT_PLAYER_AVATAR, 18, p.photo || null)} ${escapeHtml(p.name)}${p.isBot ? ' <span style="font-size:10px; color:#555;">[BOT]</span>' : ''}</span>
                 <span style="color:#4CAF50;">${p.wallet.toLocaleString()} tokens</span>
             </div>`
         ).join('');
@@ -3137,7 +3136,6 @@ function showProfile() {
     if (avatarDisplay) avatarDisplay.textContent = game.playerAvatar || DEFAULT_PLAYER_AVATAR;
     renderAvatarPicker('profileAvatarPicker', game.playerAvatar || DEFAULT_PLAYER_AVATAR);
     _renderProfilePhotoPreview();
-    const msgEl = document.getElementById('profileUsernameMsg');
     if (msgEl) msgEl.textContent = '';
     const photoMsg = document.getElementById('profilePhotoMsg');
     if (photoMsg) photoMsg.textContent = '';
@@ -3152,13 +3150,16 @@ function showProfile() {
 function _renderProfilePhotoPreview() {
     const preview = document.getElementById('profilePhotoPreview');
     const removeBtn = document.getElementById('profilePhotoRemoveBtn');
+    const emojiSection = document.getElementById('profileEmojiSection');
     if (!preview) return;
     if (game.playerPhoto) {
         preview.innerHTML = `<img src="${escapeHtml(game.playerPhoto)}" class="profile-photo-img" alt="Profile photo" />`;
         if (removeBtn) removeBtn.style.display = 'inline-block';
+        if (emojiSection) emojiSection.style.display = 'none';
     } else {
         preview.innerHTML = `<span style="font-size:34px;">${escapeHtml(game.playerAvatar || DEFAULT_PLAYER_AVATAR)}</span>`;
         if (removeBtn) removeBtn.style.display = 'none';
+        if (emojiSection) emojiSection.style.display = 'block';
     }
 }
 
@@ -4276,12 +4277,16 @@ function onRunEnd() {
         const color = p.isLocal ? '#ffb84d' : '#ccc';
         const you = p.isLocal ? ' (YOU)' : '';
         const award = prizeAwards[p.name];
+        const playerRecord = (game.players || []).find(pl => pl.name === p.name || pl.isLocal === p.isLocal);
+        const playerPhoto = playerRecord?.photo || null;
+        const playerAvatar = playerRecord?.avatar || DEFAULT_PLAYER_AVATAR;
         const prizeHTML = award
             ? `<div style="color:#4CAF50; font-weight:bold;">🏆 Prize: +${award.toLocaleString()} tokens</div>`
             : '';
         return `
             <div style="margin-bottom: 12px; padding: 12px; background: rgba(255,255,255,0.05); border-left: 3px solid ${color}; border-radius: 4px;">
-                <div style="color: ${color}; font-weight: bold; margin-bottom: 6px;">
+                <div style="color: ${color}; font-weight: bold; margin-bottom: 6px; display:flex; align-items:center; gap:8px;">
+                    ${avatarBadge(playerAvatar, 28, playerPhoto)}
                     ${medal} ${p.name}${you}
                 </div>
                 ${prizeHTML}
@@ -4562,7 +4567,7 @@ function onCellHover(id, e) {
         for (const en of game.enemyBuildings) if (distance(id, en.id) <= game.proximityRange) pen++;
         const label = displayNames[type] || type;
         const icon = (buildingTypes[type] && buildingTypes[type].emoji) ? buildingTypes[type].emoji + ' ' : '';
-        const ownerLabel = `<span style="display:inline-flex;align-items:center;gap:6px;color:#4CAF50;">${avatarBadge(game.playerAvatar)} ${escapeHtml(game.playerName || 'You')} <span style="font-size:10px;color:#aaa;">(You)</span></span>`;
+        const ownerLabel = `<span style="display:inline-flex;align-items:center;gap:6px;color:#4CAF50;">${avatarBadge(game.playerAvatar, 18, game.playerPhoto)} ${escapeHtml(game.playerName || 'You')} <span style="font-size:10px;color:#aaa;">(You)</span></span>`;
         const mcOwned = buildingTypes[type]?.maintenanceCost || 0;
         content = `<div style="font-weight:700;">${icon}${label} — ${ownerLabel}</div>` +
             `<div style="color:#ff9944;">⚙️ Operating: ${mcOwned.toLocaleString()} tokens/tick</div>` +
@@ -4604,10 +4609,10 @@ function onCellHover(id, e) {
         const icon = (buildingTypes[type] && buildingTypes[type].emoji) ? buildingTypes[type].emoji + ' ' : '';
         const ownerName = escapeHtml(owner.name || 'Unknown');
         const ownerTag = owner.isLocal
-            ? `<span style="display:inline-flex;align-items:center;gap:6px;color:#4CAF50;">${avatarBadge(owner.avatar)} ${ownerName} <span style="font-size:10px;color:#aaa;">(You)</span></span>`
+            ? `<span style="display:inline-flex;align-items:center;gap:6px;color:#4CAF50;">${avatarBadge(owner.avatar, 18, owner.photo)} ${ownerName} <span style="font-size:10px;color:#aaa;">(You)</span></span>`
             : owner.isBot
-                ? `<span style="display:inline-flex;align-items:center;gap:6px;color:#ff9944;">${avatarBadge(owner.avatar)} ${ownerName} <span style="font-size:10px;color:#666;">[BOT]</span></span>`
-                : `<span style="display:inline-flex;align-items:center;gap:6px;color:#e05ce0;">${avatarBadge(owner.avatar)} ${ownerName} <span style="font-size:10px;color:#aaa;">[PLAYER]</span></span>`;
+                ? `<span style="display:inline-flex;align-items:center;gap:6px;color:#ff9944;">${avatarBadge(owner.avatar, 18, owner.photo)} ${ownerName} <span style="font-size:10px;color:#666;">[BOT]</span></span>`
+                : `<span style="display:inline-flex;align-items:center;gap:6px;color:#e05ce0;">${avatarBadge(owner.avatar, 18, owner.photo)} ${ownerName} <span style="font-size:10px;color:#aaa;">[PLAYER]</span></span>`;
         const ownerBuildings = game.enemyBuildings.filter(b => b.owner === enemy.owner).length;
         // Active debuffs on this building
         const now = Date.now();
@@ -5122,9 +5127,15 @@ function _econRenderLeaderboard(scores) {
         const rankBadge = rank <= 3
             ? `<span class="econ-rank rank-${rank}">${rank}</span>`
             : `<span class="econ-rank rank-n">${rank}</span>`;
+        const playerRecord = (game.players || []).find(pl => pl.id === r.player_id);
+        const avatarCell = avatarBadge(
+            playerRecord?.avatar || r.avatar || DEFAULT_PLAYER_AVATAR,
+            20,
+            playerRecord?.photo || r.avatar_photo || null
+        );
         return `<tr style="${rowStyle}">
             <td>${rankBadge}</td>
-            <td></td>
+            <td>${avatarCell}</td>
             <td style="font-weight:${isMe ? 700 : 400}; color:${isMe ? '#ffb84d' : '#f5f7fa'};">${_escHtmlEcon(r.username || '?')}</td>
             <td class="econ-num amber">${balance.toLocaleString()}<span class="econ-bar" style="width:${pct}px;"></span></td>
             <td class="econ-num green">+${income.toLocaleString()}</td>
