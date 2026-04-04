@@ -280,7 +280,7 @@ body.authenticated .container {
     .top-bar { font-size: 11px; padding: 6px 8px; }
     .btn { padding: 4px 6px; font-size: 11px; }
     .btn .icon-emoji { font-size: 12px; }
-    .legend { bottom: 12px; left: 8px; padding: 10px; font-size: 12px; }
+    .legend { bottom: 12px; right: 8px; left: auto; padding: 10px; font-size: 12px; }
     #loginModal > div, #profileModal > div, #endOfDayModal > div { max-width: 92%; padding: 12px; }
     .grid { margin: 8px auto 40px; overflow-x: auto; }
 }
@@ -619,7 +619,7 @@ body.mobile-menu-open .dropdown { display: none !important; }
 .legend {
     position: fixed;
     bottom: 20px;
-    left: 20px;
+    right: 20px;
     background: rgba(0,0,0,0.88);
     border: 1px solid rgba(60,60,60,0.6);
     padding: 12px 14px 14px 14px;
@@ -707,7 +707,7 @@ body.mobile-menu-open .dropdown { display: none !important; }
 
 .legend-toggle {
     position: fixed;
-    left: 20px;
+    right: 20px;
     bottom: 20px;
     width: 44px;
     height: 44px;
@@ -1143,12 +1143,12 @@ body.mobile-menu-open .dropdown { display: none !important; }
 
 /* ── Live Chat ─────────────────────────────────────────────────────────────── */
 
-/* Floating chat toggle bubble (bottom-right, visible when panel is closed) */
+/* Floating chat toggle bubble (bottom-left, visible when panel is closed) */
 .chat-toggle-btn {
     display: none; /* shown by JS when in a run */
     position: fixed;
     bottom: 24px;
-    right: 24px;
+    left: 24px;
     width: 52px;
     height: 52px;
     border-radius: 8px;
@@ -1194,7 +1194,7 @@ body.mobile-menu-open .dropdown { display: none !important; }
     display: none; /* shown by JS */
     position: fixed;
     bottom: 24px;
-    right: 24px;
+    left: 24px;
     width: 320px;
     max-height: 480px;
     flex-direction: column;
@@ -1473,7 +1473,7 @@ body.mobile-menu-open .dropdown { display: none !important; }
 .chat-float-toast {
     position: fixed;
     bottom: 90px;
-    right: 24px;
+    left: 24px;
     max-width: 280px;
     background: rgba(8,8,12,0.95);
     border: 1px solid rgba(255,255,255,0.1);
