@@ -2305,6 +2305,14 @@ function placeOrSelect(id) {
     // If player clicked one of their own buildings while not in a placement mode,
     // show the sell/demolish popup (same style as sabotage popup).
     if (!game.selectedMode) {
+        // If this is a queued ghost owned by us, open the cancel-queue popup
+        const queued = game.buildings.find(b => b.id === id && b._queued && b.ownerId === getLocalPlayerId());
+        if (queued) {
+            showCancelQueueMenu(id);
+            return;
+        }
+
+        // If it's our completed/placed building, open sell popup
         const mine = game.buildings.find(b => b.id === id && !b._queued);
         if (mine && mine.ownerId === getLocalPlayerId()) {
             showSellMenu(id);
@@ -2676,6 +2684,70 @@ function showSellMenu(cellId) {
         menu.remove();
     };
     btnRow.appendChild(sellBtn);
+
+    menu.appendChild(btnRow);
+    document.body.appendChild(menu);
+
+    const closeMenu = (e) => {
+        if (!menu.contains(e.target)) {
+            menu.remove();
+            document.removeEventListener('click', closeMenu);
+        }
+    };
+    setTimeout(() => document.addEventListener('click', closeMenu), 0);
+}
+
+/**
+ * Show cancel-queued-build menu for player's queued ghost
+ */
+function showCancelQueueMenu(cellId) {
+    const q = (game._buildQueue || []).find(x => x.cellId === cellId);
+    if (!q) return;
+
+    const cell = document.querySelector('[data-id="' + cellId + '"]');
+    if (!cell) return;
+
+    const rect = cell.getBoundingClientRect();
+    const menuW = 300;
+    const menuH = 120;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let menuLeft = rect.right + 8;
+    if (menuLeft + menuW > vw - 8) menuLeft = rect.left - menuW - 8;
+    menuLeft = Math.max(8, Math.min(vw - menuW - 8, menuLeft));
+    const menuTop = Math.max(8, Math.min(vh - menuH - 8, rect.top));
+
+    const menu = document.createElement('div');
+    menu.className = 'cancel-queue-menu';
+    menu.style.cssText = `position:fixed; left:${menuLeft}px; top:${menuTop}px; background:rgba(0,0,0,0.95); border:1px solid #4db8ff; border-radius:4px; padding:8px 10px; z-index:100; min-width:${menuW}px; box-shadow:0 6px 18px rgba(0,0,0,0.8);`;
+
+    const title = document.createElement('div');
+    title.style.cssText = 'font-weight:700;color:#4db8ff;margin-bottom:6px;';
+    title.textContent = `Cancel queued ${displayNames[q.type] || q.type}`;
+    menu.appendChild(title);
+
+    const body = document.createElement('div');
+    body.style.cssText = 'color:#ddd;font-size:13px;margin-bottom:8px;';
+    body.innerHTML = `<div>Cancel this queued build and refund (partial/full) will be applied by the server.</div>`;
+    menu.appendChild(body);
+
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Close';
+    cancelBtn.style.cssText = 'background:#333;color:#fff;border:1px solid #444;padding:6px 10px;border-radius:4px;cursor:pointer;';
+    cancelBtn.onclick = () => { menu.remove(); };
+    btnRow.appendChild(cancelBtn);
+
+    const doCancelBtn = document.createElement('button');
+    doCancelBtn.textContent = 'Cancel Queue';
+    doCancelBtn.style.cssText = 'background:#ff6b6b;color:#fff;border:none;padding:6px 10px;border-radius:4px;cursor:pointer;font-weight:700;';
+    doCancelBtn.onclick = () => {
+        cancelQueuedBuild(cellId);
+        menu.remove();
+    };
+    btnRow.appendChild(doCancelBtn);
 
     menu.appendChild(btnRow);
     document.body.appendChild(menu);
@@ -4058,7 +4130,6 @@ function renderQueuedGhost(cellId, type, queuePos) {
             <span style="font-size:18px;opacity:0.4;">${emoji}</span>
             <span style="position:absolute;bottom:1px;right:2px;font-size:9px;font-weight:700;
                          color:#ffb84d;text-shadow:0 0 3px #000;line-height:1;">#${queuePos}</span>
-            <button class="cell-action-btn cancel-queue-btn" title="Cancel queued build" style="position:absolute;top:2px;right:2px;font-size:12px;padding:1px 4px;z-index:3;" onclick="cancelQueuedBuild('${cellId}')">✖</button>
         </div>`;
 }
 
