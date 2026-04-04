@@ -253,7 +253,7 @@ function connectSocket() {
             // Accumulate income over the 5 ticks so the number shown is meaningful
             const _tickIncome = (game._pendingBuildingIncome || 0);
             game._pendingBuildingIncome = 0;
-            const _completedBuildings = game.buildings.filter(b => !b.isUnderConstruction);
+            const _completedBuildings = game.buildings.filter(b => !b.isUnderConstruction && !b._queued);
             const _activePlants = _completedBuildings.filter(b => b.type === 'plant');
             const _incomePerPlant = _activePlants.length > 0
                 ? Math.round(_tickIncome / _activePlants.length)
@@ -3692,7 +3692,7 @@ function productionTick() {
 
         // ── Per-building income/maintenance floats ────────────────────────────
         // Show over player buildings only; stagger slightly so they don't stack.
-        const _completedBuildings = game.buildings.filter(b => !b.isUnderConstruction);
+        const _completedBuildings = game.buildings.filter(b => !b.isUnderConstruction && !b._queued);
         const _activePlants = _completedBuildings.filter(b => b.type === 'plant');
         const _incomePerPlant = _activePlants.length > 0
             ? Math.round(game._pendingIncomeDisplay / _activePlants.length)
