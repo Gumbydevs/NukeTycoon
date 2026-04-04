@@ -562,12 +562,28 @@ function registerHandlers(io, socket) {
                 [run.id, player.id, cellId, attackType, cost]
             );
 
+            // 15 % chance the attack fizzles — cost is still lost
+            const attackFailed = Math.random() < 0.15;
+
             const payload = {
                 attackType,
                 cellId,
-                attackerId:   player.id,
-                attackerName: player.username,
+                attackerId:        player.id,
+                attackerName:      player.username,
+                targetPlayerId:    target.player_id,
+                targetPlayerName:  target.owner_name,
+                targetBuildingType: target.type,
+                cost,
+                failed: attackFailed,
             };
+
+            if (attackFailed) {
+                // No real effect — just broadcast the failure and bail
+                io.to(`run:${run.id}`).emit('sabotage:applied', payload);
+                socket.emit('player:wallet_update', { token_balance: bal - cost });
+                await emitRunEconomy(io, run.id);
+                return;
+            }
 
             if (attackType === 'disable') {
                 const disableUntil = new Date(Date.now() + 45000);

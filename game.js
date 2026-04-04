@@ -509,9 +509,33 @@ function connectSocket() {
 
     // ── Sabotage events ─────────────────────────────────────────────────
     socket.on('sabotage:applied', ({ attackType, cellId, attackerName, attackerId,
-                                      disableUntil, stolenAmount, destroyedCells, falloutDuration }) => {
-        const isMe = attackerId === getLocalPlayerId();
+                                      disableUntil, stolenAmount, destroyedCells, falloutDuration,
+                                      failed, cost, targetPlayerId, targetPlayerName, targetBuildingType }) => {
+        const myId         = getLocalPlayerId();
+        const isMe         = attackerId === myId;
+        const isDefender   = targetPlayerId === myId;
 
+        const buildingLabel = displayNames[targetBuildingType] || targetBuildingType || 'building';
+        const attackLabels  = { disable: '⏸️ Disable', steal: '💰 Steal', nuke: '☢️ Nuke' };
+        const atkLabel      = attackLabels[attackType] || attackType;
+
+        if (failed) {
+            // ── Attack failed ──────────────────────────────────────────────
+            if (isMe) {
+                addNotification('danger',
+                    `💸 Your ${atkLabel} attack on ${targetPlayerName}'s ${buildingLabel} FAILED — lost ${(cost || 0).toLocaleString()} tokens`);
+            } else if (isDefender) {
+                addNotification('info',
+                    `🛡️ ${attackerName} attempted a ${atkLabel} on your ${buildingLabel} — the attack failed!`);
+            } else {
+                addNotification('warning',
+                    `⚔️ ${attackerName} attempted a ${atkLabel} attack on ${targetPlayerName} — it failed!`);
+            }
+            updateUI();
+            return;
+        }
+
+        // ── Attack succeeded — apply effects ──────────────────────────────
         if (attackType === 'disable' && disableUntil) {
             const b = game.enemyBuildings.find(e => e.id === cellId);
             if (b) b.disabled = { endTime: new Date(disableUntil).getTime(), multiplier: 0.5 };
@@ -527,8 +551,35 @@ function connectSocket() {
                 if (cell) { cell.innerHTML = ''; cell.className = cell.className.replace(/building.*/, '').trim(); }
             });
         }
-        if (!isMe) {
-            addNotification('warning', `⚔️ ${attackerName} executed a ${attackType} attack!`);
+
+        // ── Notifications ─────────────────────────────────────────────────
+        if (isMe) {
+            if (attackType === 'disable') {
+                addNotification('success',
+                    `✅ ${atkLabel} landed on ${targetPlayerName}'s ${buildingLabel} — disabled for 45s (cost: ${(cost || 0).toLocaleString()} tokens)`);
+            } else if (attackType === 'steal') {
+                addNotification('success',
+                    `✅ Stole ${(stolenAmount || 0).toLocaleString()} uranium from ${targetPlayerName}'s ${buildingLabel} (cost: ${(cost || 0).toLocaleString()} tokens)`);
+            } else if (attackType === 'nuke') {
+                const hits = destroyedCells ? destroyedCells.length : 0;
+                addNotification('success',
+                    `☢️ Nuclear strike on ${targetPlayerName}! ${hits} building${hits !== 1 ? 's' : ''} destroyed (cost: ${(cost || 0).toLocaleString()} tokens)`);
+            }
+        } else if (isDefender) {
+            if (attackType === 'disable') {
+                addNotification('danger',
+                    `⏸️ ${attackerName} disabled your ${buildingLabel} for 45s!`);
+            } else if (attackType === 'steal') {
+                addNotification('danger',
+                    `💰 ${attackerName} stole ${(stolenAmount || 0).toLocaleString()} uranium from your ${buildingLabel}!`);
+            } else if (attackType === 'nuke') {
+                const hits = destroyedCells ? destroyedCells.length : 0;
+                addNotification('danger',
+                    `☢️ ${attackerName} nuked you! ${hits} of your building${hits !== 1 ? 's' : ''} destroyed!`);
+            }
+        } else {
+            addNotification('warning',
+                `⚔️ ${attackerName} executed a ${atkLabel} attack on ${targetPlayerName}!`);
         }
         updateUI();
     });
