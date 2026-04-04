@@ -410,7 +410,8 @@ function registerHandlers(io, socket) {
 
             // Fetch recent chat and unread notifications for this player
             const chatRes = await db.query('SELECT * FROM chat_messages WHERE run_id = $1 ORDER BY ts ASC LIMIT 200', [run.id]);
-            const notesRes = await db.query('SELECT id, type, payload, created_at FROM notifications WHERE player_id = $1 AND read = FALSE ORDER BY created_at ASC', [player.id]);
+            // Fetch ALL notifications (read and unread) for this player
+            const notesRes = await db.query('SELECT id, type, payload, created_at, read FROM notifications WHERE player_id = $1 ORDER BY created_at ASC', [player.id]);
             const queueRes = await db.query('SELECT cell_id, type, queued_at, player_id FROM build_queue WHERE run_id = $1 ORDER BY queued_at ASC', [run.id]);
 
             socket.emit('run:state', {
