@@ -471,6 +471,33 @@ app.post('/admin/api/wipe-all-players', requireAdmin, async (_req, res) => {
     }
 });
 
+// GIF search proxy — forwards query to Tenor v2 via server-side fetch so no API key is exposed
+// Uses Node 20 built-in fetch; TENOR_API_KEY env var (falls back to Tenor demo key for testing)
+app.get('/api/gifs', async (req, res) => {
+    try {
+        const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 80) : 'reaction';
+        const key = process.env.TENOR_API_KEY || 'LIVDSAK';
+        const url = `https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(q)}&key=${encodeURIComponent(key)}&limit=12&media_filter=gif,tinygif&contentfilter=high&client_key=nuketycoon`;
+        const upstream = await fetch(url);
+        if (!upstream.ok) {
+            res.status(502).json({ error: 'GIF search unavailable.', results: [] });
+            return;
+        }
+        const data = await upstream.json();
+        // Normalise to a simple shape so client code stays simple
+        const results = (data.results || []).map(item => {
+            const media = item.media_formats || {};
+            const preview = (media.tinygif || media.gif || {}).url || '';
+            const full    = (media.gif     || media.tinygif || {}).url || preview;
+            return { url: full, preview };
+        }).filter(r => r.preview);
+        res.json({ results });
+    } catch (err) {
+        console.error('GIF proxy error:', err.message);
+        res.status(500).json({ error: 'GIF search failed.', results: [] });
+    }
+});
+
 io.on('connection', (socket) => {
     console.log(`🔌 connected  ${socket.id}`);
     registerHandlers(io, socket);

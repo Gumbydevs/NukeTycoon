@@ -5337,7 +5337,7 @@ function fetchGifs(query) {
     if (!results) return;
     results.innerHTML = '<div class="chat-gif-loading">Searching…</div>';
     const safe = encodeURIComponent((query || 'reaction').slice(0, 80));
-    fetch(`https://api.tenor.com/v1/search?q=${safe}&key=LIVESAK&limit=12&media_filter=minimal&contentfilter=high`)
+    fetch(`${SERVER_URL}/api/gifs?q=${safe}`)
         .then(r => r.json())
         .then(data => {
             if (!data.results || data.results.length === 0) {
@@ -5346,10 +5346,8 @@ function fetchGifs(query) {
             }
             results.innerHTML = '';
             data.results.forEach(item => {
-                const media  = item.media && item.media[0];
-                if (!media) return;
-                const previewUrl = (media.tinygif || media.gif || {}).url || '';
-                const fullUrl    = (media.gif || media.tinygif || {}).url || previewUrl;
+                const previewUrl = item.preview || '';
+                const fullUrl    = item.url || previewUrl;
                 if (!previewUrl) return;
                 // Only accept Tenor CDN URLs
                 if (!/^https:\/\/media\.tenor\.com\//i.test(previewUrl)) return;
