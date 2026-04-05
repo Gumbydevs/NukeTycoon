@@ -69,6 +69,8 @@ let SABOTAGE_NUKE_FALLOUT_RADIUS = Number(process.env.SABOTAGE_NUKE_FALLOUT_RADI
 let SABOTAGE_NUKE_FALLOUT_DURATION_MS = Number(process.env.SABOTAGE_NUKE_FALLOUT_DURATION_MS || 120000);
 let STRIKE_LIMIT_PER_DAY = Number(process.env.STRIKE_LIMIT_PER_DAY || 1);
 let MAINTENANCE_REFUND_PCT = Number(process.env.MAINTENANCE_REFUND_PCT || 0.75);
+let NUKE_COUNTDOWN_MS = Number(process.env.NUKE_COUNTDOWN_MS || 15000);
+let NUKE_MANUFACTURE_MS = Number(process.env.NUKE_MANUFACTURE_MS || 120000);
 
 // ── Uranium deposit generation config ───────────────────────────────────────
 let DEPOSIT_MIN_CLUSTERS         = Number(process.env.DEPOSIT_MIN_CLUSTERS || 8);   // minimum deposit cluster centres per run
@@ -227,6 +229,8 @@ async function loadRuntimeConfigFromDB() {
                 case 'sabotage.nuke_fallout_duration_ms': SABOTAGE_NUKE_FALLOUT_DURATION_MS = Number(value); break;
                 case 'sabotage.strike_limit_per_day': STRIKE_LIMIT_PER_DAY = Number(value); break;
                 case 'game.maintenance_refund_pct': MAINTENANCE_REFUND_PCT = Number(value); break;
+                case 'nuke.countdown_ms': NUKE_COUNTDOWN_MS = Math.max(3000, Number(value)); break;
+                case 'nuke.manufacture_ms': NUKE_MANUFACTURE_MS = Math.max(5000, Number(value)); break;
                 // Surveyor tuning
                 case 'surveyor.cost': SURVEYOR_COST = Number(value); break;
                 case 'surveyor.maint_per_tick': SURVEYOR_MAINT_PER_TICK = Number(value); break;
@@ -605,7 +609,7 @@ async function getRunSnapshot(runId) {
     if (!runId) return null;
     await ensureRunPlayerStates(runId);
 
-    const [runResult, playersResult, buildingsResult, playerStatesResult, falloutResult, scores, surveyorsResult] = await Promise.all([
+    const [runResult, playersResult, buildingsResult, playerStatesResult, falloutResult, scores, surveyorsResult, nukeManufactureResult, nukeLaunchesResult] = await Promise.all([
         db.query('SELECT * FROM runs WHERE id = $1 LIMIT 1', [runId]),
         db.query(
             `SELECT
@@ -642,6 +646,8 @@ async function getRunSnapshot(runId) {
         ),
         calculateScores(runId),
         db.query('SELECT id, player_id, cell_id, expires_at FROM surveyors WHERE run_id = $1 AND expires_at > NOW()', [runId]),
+        db.query('SELECT id, player_id, silo_id, completes_at FROM nuke_manufacture WHERE run_id = $1 AND completes_at > NOW()', [runId]),
+        db.query('SELECT id, attacker_id, attacker_name, attacker_avatar, attacker_photo, target_cell_id, detonates_at FROM nuke_launches WHERE run_id = $1 AND status = $2', [runId, 'pending']),
     ]);
 
     const run = parseRunRow(runResult.rows[0]);
@@ -662,6 +668,7 @@ async function getRunSnapshot(runId) {
         strikes_used_today: parseInt(row.strikes_used_today, 10) || 0,
         used_nuke: !!row.used_nuke,
         discovered_deposits: Array.isArray(row.discovered_deposits) ? row.discovered_deposits : [],
+        nuke_inventory: parseInt(row.nuke_inventory, 10) || 0,
     }));
 
     const playerNameById = new Map(playersResult.rows.map((player) => [player.id, player.username]));
@@ -695,6 +702,8 @@ async function getRunSnapshot(runId) {
         terrain,
         deposits,
         surveyors: surveyorsResult.rows,
+        nukeManufactures: nukeManufactureResult.rows,
+        nukeLaunches: nukeLaunchesResult.rows,
     };
 }
 
@@ -753,6 +762,10 @@ async function emitRunSnapshot(io, runId, eventName = 'run:tick') {
             cellId: sv.cell_id,
             expiresAt: sv.expires_at,
         }));
+        // Nuke manufacture state for this player
+        const myManufacture = (snapshot.nukeManufactures || []).find(m => m.player_id === roomSocket.playerId) || null;
+        const nukeManufacture = myManufacture ? { id: myManufacture.id, completesAt: myManufacture.completes_at } : null;
+
         roomSocket.emit(eventName, {
             run: snapshot.run,
             scores: snapshot.scores,
@@ -763,6 +776,15 @@ async function emitRunSnapshot(io, runId, eventName = 'run:tick') {
             serverTime: serverNow,
             deposits: visibleDeposits,
             surveyors: surveyorList,
+            nukeManufacture,
+            nukeLaunches: (snapshot.nukeLaunches || []).map(l => ({
+                id: l.id,
+                attackerName: l.attacker_name,
+                attackerAvatar: l.attacker_avatar,
+                attackerPhoto: l.attacker_photo,
+                targetCellId: l.target_cell_id,
+                detonatesAt: l.detonates_at,
+            })),
         });
 
         // Notify about just-completed buildings
@@ -1425,12 +1447,191 @@ async function advanceDay(io, run) {
     console.log(`📅 Run #${run.run_number} → day ${newDay} (next: ${nextDayAt.toISOString()})`);
 }
 
+// Process pending nuke launches — called from economy tick.
+// Handles both normal detonation (after setTimeout) AND server-restart recovery
+// where the setTimeout never fired.
+async function processNukeLaunches(io, run) {
+    if (!run?.id) return;
+    try {
+        const overdueRes = await db.query(
+            `SELECT * FROM nuke_launches WHERE run_id = $1 AND status = 'pending' AND detonates_at <= NOW()`,
+            [run.id]
+        );
+        for (const launch of overdueRes.rows) {
+            await detonateNukeLaunch(io, run, launch);
+        }
+    } catch (err) {
+        console.warn('[nuke] processNukeLaunches error:', err.message);
+    }
+}
+
+// Check for completed nuke manufactures and credit the player's inventory.
+async function processNukeManufactures(io, run) {
+    if (!run?.id) return;
+    try {
+        const doneRes = await db.query(
+            `SELECT nm.*, p.username, p.avatar, p.avatar_photo
+             FROM nuke_manufacture nm
+             JOIN players p ON p.id = nm.player_id
+             WHERE nm.run_id = $1 AND nm.completes_at <= NOW()`,
+            [run.id]
+        );
+        for (const mfg of doneRes.rows) {
+            // Credit inventory
+            await db.query(
+                `UPDATE run_player_state SET nuke_inventory = nuke_inventory + 1, updated_at = NOW()
+                 WHERE run_id = $1 AND player_id = $2`,
+                [run.id, mfg.player_id]
+            );
+            // Remove the manufacture entry
+            await db.query('DELETE FROM nuke_manufacture WHERE id = $1', [mfg.id]);
+
+            // Notify the player
+            const stateRes = await db.query(
+                'SELECT nuke_inventory FROM run_player_state WHERE run_id = $1 AND player_id = $2',
+                [run.id, mfg.player_id]
+            );
+            const inv = parseInt(stateRes.rows[0]?.nuke_inventory, 10) || 1;
+
+            const sockets = await io.in(`run:${run.id}`).fetchSockets();
+            const playerSocket = sockets.find(s => s.playerId === mfg.player_id);
+            if (playerSocket) {
+                playerSocket.emit('nuke:manufacture_complete', { inventory: inv });
+            }
+
+            // Persist notification for offline player
+            try {
+                const emailRes = await db.query('SELECT email FROM players WHERE id = $1', [mfg.player_id]);
+                const email = (emailRes.rows[0]?.email || '').toLowerCase();
+                await db.query(
+                    `INSERT INTO notifications (run_id, player_id, email, type, payload) VALUES ($1,$2,$3,$4,$5)`,
+                    [run.id, mfg.player_id, email, 'success', JSON.stringify({ msg: '☢️ Nuke manufactured and ready for launch!', ts: Date.now() })]
+                );
+            } catch (e) { /* non-critical */ }
+
+            console.log(`[nuke] manufacture complete for player ${mfg.username}, inventory=${inv}`);
+        }
+    } catch (err) {
+        console.warn('[nuke] processNukeManufactures error:', err.message);
+    }
+}
+
+// Internal: execute the blast for a nuke launch
+async function detonateNukeLaunch(io, run, launch) {
+    // Idempotency guard — mark detonated first to prevent double-fire
+    const claimRes = await db.query(
+        `UPDATE nuke_launches SET status = 'detonated' WHERE id = $1 AND status = 'pending' RETURNING id`,
+        [launch.id]
+    );
+    if (claimRes.rowCount === 0) return; // already detonated by another process
+
+    const sabotageCfg = getSabotageConfig();
+    const falloutRadius = sabotageCfg.nukeFalloutRadius || 4;
+    const falloutDurationMs = sabotageCfg.nukeFalloutDurationMs || 120000;
+    const cellId = launch.target_cell_id;
+
+    // Destroy all buildings within fallout radius
+    const allBuildings = await db.query(
+        'SELECT * FROM buildings WHERE run_id = $1 AND is_active = TRUE AND player_id != $2',
+        [run.id, launch.attacker_id]
+    );
+    const destroyed = [];
+    const cols = typeof getGridSize === 'function' ? (getGridSize().cols || 20) : 20;
+    function manhattanDist(a, b) {
+        return Math.abs((a % cols) - (b % cols)) + Math.abs(Math.floor(a / cols) - Math.floor(b / cols));
+    }
+    for (const b of allBuildings.rows) {
+        if (manhattanDist(b.cell_id, cellId) <= falloutRadius) {
+            await db.query(
+                'UPDATE buildings SET is_active = FALSE, destroyed_at = NOW() WHERE id = $1',
+                [b.id]
+            );
+            destroyed.push(b.cell_id);
+        }
+    }
+
+    // Create fallout zone
+    await db.query(
+        `INSERT INTO fallout_zones (run_id, created_by, center_cell_id, radius, multiplier, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [run.id, launch.attacker_id, cellId, 5, 0.5, new Date(Date.now() + falloutDurationMs)]
+    );
+
+    // Record strike in player state
+    await db.query(
+        `UPDATE run_player_state
+         SET strikes_used_today = strikes_used_today + 1, used_nuke = TRUE, updated_at = NOW()
+         WHERE run_id = $1 AND player_id = $2`,
+        [run.id, launch.attacker_id]
+    );
+
+    // Log in sabotage_events
+    await db.query(
+        'INSERT INTO sabotage_events (run_id, attacker_id, target_cell_id, attack_type, cost) VALUES ($1,$2,$3,$4,$5)',
+        [run.id, launch.attacker_id, cellId, 'nuke', 0]
+    );
+
+    // Broadcast detonation to all players
+    const payload = {
+        launchId:       launch.id,
+        attackType:     'nuke',
+        cellId,
+        attackerId:     launch.attacker_id,
+        attackerName:   launch.attacker_name,
+        destroyedCells: destroyed,
+        falloutRadius,
+        falloutDuration: falloutDurationMs,
+        failed:         false,
+    };
+    io.to(`run:${run.id}`).emit('nuke:detonated', payload);
+
+    // Persist notification for each destroyed building's owner
+    const ownersSeen = new Set();
+    for (const b of allBuildings.rows) {
+        if (!destroyed.includes(b.cell_id)) continue;
+        if (ownersSeen.has(b.player_id)) continue;
+        ownersSeen.add(b.player_id);
+        try {
+            const emailRes = await db.query('SELECT email FROM players WHERE id = $1', [b.player_id]);
+            const email = (emailRes.rows[0]?.email || '').toLowerCase();
+            await db.query(
+                `INSERT INTO notifications (run_id, player_id, email, type, payload) VALUES ($1,$2,$3,$4,$5)`,
+                [run.id, b.player_id, email, 'danger',
+                 JSON.stringify({ msg: `☢️ You were NUKED by ${launch.attacker_name}! Buildings near cell ${cellId} destroyed.`, ts: Date.now() })]
+            );
+        } catch (e) { /* non-critical */ }
+    }
+
+    console.log(`[nuke] DETONATED launch=${launch.id} attacker=${launch.attacker_name} cell=${cellId} destroyed=${destroyed.length}`);
+}
+
+// Export for use in handlers.js
+module.exports._detonateNukeLaunch = detonateNukeLaunch;
+
+function getSabotageConfig() {
+    return {
+        disableCost: SABOTAGE_DISABLE_COST,
+        stealCost: SABOTAGE_STEAL_COST,
+        nukeCostPct: SABOTAGE_NUKE_COST_PCT,
+        failureChance: SABOTAGE_FAILURE_CHANCE,
+        disableDurationMs: SABOTAGE_DISABLE_DURATION_MS,
+        nukeFalloutRadius: SABOTAGE_NUKE_FALLOUT_RADIUS,
+        nukeFalloutDurationMs: SABOTAGE_NUKE_FALLOUT_DURATION_MS,
+        strikeLimitPerDay: STRIKE_LIMIT_PER_DAY,
+        maintenanceRefundPct: MAINTENANCE_REFUND_PCT,
+        nukeCountdownMs: NUKE_COUNTDOWN_MS,
+        nukeManufactureMs: NUKE_MANUFACTURE_MS,
+    };
+}
+
 function setupGameLoop(io) {
     setInterval(async () => {
         try {
             const run = await getActiveRun();
             if (run) {
                 await processRunEconomy(io, run);
+                await processNukeManufactures(io, run);
+                await processNukeLaunches(io, run);
             }
         } catch (err) {
             console.error('Economy tick error:', err);
@@ -1530,6 +1731,8 @@ module.exports = {
             nukeFalloutDurationMs: SABOTAGE_NUKE_FALLOUT_DURATION_MS,
             strikeLimitPerDay: STRIKE_LIMIT_PER_DAY,
             maintenanceRefundPct: MAINTENANCE_REFUND_PCT,
+            nukeCountdownMs: NUKE_COUNTDOWN_MS,
+            nukeManufactureMs: NUKE_MANUFACTURE_MS,
         },
         surveyor: {
             cost: SURVEYOR_COST,
@@ -1552,17 +1755,7 @@ module.exports = {
         proximityBonusPerBuilding: PROXIMITY_BONUS_PER_BUILDING,
         proximityBonusCap: PROXIMITY_BONUS_CAP,
     }),
-    getSabotageConfig: () => ({
-        disableCost: SABOTAGE_DISABLE_COST,
-        stealCost: SABOTAGE_STEAL_COST,
-        nukeCostPct: SABOTAGE_NUKE_COST_PCT,
-        failureChance: SABOTAGE_FAILURE_CHANCE,
-        disableDurationMs: SABOTAGE_DISABLE_DURATION_MS,
-        nukeFalloutRadius: SABOTAGE_NUKE_FALLOUT_RADIUS,
-        nukeFalloutDurationMs: SABOTAGE_NUKE_FALLOUT_DURATION_MS,
-        strikeLimitPerDay: STRIKE_LIMIT_PER_DAY,
-        maintenanceRefundPct: MAINTENANCE_REFUND_PCT,
-    }),
+    getSabotageConfig,
     getSurveyorConfig: () => ({
         cost: SURVEYOR_COST,
         durationMs: SURVEYOR_DURATION_MS,
@@ -1579,4 +1772,8 @@ module.exports = {
     getNextRunLength: () => _nextRunLength,
     getTerrainForRun: getOrGenerateTerrain,
     getDepositsForRun: getOrGenerateDeposits,
+    getNukeConfig: () => ({ countdownMs: NUKE_COUNTDOWN_MS, manufactureMs: NUKE_MANUFACTURE_MS }),
+    processNukeLaunches,
+    processNukeManufactures,
+    detonateNukeLaunch,
 };

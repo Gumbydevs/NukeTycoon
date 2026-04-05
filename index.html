@@ -316,6 +316,28 @@
         </div>
     </div>
 
+    <!-- Nuke inventory HUD (populated by updateNukeHUD() in game.js) -->
+    <div id="nuke-hud" style="
+        display: none;
+        position: fixed;
+        bottom: 16px;
+        right: 16px;
+        background: rgba(10,0,0,0.90);
+        border: 1px solid #333;
+        border-radius: 6px;
+        padding: 6px 10px;
+        z-index: 80;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 120px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.7);
+        font-size: 13px;
+        color: #eee;
+        user-select: none;
+    ">
+        <!-- Nuke inventory count and manufacture button rendered by JS -->
+    </div>
+
     <div class="legend" id="legendPanel" aria-hidden="true">
         <div class="legend-top">
             <button class="btn legend-help-btn" id="openHelpBtn" type="button">Game help</button>

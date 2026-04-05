@@ -837,7 +837,7 @@ function connectSocket() {
         applyServerScores(scores);
     });
 
-    socket.on('run:tick', ({ run, playerState, yourWallet, scores, falloutZones, nuclearThreats, serverTime, deposits, surveyors }) => {
+    socket.on('run:tick', ({ run, playerState, yourWallet, scores, falloutZones, nuclearThreats, serverTime, deposits, surveyors, nukeManufacture, nukeLaunches }) => {
         // Store server clock for interpolation
         if (serverTime) {
             game._serverTime = serverTime;
@@ -897,6 +897,22 @@ function connectSocket() {
             game.surveyors = surveyors;
             renderSurveyors();
         }
+        // ── Nuke inventory + manufacture state ───────────────────────────────────
+        if (playerState && typeof playerState.nuke_inventory === 'number') {
+            game.nukeInventory = playerState.nuke_inventory;
+        }
+        if (nukeManufacture !== undefined) {
+            game.nukeManufacturing = nukeManufacture ? { completesAt: nukeManufacture.completesAt } : null;
+        }
+        if (Array.isArray(nukeLaunches)) {
+            nukeLaunches.forEach(l => {
+                if (!game.activeLaunches.find(x => x.id === l.id)) {
+                    game.activeLaunches.push(l);
+                    showNukeCountdown(l);
+                }
+            });
+        }
+        updateNukeHUD();
         // ────────────────────────────────────────────────────────────────────────
     });
 
@@ -1154,6 +1170,40 @@ function connectSocket() {
             }
         });
         updateUI();
+    });
+
+    // ── Nuke events ──────────────────────────────────────────────────────────
+
+    // Nuke incoming — show countdown overlay on ALL clients
+    socket.on('nuke:incoming', (launch) => {
+        if (!game.activeLaunches.find(l => l.id === launch.id)) {
+            game.activeLaunches.push(launch);
+        }
+        showNukeCountdown(launch);
+    });
+
+    // Nuke detonated — handle blast visuals
+    socket.on('nuke:detonated', (payload) => {
+        game.activeLaunches = game.activeLaunches.filter(l => l.id !== payload.launchId);
+        handleNukeDetonation(payload);
+        updateNukeHUD();
+    });
+
+    // Manufacture started confirmation
+    socket.on('nuke:manufacture_started', ({ completesAt, manufactureMs }) => {
+        game.nukeManufacturing = { completesAt };
+        updateNukeHUD();
+        const secs = Math.round((manufactureMs || 120000) / 1000);
+        addNotification('info', `☢️ Nuke manufacture started — ready in ${secs}s.`);
+    });
+
+    // Manufacture complete — inventory ready
+    socket.on('nuke:manufacture_complete', ({ inventory }) => {
+        game.nukeInventory = inventory;
+        game.nukeManufacturing = null;
+        updateNukeHUD();
+        addNotification('success', '☢️ Nuke manufactured! Click the nuke HUD to fire.');
+        if (typeof NukeSounds !== 'undefined') NukeSounds.nuclear();
     });
 
     // ── Sabotage events ─────────────────────────────────────────────────
@@ -1414,6 +1464,9 @@ const game = {
     falloutZones: [],             // { id, endTime } array for radiation zones
     nukeZones: [],               // { center, radius, expiresAt } crater visuals
     nuclearThreats: [],           // track players who used nukes for prestige
+    nukeInventory: 0,             // nukes ready to fire (server-authoritative)
+    nukeManufacturing: null,      // { completesAt } if currently manufacturing
+    activeLaunches: [],           // { id, attackerName, attackerAvatar, attackerPhoto, targetCellId, detonatesAt }
 
     // ── Buy-in / run entry ───────────────────────────────────────────────────
     // Every player (human or bot) pays this once to enter a run.
@@ -2954,6 +3007,22 @@ function placeOrSelect(id) {
     } else if (game.selectedMode === 'strike') {
         // Strike mode: target enemy buildings in AoE
         executeNuclearStrike(id);
+    } else if (game.selectedMode === 'nuke_drop') {
+        // Direct nuke drop — fire at any cell
+        if (game.nukeInventory <= 0) {
+            addNotification('warning', '⚠️ No nukes in inventory.');
+            game.selectedMode = null;
+            updateNukeHUD();
+            return;
+        }
+        if (socket?.connected && _authJWT) {
+            socket.emit('nuke:launch', { jwt: _authJWT, targetCellId: id });
+            game.selectedMode = null;
+            updateNukeHUD();
+        } else {
+            addNotification('danger', '⚠️ Not connected to server.');
+        }
+        return;
     } else if (game.selectedMode === 'hireSurveyor') {
         if (socket?.connected && _authJWT) {
             socket.emit('surveyor:hire', { jwt: _authJWT, cellId: id });
@@ -3185,7 +3254,7 @@ function showSabotageMenu(cellId) {
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.8);
     `;
 
-    const completedSilo = game.buildings.find(b => b.type === 'silo' && !b.isUnderConstruction);
+    const nukeAvailable = game.nukeInventory > 0;
     const tempDisableCost = 300;
     const stealCost = 500;
     const nukeCost = Math.floor(game.playerWallet * 0.05);
@@ -3226,8 +3295,8 @@ function showSabotageMenu(cellId) {
     };
     menu.appendChild(stealOption);
 
-    // Option 3: Nuclear Strike (only if silo exists)
-    if (completedSilo) {
+    // Option 3: Nuclear Strike (only if nuke in inventory)
+    if (nukeAvailable) {
         const nukeOption = document.createElement('div');
         nukeOption.style.cssText = `
             padding: 10px 14px;
@@ -3235,7 +3304,7 @@ function showSabotageMenu(cellId) {
             color: #fff;
             transition: background 0.1s;
         `;
-        nukeOption.innerHTML = `<div style="font-weight:600; color:#ff4444;">💥 NUKE</div><div style="font-size:12px; color:#aaa; margin-top:2px;">Destroy in AoE + fallout (costs $${nukeCost})</div>`;
+        nukeOption.innerHTML = `<div style="font-weight:600; color:#ff4444;">☢️ NUKE</div><div style="font-size:12px; color:#aaa; margin-top:2px;">Destroy in AoE + fallout (costs $${nukeCost}) &bull; ${game.nukeInventory}x ready</div>`;
         nukeOption.onmouseover = () => nukeOption.style.background = 'rgba(255, 0, 0, 0.2)';
         nukeOption.onmouseout = () => nukeOption.style.background = '';
         nukeOption.onclick = () => {
@@ -3250,7 +3319,8 @@ function showSabotageMenu(cellId) {
             color: #666;
             border-bottom: none;
         `;
-        nukeOption.innerHTML = `<div style="font-weight:600; color:#666;">💥 NUKE (Locked)</div><div style="font-size:12px; color:#555; margin-top:2px;">Requires completed Silo</div>`;
+        const hasSilo = game.buildings.find(b => b.type === 'silo' && !b.isUnderConstruction);
+        nukeOption.innerHTML = `<div style="font-weight:600; color:#666;">☢️ NUKE (Locked)</div><div style="font-size:12px; color:#555; margin-top:2px;">${hasSilo ? 'Manufacture a nuke in your Silo first' : 'Requires completed Silo + manufactured nuke'}</div>`;
         menu.appendChild(nukeOption);
     }
 
@@ -3486,68 +3556,251 @@ function executeStealResources(cellId, cost) {
 }
 
 /**
- * Execute a nuclear strike on target cell
- * Destroys all enemy buildings within AoE radius + applies radiation fallout
+ * Execute a nuclear strike on target cell via sabotage popup.
+ * Requires a nuke in inventory; server handles countdown + detonation.
  */
 function executeNuclearStrike(targetId) {
-    // Check cooldown
-    if (game.dayStrikes >= game.maxSilosPerRound) {
-        console.warn('Strike cooldown active');
-        addNotification('warning', '⚠️ Nuclear strike on cooldown. Strike limit reached.');
-        return;
-    }
-    
-    // Check for completed silo available
-    const completedSilo = game.buildings.find(b => b.type === 'silo' && !b.isUnderConstruction);
-    if (!completedSilo) {
-        console.warn('No completed silo available');
+    if (game.nukeInventory <= 0) {
+        addNotification('warning', '⚠️ No nukes in inventory. Manufacture one in your Silo.');
         return;
     }
 
     if (socket?.connected && _authJWT) {
-        if (typeof NukeSounds !== 'undefined') NukeSounds.nuclear();
         socket.emit('sabotage:execute', { jwt: _authJWT, cellId: targetId, attackType: 'nuke' });
-        game.dayStrikes++;
         game.selectedMode = null;
         return;
     }
 
-    // Strike cost: 40-60% of current wallet
-    const costPercent = 0.5; // 50% for balanced gameplay
-    const strikeCost = Math.floor(game.playerWallet * costPercent);
-    
-    if (game.playerWallet < strikeCost) {
-        console.warn('Insufficient funds for nuclear strike');
-        return;
-    }
-    
-    // Deduct cost
-    game.playerWallet -= strikeCost;
-    game.tokensBurned += strikeCost;
-    game.prizePool += Math.floor(strikeCost * 0.10);
-    game.market.tokenPool = Math.max(1, game.market.tokenPool - strikeCost / game.market.poolBurnRate);
-    game._walletShown = game.playerWallet;
-    game._walletMarketBaseline = game.market.price;
-    const _wEl3 = document.getElementById('wallet');
-    if (_wEl3) showFloatingText('-' + strikeCost.toLocaleString(), '#ff6b6b', _wEl3);
-    
-    // Execute strike
-    triggerNuclearExplosion(targetId);
-    
-    // Update tracking
-    game.dayStrikes++;
-    const playerName = game.players.find(p => p.isLocal)?.name || 'YOU';
-    if (!game.nuclearThreats.includes(playerName)) {
-        game.nuclearThreats.push(playerName);
-    }
-    
+    console.warn('[nuke] Not connected to server, cannot launch');
+    addNotification('warning', '⚠️ Cannot launch — not connected to server.');
     game.selectedMode = null;
-    updateUI();
 }
 
 /**
  * Trigger explosion and AoE destruction
  */
+// ─── Nuke HUD + countdown logic ──────────────────────────────────────────────
+
+/**
+ * Handle a nuke detonation broadcast from the server.
+ * Mirrors the nuke branch of the old sabotage:applied handler.
+ */
+function handleNukeDetonation({ launchId, cellId, attackerId, attackerName, destroyedCells, falloutRadius, falloutDuration, failed }) {
+    if (failed) return;
+
+    const myId = getLocalPlayerId();
+    const isMe = attackerId === myId;
+
+    if (Array.isArray(destroyedCells)) {
+        destroyedCells.forEach(cId => {
+            const eIdx = game.enemyBuildings.findIndex(e => e.id === cId);
+            if (eIdx !== -1) game.enemyBuildings.splice(eIdx, 1);
+            const oIdx = game.buildings.findIndex(b => b.id === cId);
+            if (oIdx !== -1) game.buildings.splice(oIdx, 1);
+            const cellEl = document.querySelector('[data-id="' + cId + '"]');
+            if (cellEl) {
+                ['mine', 'processor', 'storage', 'plant', 'silo', 'queued-ghost'].forEach(cls => cellEl.classList.remove(cls));
+                cellEl.innerHTML = '';
+                cellEl.classList.add('nuke-crater');
+                setTimeout(() => cellEl.classList.remove('nuke-crater'), 2000);
+            }
+        });
+    }
+
+    // Create fallout zone locally
+    const blastRadius = falloutRadius || 4;
+    const expiresAt = Date.now() + (falloutDuration || 120000);
+    game.nukeZones.push({ center: cellId, radius: blastRadius, expiresAt });
+    updateFalloutVisualization();
+    calculateProximity();
+
+    if (isMe) {
+        addNotification('success', `☢️ NUKE detonated! ${(destroyedCells || []).length} building(s) destroyed.`);
+    } else {
+        const hits = (destroyedCells || []).filter(cId => game.buildings.find(b => b.id === cId)).length;
+        if (hits > 0) {
+            addNotification('danger', `☢️ ${attackerName} nuked you! ${hits} building(s) destroyed!`);
+        } else {
+            addNotification('warning', `☢️ ${attackerName} launched a nuke nearby — fallout zone active.`);
+        }
+    }
+    updateUI();
+}
+
+/**
+ * Update the nuke HUD panel (inventory count, manufacture progress, drop mode).
+ */
+function updateNukeHUD() {
+    const hud = document.getElementById('nuke-hud');
+    if (!hud) return;
+
+    const hasSilo = game.buildings.some(b => b.type === 'silo' && !b.isUnderConstruction);
+    const inv = game.nukeInventory || 0;
+    const mfg = game.nukeManufacturing;
+    const isDropMode = game.selectedMode === 'nuke_drop';
+
+    let html = '';
+
+    // Inventory display
+    html += `<div class="nuke-hud-inv" title="${inv > 0 ? 'Click to enter drop-targeting mode' : 'No nukes — manufacture first'}"
+        style="cursor:${inv > 0 ? 'pointer' : 'default'}; opacity:${inv > 0 ? '1' : '0.45'};"
+        id="nukeInvBtn">`;
+    html += `<span style="font-size:18px;">☢️</span> <span style="font-weight:700;font-size:15px;color:${inv > 0 ? '#ff4444' : '#888'};">× ${inv}</span>`;
+    if (isDropMode) html += ` <span style="color:#ffb84d;font-size:11px;font-weight:700;"> ← pick target</span>`;
+    html += '</div>';
+
+    // Manufacture progress / button
+    if (mfg) {
+        const remaining = Math.max(0, new Date(mfg.completesAt).getTime() - (serverNow ? serverNow() : Date.now()));
+        const secs = Math.ceil(remaining / 1000);
+        html += `<div class="nuke-hud-mfg" title="Manufacturing in progress">
+            <span style="color:#ffa500;font-size:11px;">⚙️ Arming warhead… ${secs}s</span>
+        </div>`;
+    } else if (hasSilo && socket?.connected) {
+        html += `<div id="nukeMfgBtn" class="nuke-hud-mfg-btn" title="Manufacture a nuke in your Silo">
+            <span style="font-size:11px;color:#aaa;">⚙️ Manufacture</span>
+        </div>`;
+    }
+
+    hud.innerHTML = html;
+    hud.style.display = (hasSilo || inv > 0) ? 'flex' : 'none';
+    hud.style.borderColor = isDropMode ? '#ff4444' : '#333';
+    hud.style.boxShadow = isDropMode ? '0 0 10px rgba(255,68,68,0.5)' : '';
+
+    // Wire events
+    const invBtn = document.getElementById('nukeInvBtn');
+    if (invBtn) {
+        invBtn.onclick = () => {
+            if (inv <= 0) return;
+            if (game.selectedMode === 'nuke_drop') {
+                game.selectedMode = null;
+            } else {
+                game.selectedMode = 'nuke_drop';
+                addNotification('info', '☢️ DROP MODE: Click any cell to launch your nuke.');
+            }
+            updateNukeHUD();
+        };
+    }
+    const mfgBtn = document.getElementById('nukeMfgBtn');
+    if (mfgBtn) {
+        mfgBtn.onclick = () => {
+            if (socket?.connected && _authJWT) {
+                socket.emit('nuke:manufacture', { jwt: _authJWT });
+            }
+        };
+    }
+}
+
+/**
+ * Show the countdown overlay for an incoming nuke launch.
+ * Shown on every player's screen.
+ */
+function showNukeCountdown(launch) {
+    const { id, attackerName, attackerAvatar, attackerPhoto, targetCellId, detonatesAt, countdownMs } = launch;
+    const ovId = 'nuke-countdown-' + id;
+    if (document.getElementById(ovId)) return; // already showing
+
+    const overlay = document.createElement('div');
+    overlay.id = ovId;
+    overlay.style.cssText = `
+        position: fixed;
+        top: 0; left: 0; right: 0;
+        z-index: 9000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding-top: 12px;
+        pointer-events: none;
+    `;
+
+    // Avatar/photo
+    const avatarHtml = attackerPhoto
+        ? `<img src="${attackerPhoto}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid #ff4444;vertical-align:middle;" />`
+        : `<span style="font-size:28px;vertical-align:middle;">${attackerAvatar || '☢️'}</span>`;
+
+    const header = document.createElement('div');
+    header.style.cssText = `
+        background: rgba(20,0,0,0.92);
+        border: 1px solid #ff4444;
+        border-radius: 6px;
+        padding: 8px 16px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        box-shadow: 0 0 24px rgba(255,68,68,0.4);
+        margin-bottom: 6px;
+    `;
+    header.innerHTML = `${avatarHtml}
+        <div>
+            <div style="font-size:11px;letter-spacing:2px;color:#ff6666;font-weight:700;">⚡ INCOMING NUCLEAR LAUNCH ⚡</div>
+            <div style="font-size:13px;color:#ffb84d;font-weight:600;">${attackerName} has initiated a nuclear strike</div>
+            <div style="font-size:11px;color:#ff8888;">ALL UNITS SEEK COVER — IMPACT IN:</div>
+        </div>`;
+    overlay.appendChild(header);
+
+    const countEl = document.createElement('div');
+    countEl.style.cssText = `
+        font-family: 'Courier New', monospace;
+        font-weight: 900;
+        font-size: 72px;
+        color: #ff4444;
+        text-shadow: 0 0 20px #ff0000, 0 0 40px #ff0000;
+        letter-spacing: -4px;
+        line-height: 1;
+        transition: color 0.3s, font-size 0.2s;
+    `;
+    overlay.appendChild(countEl);
+    document.body.appendChild(overlay);
+
+    const detonateMs = new Date(detonatesAt).getTime();
+    let lastSec = -1;
+
+    function tick() {
+        const now = serverNow ? serverNow() : Date.now();
+        const remaining = Math.max(0, detonateMs - now);
+        const secs = Math.ceil(remaining / 1000);
+
+        if (secs !== lastSec) {
+            lastSec = secs;
+            countEl.textContent = secs;
+
+            // Color ramp: ≥10s green → 5-9s yellow → 1-4s red + grow
+            if (secs >= 10) {
+                countEl.style.color = '#44ff88';
+                countEl.style.textShadow = '0 0 20px #00ff66';
+                countEl.style.fontSize = '72px';
+            } else if (secs >= 5) {
+                const t = (10 - secs) / 5; // 0..1
+                countEl.style.color = `rgb(${Math.round(68 + 187 * t)}, ${Math.round(255 - 211 * t)}, 68)`;
+                countEl.style.textShadow = '0 0 20px #ffaa00';
+                countEl.style.fontSize = '88px';
+            } else if (secs > 0) {
+                countEl.style.color = '#ff2222';
+                countEl.style.textShadow = '0 0 30px #ff0000, 0 0 60px #ff0000';
+                countEl.style.fontSize = `${108 + (5 - secs) * 8}px`;
+                // Pulse animation
+                countEl.style.transform = 'scale(1.05)';
+                setTimeout(() => { if (countEl) countEl.style.transform = 'scale(1)'; }, 150);
+            } else {
+                // Detonate!
+                countEl.textContent = '💥';
+                countEl.style.fontSize = '140px';
+                countEl.style.color = '#ff8800';
+                countEl.style.textShadow = '0 0 60px #ffaa00';
+                setTimeout(() => {
+                    if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                }, 1200);
+                return;
+            }
+        }
+
+        if (remaining > 0) {
+            requestAnimationFrame(tick);
+        }
+    }
+    requestAnimationFrame(tick);
+}
+
 function triggerNuclearExplosion(centerId) {
     const strikeRadius = 4; // cells
     const coords = getCoords(centerId);

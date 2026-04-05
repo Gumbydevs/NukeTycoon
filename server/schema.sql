@@ -109,6 +109,33 @@ CREATE TABLE IF NOT EXISTS run_player_state (
 );
 CREATE INDEX IF NOT EXISTS idx_run_player_state_run_player ON run_player_state(run_id, player_id);
 ALTER TABLE run_player_state ADD COLUMN IF NOT EXISTS discovered_deposits JSONB DEFAULT '[]';
+ALTER TABLE run_player_state ADD COLUMN IF NOT EXISTS nuke_inventory INTEGER DEFAULT 0;
+
+-- ── Nuke manufacture queue (per player, per run) ─────────────────────────────
+CREATE TABLE IF NOT EXISTS nuke_manufacture (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    run_id          UUID NOT NULL REFERENCES runs(id),
+    player_id       UUID NOT NULL REFERENCES players(id),
+    silo_id         UUID NOT NULL REFERENCES buildings(id),
+    completes_at    TIMESTAMPTZ NOT NULL,
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_nuke_manufacture_run_player ON nuke_manufacture(run_id, player_id, completes_at);
+
+-- ── Nuke launches (countdown tracking, server-authoritative) ─────────────────
+CREATE TABLE IF NOT EXISTS nuke_launches (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    run_id          UUID NOT NULL REFERENCES runs(id),
+    attacker_id     UUID NOT NULL REFERENCES players(id),
+    attacker_name   TEXT NOT NULL,
+    attacker_avatar TEXT,
+    attacker_photo  TEXT,
+    target_cell_id  INTEGER NOT NULL,
+    detonates_at    TIMESTAMPTZ NOT NULL,
+    status          TEXT DEFAULT 'pending',  -- pending | detonated | aborted
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_nuke_launches_pending ON nuke_launches(run_id, status, detonates_at);
 
 -- ── Surveyor units (fog-of-war deposit discovery) ────────────────────────────
 CREATE TABLE IF NOT EXISTS surveyors (

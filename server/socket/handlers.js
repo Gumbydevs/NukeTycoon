@@ -1,6 +1,6 @@
 const { sendOTP, verifyOTP, verifyJWT, generateJWT, signupWithPassword, loginWithPassword } = require('../auth');
 const db = require('../db');
-const { getActiveRun, getRunSnapshot, ensureRunPlayerState, BUILDING_RULES, getBuyIn, getBuildSlots, getMarketPoolBurnRate, getGridSize, getSabotageConfig, getProductionConfig, emitRunSnapshot, getSurveyorConfig, getDepositsForRun } = require('../gameLoop');
+const { getActiveRun, getRunSnapshot, ensureRunPlayerState, BUILDING_RULES, getBuyIn, getBuildSlots, getMarketPoolBurnRate, getGridSize, getSabotageConfig, getNukeConfig, detonateNukeLaunch, getProductionConfig, emitRunSnapshot, getSurveyorConfig, getDepositsForRun } = require('../gameLoop');
 
 const DEFAULT_AVATAR = '☢️';
 const VALID_AVATARS = new Set(['☢️', '🧑‍🚀', '👩‍🔬', '👨‍🔬', '🤖', '🦊', '🐺', '🐉']);
@@ -909,6 +909,158 @@ function registerHandlers(io, socket) {
 
     // ── SABOTAGE ──────────────────────────────────────────────────────────────
 
+    // ── NUKE MANUFACTURE ─────────────────────────────────────────────────────
+    // Player initiates manufacture of one nuke in their silo. Free to start
+    // (silo maintenance already represents the running cost). One manufacture
+    // at a time per player. Completion is handled by processNukeManufactures
+    // in the game tick so it survives server restarts.
+    socket.on('nuke:manufacture', async ({ jwt }, ack) => {
+        await requireAuth(socket, jwt, async (decoded, player) => {
+            const run = await getActiveRun();
+            if (!run) {
+                socket.emit('error', { message: 'No active run.' });
+                if (typeof ack === 'function') ack({ ok: false, error: 'No active run.' });
+                return;
+            }
+            const membership = await db.query(
+                'SELECT id FROM run_players WHERE run_id = $1 AND player_id = $2',
+                [run.id, player.id]
+            );
+            if (membership.rows.length === 0) {
+                socket.emit('error', { message: 'You are not in this run.' });
+                if (typeof ack === 'function') ack({ ok: false, error: 'Not in run.' });
+                return;
+            }
+            // Must have a completed silo
+            const siloRes = await db.query(
+                `SELECT id FROM buildings
+                 WHERE run_id = $1 AND player_id = $2 AND type = 'silo' AND is_active = TRUE
+                   AND (construction_ends_at IS NULL OR construction_ends_at <= NOW())
+                 LIMIT 1`,
+                [run.id, player.id]
+            );
+            if (siloRes.rows.length === 0) {
+                socket.emit('error', { message: 'A completed Silo is required to manufacture nukes.' });
+                if (typeof ack === 'function') ack({ ok: false, error: 'No completed silo.' });
+                return;
+            }
+            const siloId = siloRes.rows[0].id;
+            // Check not already manufacturing
+            const inProgressRes = await db.query(
+                'SELECT id FROM nuke_manufacture WHERE run_id = $1 AND player_id = $2 AND completes_at > NOW()',
+                [run.id, player.id]
+            );
+            if (inProgressRes.rows.length > 0) {
+                socket.emit('error', { message: 'Already manufacturing a nuke. Wait for it to complete.' });
+                if (typeof ack === 'function') ack({ ok: false, error: 'Already manufacturing.' });
+                return;
+            }
+            const nukeCfg = getNukeConfig();
+            const manufactureMs = nukeCfg.manufactureMs || 120000;
+            const completesAt = new Date(Date.now() + manufactureMs);
+            await db.query(
+                `INSERT INTO nuke_manufacture (run_id, player_id, silo_id, completes_at)
+                 VALUES ($1, $2, $3, $4)`,
+                [run.id, player.id, siloId, completesAt]
+            );
+            socket.emit('nuke:manufacture_started', { completesAt: completesAt.toISOString(), manufactureMs });
+            if (typeof ack === 'function') ack({ ok: true, completesAt: completesAt.toISOString() });
+            console.log(`[nuke] manufacture started player=${player.username} completesAt=${completesAt.toISOString()}`);
+        });
+    });
+
+    // ── NUKE LAUNCH (direct cell drop — any cell) ─────────────────────────────
+    // Player fires a nuke from their inventory at any grid cell.
+    socket.on('nuke:launch', async ({ jwt, targetCellId }, ack) => {
+        await requireAuth(socket, jwt, async (decoded, player) => {
+            if (typeof targetCellId !== 'number' || targetCellId < 0 || targetCellId > 399) {
+                socket.emit('error', { message: 'Invalid target cell.' });
+                if (typeof ack === 'function') ack({ ok: false, error: 'Invalid cell.' });
+                return;
+            }
+            const run = await getActiveRun();
+            if (!run) {
+                socket.emit('error', { message: 'No active run.' });
+                if (typeof ack === 'function') ack({ ok: false, error: 'No active run.' });
+                return;
+            }
+            const membership = await db.query(
+                'SELECT id FROM run_players WHERE run_id = $1 AND player_id = $2',
+                [run.id, player.id]
+            );
+            if (membership.rows.length === 0) {
+                socket.emit('error', { message: 'You are not in this run.' });
+                if (typeof ack === 'function') ack({ ok: false, error: 'Not in run.' });
+                return;
+            }
+            await ensureRunPlayerState(run.id, player.id);
+            const stateRes = await db.query(
+                'SELECT nuke_inventory FROM run_player_state WHERE run_id = $1 AND player_id = $2',
+                [run.id, player.id]
+            );
+            const inventory = parseInt(stateRes.rows[0]?.nuke_inventory, 10) || 0;
+            if (inventory <= 0) {
+                socket.emit('error', { message: 'No nukes in inventory. Manufacture one first.' });
+                if (typeof ack === 'function') ack({ ok: false, error: 'No inventory.' });
+                return;
+            }
+            const bal = parseInt(player.token_balance, 10);
+            const sabotageCfg = getSabotageConfig();
+            const cost = Math.floor(bal * (sabotageCfg.nukeCostPct || 0.05));
+            if (bal < cost && cost > 0) {
+                socket.emit('error', { message: 'Not enough tokens.' });
+                if (typeof ack === 'function') ack({ ok: false, error: 'Insufficient funds.' });
+                return;
+            }
+            // Decrement inventory
+            await db.query(
+                'UPDATE run_player_state SET nuke_inventory = nuke_inventory - 1, updated_at = NOW() WHERE run_id = $1 AND player_id = $2',
+                [run.id, player.id]
+            );
+            // Deduct cost
+            if (cost > 0) {
+                await db.query('UPDATE players SET token_balance = token_balance - $1 WHERE id = $2', [cost, player.id]);
+                const contrib = Math.floor(cost * 0.10);
+                await db.query(
+                    `UPDATE runs SET prize_pool = prize_pool + $1, tokens_burned = tokens_burned + $2,
+                     market_token_pool = GREATEST(1, market_token_pool - $3) WHERE id = $4`,
+                    [contrib, cost, cost / getMarketPoolBurnRate(), run.id]
+                );
+            }
+            const nukeCfg = getNukeConfig();
+            const countdownMs = nukeCfg.countdownMs || 15000;
+            const detonatesAt = new Date(Date.now() + countdownMs);
+            const launchRes = await db.query(
+                `INSERT INTO nuke_launches (run_id, attacker_id, attacker_name, attacker_avatar, attacker_photo, target_cell_id, detonates_at)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+                [run.id, player.id, player.username, player.avatar || '\u2622\ufe0f', player.avatar_photo || null, targetCellId, detonatesAt]
+            );
+            const launchId = launchRes.rows[0].id;
+            const incomingPayload = {
+                id: launchId,
+                attackerName:  player.username,
+                attackerAvatar: player.avatar || '\u2622\ufe0f',
+                attackerPhoto: player.avatar_photo || null,
+                targetCellId,
+                detonatesAt: detonatesAt.toISOString(),
+                countdownMs,
+            };
+            io.to(`run:${run.id}`).emit('nuke:incoming', incomingPayload);
+            if (cost > 0) socket.emit('player:wallet_update', { token_balance: bal - cost });
+            if (typeof ack === 'function') ack({ ok: true, launchId, detonatesAt: detonatesAt.toISOString() });
+            // Schedule detonation
+            setTimeout(async () => {
+                try {
+                    await detonateNukeLaunch(io, run, { id: launchId, attacker_id: player.id, attacker_name: player.username, target_cell_id: targetCellId });
+                    await emitRunEconomy(io, run.id);
+                } catch (e) { console.warn('[nuke] detonation timer error:', e.message); }
+            }, countdownMs);
+            console.log(`[nuke] launch queued player=${player.username} cell=${targetCellId} detonatesAt=${detonatesAt.toISOString()}`);
+        });
+    });
+
+    // ── SABOTAGE ──────────────────────────────────────────────────────────────
+
     socket.on('sabotage:execute', async ({ jwt, cellId, attackType }) => {
         await requireAuth(socket, jwt, async (decoded, player) => {
             const VALID_ATTACKS = ['disable', 'steal', 'nuke'];
@@ -972,23 +1124,15 @@ function registerHandlers(io, socket) {
             const strikesUsedToday = parseInt(stateResult.rows[0]?.strikes_used_today, 10) || 0;
 
             if (attackType === 'nuke') {
-                if (strikesUsedToday >= (sabotageCfg.strikeLimitPerDay || 1)) {
-                    socket.emit('error', { message: 'Nuclear strike limit reached for today.' });
-                    return;
-                }
-
-                const siloReady = await db.query(
-                    `SELECT id FROM buildings
-                     WHERE run_id = $1
-                       AND player_id = $2
-                       AND type = 'silo'
-                       AND is_active = TRUE
-                       AND (construction_ends_at IS NULL OR construction_ends_at <= NOW())
-                     LIMIT 1`,
+                // Nuke requires inventory item
+                await ensureRunPlayerState(run.id, player.id);
+                const nukeInvRes = await db.query(
+                    'SELECT nuke_inventory FROM run_player_state WHERE run_id = $1 AND player_id = $2',
                     [run.id, player.id]
                 );
-                if (siloReady.rows.length === 0) {
-                    socket.emit('error', { message: 'A completed Silo is required before launching a nuke.' });
+                const nukeInv = parseInt(nukeInvRes.rows[0]?.nuke_inventory, 10) || 0;
+                if (nukeInv <= 0) {
+                    socket.emit('error', { message: 'No nukes in inventory. Manufacture one in your Silo first.' });
                     return;
                 }
             }
@@ -1093,40 +1237,44 @@ function registerHandlers(io, socket) {
                 payload.stolenAmount = stolenAmount;
 
             } else if (attackType === 'nuke') {
-                // Destroy all enemy buildings within Manhattan distance equal to configured fallout radius
-                const allEnemyBuildings = await db.query(
-                    'SELECT * FROM buildings WHERE run_id = $1 AND is_active = TRUE AND player_id != $2',
+                // Decrement inventory and start countdown — actual blast fires after countdown
+                await db.query(
+                    'UPDATE run_player_state SET nuke_inventory = nuke_inventory - 1, updated_at = NOW() WHERE run_id = $1 AND player_id = $2',
                     [run.id, player.id]
                 );
-                const destroyed = [];
-                const falloutRadius = sabotageCfg.nukeFalloutRadius || 4;
-                for (const b of allEnemyBuildings.rows) {
-                    if (gridDist(b.cell_id, cellId) <= falloutRadius) {
-                        await db.query(
-                            'UPDATE buildings SET is_active = FALSE, destroyed_at = NOW() WHERE id = $1',
-                            [b.id]
-                        );
-                        destroyed.push(b.cell_id);
-                    }
-                }
-                const falloutDurationMs = sabotageCfg.nukeFalloutDurationMs || 120000;
-                await db.query(
-                    `INSERT INTO fallout_zones (run_id, created_by, center_cell_id, radius, multiplier, expires_at)
-                     VALUES ($1, $2, $3, $4, $5, $6)`,
-                    [run.id, player.id, cellId, 5, 0.5, new Date(Date.now() + falloutDurationMs)]
+                const nukeCfg = getNukeConfig();
+                const countdownMs = nukeCfg.countdownMs || 15000;
+                const detonatesAt = new Date(Date.now() + countdownMs);
+                const launchRes = await db.query(
+                    `INSERT INTO nuke_launches (run_id, attacker_id, attacker_name, attacker_avatar, attacker_photo, target_cell_id, detonates_at)
+                     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+                    [run.id, player.id, player.username, player.avatar || '\u2622\ufe0f', player.avatar_photo || null, cellId, detonatesAt]
                 );
-                await db.query(
-                    `UPDATE run_player_state
-                     SET strikes_used_today = strikes_used_today + 1,
-                         used_nuke = TRUE,
-                         updated_at = NOW()
-                     WHERE run_id = $1 AND player_id = $2`,
-                    [run.id, player.id]
-                );
-
-                payload.destroyedCells  = destroyed;
-                payload.falloutRadius   = falloutRadius;
-                payload.falloutDuration = falloutDurationMs; // ms — clients animate fallout locally
+                const launchId = launchRes.rows[0].id;
+                payload.launchId = launchId;
+                payload.detonatesAt = detonatesAt.toISOString();
+                payload.countdownMs = countdownMs;
+                // Broadcast incoming alert to everyone NOW (before blast)
+                io.to(`run:${run.id}`).emit('nuke:incoming', {
+                    id: launchId,
+                    attackerName:  player.username,
+                    attackerAvatar: player.avatar || '\u2622\ufe0f',
+                    attackerPhoto: player.avatar_photo || null,
+                    targetCellId: cellId,
+                    detonatesAt: detonatesAt.toISOString(),
+                    countdownMs,
+                });
+                socket.emit('player:wallet_update', { token_balance: bal - cost });
+                await emitRunEconomy(io, run.id);
+                // Schedule blast
+                const capturedRun = run;
+                setTimeout(async () => {
+                    try {
+                        await detonateNukeLaunch(io, capturedRun, { id: launchId, attacker_id: player.id, attacker_name: player.username, target_cell_id: cellId });
+                        await emitRunEconomy(io, capturedRun.id);
+                    } catch (e) { console.warn('[nuke] sabotage detonation timer error:', e.message); }
+                }, countdownMs);
+                return; // Skip the normal sabotage:applied broadcast for nukes
             }
 
             // Broadcast to entire run room (everyone sees the attack)

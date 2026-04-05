@@ -575,6 +575,7 @@ body.mobile-menu-open .dropdown { display: none !important; }
     margin: 8px auto 40px; /* center and give bottom breathing room */
     position: relative; /* needed for #surveyor-overlay absolute positioning */
     z-index: 1;
+    background: #0d0d0d; /* block particle canvas showing through cell gaps */
 }
 
 .cell {
