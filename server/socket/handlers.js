@@ -16,6 +16,37 @@ function gridDist(a, b) {
     return Math.abs((a % cols) - (b % cols)) + Math.abs(Math.floor(a / cols) - Math.floor(b / cols));
 }
 
+/**
+ * Insert a warning notification into the DB for every player currently
+ * enrolled in a run, excluding the attacker. Used for run-wide alerts
+ * (e.g. nuke incoming) so offline players see it on relog.
+ */
+async function notifyAllRunPlayers(runId, attackerId, type, msg, extraPayload = {}) {
+    try {
+        const playersRes = await db.query(
+            `SELECT rp.player_id, p.email
+             FROM run_players rp
+             JOIN players p ON p.id = rp.player_id
+             WHERE rp.run_id = $1`,
+            [runId]
+        );
+        for (const row of playersRes.rows) {
+            if (row.player_id === attackerId) continue; // attacker doesn't need an alert about their own nuke
+            try {
+                const email = (row.email || '').toLowerCase();
+                await db.query(
+                    `INSERT INTO notifications (run_id, player_id, email, type, payload)
+                     VALUES ($1,$2,$3,$4,$5)`,
+                    [runId, row.player_id, email, type,
+                     JSON.stringify({ msg, ...extraPayload, ts: Date.now() })]
+                );
+            } catch (_) { /* non-critical per-player */ }
+        }
+    } catch (e) {
+        console.warn('[notifyAllRunPlayers] failed:', e.message);
+    }
+}
+
 // Authenticate every sensitive event with the JWT sent in the payload
 async function requireAuth(socket, jwt, cb) {
     const decoded = verifyJWT(jwt);
@@ -1046,6 +1077,12 @@ function registerHandlers(io, socket) {
                 countdownMs,
             };
             io.to(`run:${run.id}`).emit('nuke:incoming', incomingPayload);
+            // Persist nuke-incoming alert for every run player so offline players see it on relog
+            notifyAllRunPlayers(
+                run.id, player.id, 'danger',
+                `☢️ ${player.username} launched a NUKE! Impact in ~${Math.round((nukeCfg.countdownMs || 15000) / 1000)}s.`,
+                { attackerName: player.username, targetCellId, launchId, attackType: 'nuke' }
+            );
             if (cost > 0) socket.emit('player:wallet_update', { token_balance: bal - cost });
             if (typeof ack === 'function') ack({ ok: true, launchId, detonatesAt: detonatesAt.toISOString() });
             // Schedule detonation
@@ -1264,6 +1301,12 @@ function registerHandlers(io, socket) {
                     detonatesAt: detonatesAt.toISOString(),
                     countdownMs,
                 });
+                // Persist nuke-incoming alert for every run player so offline players see it on relog
+                notifyAllRunPlayers(
+                    run.id, player.id, 'danger',
+                    `☢️ ${player.username} launched a NUKE! Impact in ~${Math.round((countdownMs || 15000) / 1000)}s.`,
+                    { attackerName: player.username, targetCellId: cellId, launchId, attackType: 'nuke' }
+                );
                 socket.emit('player:wallet_update', { token_balance: bal - cost });
                 await emitRunEconomy(io, run.id);
                 // Schedule blast

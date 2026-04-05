@@ -870,19 +870,21 @@ body.mobile-menu-open .dropdown { display: none !important; }
     position: fixed;
     left: 10px;
     top: 62px;
-    width: 44px;
-    height: 44px;
+    width: 32px;
+    height: 32px;
     background: #111;
     border: 1px solid #333;
     color: #fff;
     font-weight: 700;
-    font-size: 18px;
+    font-size: 14px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     z-index: 120;
     cursor: pointer;
     border-radius: 4px; /* square with slight radius */
+    padding: 0;
+    line-height: 1;
 }
 .legend-toggle:focus { outline: 2px solid rgba(255,184,77,0.6); }
 

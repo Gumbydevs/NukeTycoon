@@ -3582,25 +3582,22 @@ function executeNuclearStrike(targetId) {
 // ─── Nuke HUD + countdown logic ──────────────────────────────────────────────
 
 /**
- * Top-down canvas explosion overlay for a nuke detonation.
- * Renders expanding shockwave → fireball → toroidal smoke ring → cloud puffs → dissipation.
- * Positioned over the grid-area so it scrolls correctly with the grid.
+ * Top-down canvas explosion overlay — faithful to the landing page mushroom cloud.
+ * Same colour palette and layer structure (base fire, fire core, shockwave,
+ * cap torus + cauliflower lobes, outer smoke) viewed from directly above.
  */
 function spawnNukeExplosionOverlay(cellId) {
-    const cellEl = document.querySelector('[data-id="' + cellId + '"]');
+    const cellEl  = document.querySelector('[data-id="' + cellId + '"]');
     const gridArea = document.querySelector('.grid-area');
     if (!cellEl || !gridArea) return;
 
     const cellRect = cellEl.getBoundingClientRect();
     const areaRect = gridArea.getBoundingClientRect();
+    const cx = (cellRect.left + cellRect.right)  / 2 - areaRect.left + gridArea.scrollLeft;
+    const cy = (cellRect.top  + cellRect.bottom) / 2 - areaRect.top  + gridArea.scrollTop;
+    const cs = cellRect.width; // one cell width in px
 
-    // Center of target cell relative to scrollable grid-area content
-    const cx = (cellRect.left + cellRect.right) / 2 - areaRect.left + gridArea.scrollLeft;
-    const cy = (cellRect.top + cellRect.bottom) / 2 - areaRect.top + gridArea.scrollTop;
-    const cs = cellRect.width; // cell size in px
-
-    // Canvas needs to be big enough to contain the full blast (radius ~5 cells)
-    const canvasR = cs * 5.5;
+    const canvasR = cs * 6.5;
     const canvasSz = canvasR * 2;
 
     const canvas = document.createElement('canvas');
@@ -3616,129 +3613,183 @@ function spawnNukeExplosionOverlay(cellId) {
     gridArea.appendChild(canvas);
 
     const ctx   = canvas.getContext('2d');
-    const ox    = canvasSz / 2;   // canvas centre x / y
+    const ox    = canvasSz / 2;
     const oy    = canvasSz / 2;
     const START = performance.now();
-    const TOTAL = 3800; // ms
+    const TOTAL = 4600; // ms — longer to match the slow billow of the landing cloud
 
-    // Pre-build 14 cloud puffs spread around the toroidal smoke ring
-    const PUFFS = Array.from({ length: 14 }, (_, i) => ({
-        baseAngle: (i / 14) * Math.PI * 2,
-        size: cs * (0.55 + Math.random() * 0.35),
-        radOffset: cs * (-0.2 + Math.random() * 0.4),
-    }));
+    // Easing helpers matching CSS cubic-bezier feel
+    function easeOut3(t) { return 1 - Math.pow(1 - t, 3); }
+    function easeOut5(t) { return 1 - Math.pow(1 - t, 5); }
+    function easeOut2(t) { return 1 - Math.pow(1 - t, 2); }
 
-    function ease(t) { return 1 - Math.pow(1 - t, 3); }   // cubic ease-out
-    function easeIn(t) { return t * t; }
+    // 5 cauliflower lobes — top-down equivalent of mc-lobe-1..5
+    // Positioned around the cap torus at the same relative angles as the side-view
+    const LOBES = [
+        { baseAngle: -Math.PI / 2,         sizeF: 1.22, jitter: 0.00 }, // top (mc-lobe-1, tallest)
+        { baseAngle: -Math.PI / 6,         sizeF: 1.06, jitter: 0.08 }, // upper-right (mc-lobe-3)
+        { baseAngle:  Math.PI * 5 / 6,     sizeF: 0.96, jitter: 0.05 }, // lower-left  (mc-lobe-4)
+        { baseAngle: -Math.PI * 5 / 6,     sizeF: 1.06, jitter: 0.08 }, // upper-left  (mc-lobe-2)
+        { baseAngle:  Math.PI / 6,         sizeF: 0.96, jitter: 0.05 }, // lower-right (mc-lobe-5)
+    ];
 
     function frame(now) {
         const t = Math.min((now - START) / TOTAL, 1);
         ctx.clearRect(0, 0, canvasSz, canvasSz);
 
-        // ── 1. Shockwave ring: expands fast (t 0→0.45), fades by t 0.55 ──
-        if (t < 0.55) {
-            const p = t / 0.55;
-            const r = ease(p) * cs * 4.8;
-            const alpha = p < 0.4 ? p / 0.4 : 1 - (p - 0.4) / 0.6;
-            const lw = cs * 0.28 * (1 - p * 0.6);
+        // ── A. BASE FIREBALL (mc-base + mc-base-fire) ───────────────────────────
+        // Rapid bloom from 0 → ~2.8 cells, same colours as mc-base-fire gradient
+        // Peak at t≈0.07, holds briefly, fades by t=0.55
+        if (t < 0.58) {
+            const grow  = easeOut5(Math.min(t / 0.10, 1));
+            const fade  = t > 0.12 ? Math.max(1 - (t - 0.12) / 0.46, 0) : 1;
+            const alpha = grow * fade;
+            const r     = grow * cs * 2.9;
+
+            const g = ctx.createRadialGradient(ox, oy, 0, ox, oy, r);
+            g.addColorStop(0,    'rgba(255,255,230,' + alpha.toFixed(3) + ')');
+            g.addColorStop(0.06, 'rgba(255,248,180,' + (alpha * 0.99).toFixed(3) + ')');
+            g.addColorStop(0.18, 'rgba(255,222,72,'  + (alpha * 0.98).toFixed(3) + ')');
+            g.addColorStop(0.36, 'rgba(255,148,26,'  + (alpha * 0.92).toFixed(3) + ')');
+            g.addColorStop(0.54, 'rgba(212,82,12,'   + (alpha * 0.80).toFixed(3) + ')');
+            g.addColorStop(0.70, 'rgba(132,48,6,'    + (alpha * 0.52).toFixed(3) + ')');
+            g.addColorStop(0.84, 'rgba(58,28,6,'     + (alpha * 0.28).toFixed(3) + ')');
+            g.addColorStop(1,    'rgba(0,0,0,0)');
             ctx.beginPath();
             ctx.arc(ox, oy, r, 0, Math.PI * 2);
-            ctx.strokeStyle = 'rgba(255,245,180,' + (alpha * 0.9).toFixed(3) + ')';
+            ctx.fillStyle = g;
+            ctx.fill();
+        }
+
+        // ── B. FIRE CORE (mc-fire-core) — blurred white-hot centre ──────────────
+        // Exact replica of the fire-core radial gradient, with blur filter, fades ~t=0.45
+        if (t < 0.48) {
+            const grow  = easeOut5(Math.min(t / 0.08, 1));
+            const fade  = t > 0.16 ? Math.max(1 - (t - 0.16) / 0.32, 0) : 1;
+            const alpha = grow * fade;
+            const r     = grow * cs * 1.5;
+            const blurPx = Math.max(3, Math.round(cs * 0.18));
+
+            ctx.save();
+            ctx.filter = 'blur(' + blurPx + 'px)';
+            const fc = ctx.createRadialGradient(ox, oy, 0, ox, oy, r + blurPx);
+            fc.addColorStop(0,    'rgba(255,255,230,' + alpha.toFixed(3) + ')');
+            fc.addColorStop(0.18, 'rgba(255,240,120,' + (alpha * 0.95).toFixed(3) + ')');
+            fc.addColorStop(0.40, 'rgba(255,190,40,'  + (alpha * 0.80).toFixed(3) + ')');
+            fc.addColorStop(0.65, 'rgba(255,130,15,'  + (alpha * 0.45).toFixed(3) + ')');
+            fc.addColorStop(0.88, 'transparent');
+            fc.addColorStop(1,    'transparent');
+            ctx.beginPath();
+            ctx.arc(ox, oy, r + blurPx * 1.5, 0, Math.PI * 2);
+            ctx.fillStyle = fc;
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // ── C. SHOCKWAVE RING ───────────────────────────────────────────────────
+        // Crisp bright ring, same pale-yellow colour as the mc flash edge, expands fast
+        if (t < 0.42) {
+            const p     = t / 0.42;
+            const r     = easeOut3(p) * cs * 5.4;
+            const alpha = p < 0.28 ? p / 0.28 : Math.max(1 - (p - 0.28) / 0.72, 0);
+            const lw    = cs * 0.15 * (1 - p * 0.55);
+
+            ctx.beginPath();
+            ctx.arc(ox, oy, r, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255,248,180,' + (alpha * 0.95).toFixed(3) + ')';
             ctx.lineWidth = lw;
             ctx.stroke();
-            // secondary softer ring slightly behind
+            // secondary trailing ring (same as the css double-edge effect)
             ctx.beginPath();
-            ctx.arc(ox, oy, r * 0.82, 0, Math.PI * 2);
-            ctx.strokeStyle = 'rgba(255,190,60,' + (alpha * 0.45).toFixed(3) + ')';
-            ctx.lineWidth = lw * 0.6;
+            ctx.arc(ox, oy, r * 0.80, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255,210,60,' + (alpha * 0.42).toFixed(3) + ')';
+            ctx.lineWidth = lw * 0.55;
             ctx.stroke();
         }
 
-        // ── 2. Central fireball: blooms (t 0→0.25), holds, then fades (t 0.4→0.75) ──
-        if (t < 0.75) {
-            const grow   = Math.min(t / 0.25, 1);
-            const fade   = t > 0.4 ? 1 - (t - 0.4) / 0.35 : 1;
-            const fbR    = ease(grow) * cs * 1.9;
-            const alpha  = Math.max(fade, 0);
+        // ── D. CAP TORUS + SKIRT (mc-dome + mc-skirt) ──────────────────────────
+        // Top-down mushroom cap = thick annular torus, same exact gradient colours as mc-dome.
+        // The ring expands from ~1 cell out to ~4 cells, billowing slowly.
+        if (t > 0.08) {
+            const p      = Math.min((t - 0.08) / 0.92, 1);
+            const outerR = easeOut3(p) * cs * 4.4;
+            const ringW  = cs * (0.80 + p * 0.55);  // thickens as it billows (cap-billow)
+            const innerR = Math.max(outerR - ringW, cs * 0.12);
 
-            const g = ctx.createRadialGradient(ox, oy, 0, ox, oy, fbR);
-            g.addColorStop(0,    'rgba(255,255,230,' + alpha.toFixed(3) + ')');
-            g.addColorStop(0.12, 'rgba(255,245,100,' + (alpha * 0.97).toFixed(3) + ')');
-            g.addColorStop(0.30, 'rgba(255,185,22,'  + (alpha * 0.92).toFixed(3) + ')');
-            g.addColorStop(0.55, 'rgba(230,85,5,'    + (alpha * 0.78).toFixed(3) + ')');
-            g.addColorStop(0.80, 'rgba(140,42,4,'    + (alpha * 0.50).toFixed(3) + ')');
-            g.addColorStop(1,    'rgba(60,12,2,0)');
-            ctx.beginPath();
-            ctx.arc(ox, oy, fbR, 0, Math.PI * 2);
-            ctx.fillStyle = g;
-            ctx.fill();
-        }
+            // warmth: 1=full fire colour, 0=dark smoke (matches dome-glow fading over time)
+            const warmth = Math.max(1 - p * 0.92, 0);
+            const w = warmth;
+            const alpha  = p < 0.10 ? p / 0.10
+                         : p > 0.80 ? Math.max(1 - (p - 0.80) / 0.20, 0)
+                         : 1;
 
-        // ── 3. Toroidal smoke ring: top-down mushroom cap annulus (t 0.12→1.0) ──
-        if (t > 0.10) {
-            const p      = Math.min((t - 0.10) / 0.90, 1);
-            const outerR = ease(p) * cs * 3.8;
-            const innerR = outerR * 0.38;
-            const alpha  = (1 - p * 0.85) * (p < 0.15 ? p / 0.15 : 1);
+            // Interpolate mc-dome colours → dark smoke as it cools
+            const col = (rh, rl, gh, gl, bh, bl, a) => {
+                const ri = Math.round(rh * w + rl * (1-w));
+                const gi = Math.round(gh * w + gl * (1-w));
+                const bi = Math.round(bh * w + bl * (1-w));
+                return 'rgba(' + ri + ',' + gi + ',' + bi + ',' + (a * alpha).toFixed(3) + ')';
+            };
 
-            const g = ctx.createRadialGradient(ox, oy, innerR, ox, oy, outerR);
-            g.addColorStop(0,    'rgba(255,140,22,0)');
-            g.addColorStop(0.18, 'rgba(220,108,18,' + (alpha * 0.55).toFixed(3) + ')');
-            g.addColorStop(0.48, 'rgba(170,82,12,'  + (alpha * 0.72).toFixed(3) + ')');
-            g.addColorStop(0.72, 'rgba(110,62,22,'  + (alpha * 0.60).toFixed(3) + ')');
-            g.addColorStop(0.88, 'rgba(65,40,18,'   + (alpha * 0.38).toFixed(3) + ')');
-            g.addColorStop(1,    'rgba(30,18,8,0)');
+            const cd = ctx.createRadialGradient(ox, oy, innerR, ox, oy, outerR);
+            cd.addColorStop(0,    'rgba(0,0,0,0)');
+            cd.addColorStop(0.08, col(255,80, 248,44, 180,12, 0.60));  // white-yellow → dark
+            cd.addColorStop(0.22, col(255,80, 210,44, 60, 12, 0.88));  // bright yellow
+            cd.addColorStop(0.40, col(255,80, 155,44, 22, 10, 0.92));  // orange
+            cd.addColorStop(0.58, col(230,65, 100,38, 14, 8,  0.84));  // dark orange
+            cd.addColorStop(0.74, col(175,50,  68,30, 10, 6,  0.68));  // brown-orange
+            cd.addColorStop(0.88, col(110,36,  50,20, 10, 5,  0.45));  // dark brown
+            cd.addColorStop(1,    'rgba(0,0,0,0)');
             ctx.beginPath();
             ctx.arc(ox, oy, outerR, 0, Math.PI * 2);
-            ctx.fillStyle = g;
+            ctx.fillStyle = cd;
             ctx.fill();
+
+            // ── E. CAULIFLOWER LOBES (mc-lobe) — around the torus perimeter ──
+            if (alpha > 0.04) {
+                const spin    = p * 0.30; // slow rotation == cap-billow skew translated
+                const lobeOrb = outerR - ringW * 0.28; // orbit radius sits inside outer edge
+                const blurPx  = Math.max(2, Math.round(cs * 0.055));
+
+                LOBES.forEach(lobe => {
+                    const ang = lobe.baseAngle + spin;
+                    const lx  = ox + Math.cos(ang) * lobeOrb;
+                    const ly  = oy + Math.sin(ang) * lobeOrb;
+                    const ls  = ringW * lobe.sizeF * 0.92;
+
+                    ctx.save();
+                    ctx.filter = 'blur(' + blurPx + 'px)';
+
+                    const lg = ctx.createRadialGradient(lx, ly, 0, lx, ly, ls);
+                    lg.addColorStop(0,    col(255,100, 220,60,  80, 10, 0.92)); // bright lobe centre
+                    lg.addColorStop(0.30, col(255,90,  160,50,  28,  8, 0.82));
+                    lg.addColorStop(0.58, col(210,80,   90,36,  12,  6, 0.58));
+                    lg.addColorStop(0.80, col(130,44,   55,22,   8,  4, 0.28));
+                    lg.addColorStop(1,    'rgba(0,0,0,0)');
+
+                    ctx.beginPath();
+                    ctx.arc(lx, ly, ls + blurPx, 0, Math.PI * 2);
+                    ctx.fillStyle = lg;
+                    ctx.fill();
+                    ctx.restore();
+                });
+            }
         }
 
-        // ── 4. Cloud puffs orbiting the ring (t 0.18→1.0) ──
-        if (t > 0.15) {
-            const p      = Math.min((t - 0.15) / 0.85, 1);
-            const ringR  = ease(p) * cs * 2.9;
-            const alpha  = (1 - p * 0.92) * (p < 0.12 ? p / 0.12 : 1);
-            const spin   = p * 0.55; // slow clockwise rotation
+        // ── F. OUTER BASE SMOKE (mc-base expanded outward) ─────────────────────
+        if (t > 0.28) {
+            const p      = Math.min((t - 0.28) / 0.72, 1);
+            const smokeR = easeOut3(p) * cs * 6.0;
+            const alpha  = (1 - p) * 0.28 * (p < 0.06 ? p / 0.06 : 1);
 
-            PUFFS.forEach(puff => {
-                const angle = puff.baseAngle + spin;
-                const pr    = ringR + puff.radOffset * (0.5 + p * 0.5);
-                const px    = ox + Math.cos(angle) * pr;
-                const py    = oy + Math.sin(angle) * pr;
-                const ps    = puff.size * (0.75 + p * 0.55);
-
-                // colour shifts orange → dark grey as it cools
-                const warmth = Math.max(1 - p * 1.4, 0);
-                const r = Math.round(160 + warmth * 85);
-                const g = Math.round(68  + warmth * 62);
-                const b = Math.round(14  + warmth * 14);
-
-                const grad = ctx.createRadialGradient(px, py, 0, px, py, ps);
-                grad.addColorStop(0,    'rgba(' + r + ',' + g + ',' + b + ',' + (alpha * 0.88).toFixed(3) + ')');
-                grad.addColorStop(0.45, 'rgba(' + Math.round(r * 0.72) + ',' + Math.round(g * 0.62) + ',' + Math.round(b * 0.5) + ',' + (alpha * 0.62).toFixed(3) + ')');
-                grad.addColorStop(1,    'rgba(22,12,4,0)');
-                ctx.beginPath();
-                ctx.arc(px, py, ps, 0, Math.PI * 2);
-                ctx.fillStyle = grad;
-                ctx.fill();
-            });
-        }
-
-        // ── 5. Outer smoke haze fading out (t 0.38→1.0) ──
-        if (t > 0.35) {
-            const p     = Math.min((t - 0.35) / 0.65, 1);
-            const smokeR = ease(p) * cs * 5.0;
-            const alpha  = (1 - p) * 0.35 * (p < 0.08 ? p / 0.08 : 1);
-
-            const g = ctx.createRadialGradient(ox, oy, smokeR * 0.48, ox, oy, smokeR);
-            g.addColorStop(0,    'rgba(55,44,34,0)');
-            g.addColorStop(0.45, 'rgba(48,38,28,' + (alpha * 0.55).toFixed(3) + ')');
-            g.addColorStop(0.78, 'rgba(36,28,18,' + alpha.toFixed(3) + ')');
-            g.addColorStop(1,    'rgba(18,12,6,0)');
+            const sg = ctx.createRadialGradient(ox, oy, smokeR * 0.48, ox, oy, smokeR);
+            sg.addColorStop(0,    'rgba(58,30,8,0)');
+            sg.addColorStop(0.38, 'rgba(52,26,8,'  + (alpha * 0.52).toFixed(3) + ')');
+            sg.addColorStop(0.70, 'rgba(38,18,5,'  + alpha.toFixed(3) + ')');
+            sg.addColorStop(1,    'rgba(0,0,0,0)');
             ctx.beginPath();
             ctx.arc(ox, oy, smokeR, 0, Math.PI * 2);
-            ctx.fillStyle = g;
+            ctx.fillStyle = sg;
             ctx.fill();
         }
 
