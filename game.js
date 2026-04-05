@@ -1194,7 +1194,7 @@ function connectSocket() {
         game.nukeManufacturing = { completesAt };
         updateNukeHUD();
         const secs = Math.round((manufactureMs || 120000) / 1000);
-        addNotification('info', `☢️ Nuke manufacture started — ready in ${secs}s.`);
+        addNotification('info', `☢️ Nuke manufacture started. Ready in ${secs}s.`);
     });
 
     // Manufacture complete — inventory ready
@@ -1202,8 +1202,8 @@ function connectSocket() {
         game.nukeInventory = inventory;
         game.nukeManufacturing = null;
         updateNukeHUD();
-        addNotification('success', '☢️ Nuke manufactured! Click the nuke HUD to fire.');
-        if (typeof NukeSounds !== 'undefined') NukeSounds.nuclear();
+        addNotification('success', '☢️ Nuke armed and ready. Select it in the HUD to fire.');
+        if (typeof NukeSounds !== 'undefined') NukeSounds.nukeArmed();
     });
 
     // ── Sabotage events ─────────────────────────────────────────────────
@@ -3780,6 +3780,7 @@ function handleNukeDetonation({ launchId, cellId, attackerId, attackerName, dest
 
     // Spawn top-down explosion animation over the grid
     spawnNukeExplosionOverlay(cellId);
+    if (typeof NukeSounds !== 'undefined') NukeSounds.nuclear();
 
     // Create fallout zone locally
     const blastRadius = falloutRadius || 3;
@@ -3795,7 +3796,7 @@ function handleNukeDetonation({ launchId, cellId, attackerId, attackerName, dest
         if (hits > 0) {
             addNotification('danger', `☢️ ${attackerName} nuked you! ${hits} building(s) destroyed!`);
         } else {
-            addNotification('warning', `☢️ ${attackerName} launched a nuke nearby — fallout zone active.`);
+            addNotification('warning', `☢️ ${attackerName} launched a nuke nearby. Fallout zone active.`);
         }
     }
     updateUI();
@@ -3816,11 +3817,11 @@ function updateNukeHUD() {
     let html = '';
 
     // Inventory display
-    html += `<div class="nuke-hud-inv" title="${inv > 0 ? 'Click to enter drop-targeting mode' : 'No nukes — manufacture first'}"
+    html += `<div class="nuke-hud-inv" title="${inv > 0 ? 'Click to enter drop-targeting mode' : 'No nukes. Manufacture one first'}"
         style="cursor:${inv > 0 ? 'pointer' : 'default'}; opacity:${inv > 0 ? '1' : '0.45'};"
         id="nukeInvBtn">`;
     html += `<span style="font-size:18px;">☢️</span> <span style="font-weight:700;font-size:15px;color:${inv > 0 ? '#ff4444' : '#888'};">× ${inv}</span>`;
-    if (isDropMode) html += ` <span style="color:#ffb84d;font-size:11px;font-weight:700;"> ← pick target</span>`;
+    if (isDropMode) html += ` <span style="color:#ffb84d;font-size:11px;font-weight:700;"> PICK TARGET</span>`;
     html += '</div>';
 
     // Manufacture progress / button

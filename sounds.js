@@ -256,6 +256,37 @@ const NukeSounds = (() => {
     }
 
     /**
+     * Nuke armed / manufacture complete — cinematic three-hit rising stab.
+     * "Duh — Duh — DUHHHHH" feel: two quick punches then a massive sub-bass drop.
+     * Designed to be menacing-exciting, a big dopamine hit.
+     */
+    function nukeArmed() {
+        const ctx = _init(); if (!ctx || !_enabled) return;
+        const t = ctx.currentTime;
+
+        // Shared stab builder: sawtooth brass punch + sub-bass sine + attack noise
+        function stab(t0, fund, vol, dur) {
+            _tone(fund,     'sawtooth', t0, dur,        vol,        { attack: 0.005, freqRamp: fund * 0.80 });
+            _tone(fund,     'sine',     t0, dur * 1.10, vol * 0.58, { attack: 0.008 });
+            _tone(fund / 2, 'sine',     t0, dur * 1.25, vol * 0.42, { attack: 0.010 });
+            _noise(t0, 0.06, vol * 0.22, { filterType: 'lowpass', filterFreq: 180 });
+        }
+
+        // Hit 1 — "duh"  (E2, 82 Hz)
+        stab(t,        82.4, 0.22, 0.20);
+        // Hit 2 — "duh"  (E2 again, louder, slight gap)
+        stab(t + 0.30, 82.4, 0.32, 0.22);
+        // Hit 3 — "DUHHHHH"  (A1, 55 Hz — drop an octave+, long ring-out)
+        stab(t + 0.64, 55.0, 0.54, 1.50);
+
+        // Final hit richness: harmonic overtones that swell in
+        _tone(110,  'triangle', t + 0.64, 1.30, 0.20, { attack: 0.028, freqRamp: 92  });
+        _tone(220,  'sine',     t + 0.64, 1.10, 0.10, { attack: 0.045 });
+        _tone(440,  'sine',     t + 0.82, 0.75, 0.055, { attack: 0.065 });
+        _noise(t + 0.64, 0.22, 0.09, { filterType: 'bandpass', filterFreq: 120, Q: 0.4 });
+    }
+
+    /**
      * Sabotage / steal executed — sneaky downward glide.
      */
     function sabotage() {
@@ -347,6 +378,7 @@ const NukeSounds = (() => {
         notifWarning,
         notifDanger,
         nuclear,
+        nukeArmed,
         sabotage,
         walletGain,
         tabSwitch,
