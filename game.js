@@ -3622,35 +3622,39 @@ function spawnNukeExplosionOverlay(cellId) {
     const ox    = canvasSz / 2;
     const oy    = canvasSz / 2;
     const START = performance.now();
-    const TOTAL = 4600; // ms — longer to match the slow billow of the landing cloud
+    const TOTAL = 9500; // ms — long slow billow + gradual dissipation, matches landing page feel
 
     // Easing helpers matching CSS cubic-bezier feel
     function easeOut3(t) { return 1 - Math.pow(1 - t, 3); }
     function easeOut5(t) { return 1 - Math.pow(1 - t, 5); }
-    function easeOut2(t) { return 1 - Math.pow(1 - t, 2); }
 
     // 5 cauliflower lobes — top-down equivalent of mc-lobe-1..5
-    // Positioned around the cap torus at the same relative angles as the side-view
     const LOBES = [
-        { baseAngle: -Math.PI / 2,         sizeF: 1.22, jitter: 0.00 }, // top (mc-lobe-1, tallest)
-        { baseAngle: -Math.PI / 6,         sizeF: 1.06, jitter: 0.08 }, // upper-right (mc-lobe-3)
-        { baseAngle:  Math.PI * 5 / 6,     sizeF: 0.96, jitter: 0.05 }, // lower-left  (mc-lobe-4)
-        { baseAngle: -Math.PI * 5 / 6,     sizeF: 1.06, jitter: 0.08 }, // upper-left  (mc-lobe-2)
-        { baseAngle:  Math.PI / 6,         sizeF: 0.96, jitter: 0.05 }, // lower-right (mc-lobe-5)
+        { baseAngle: -Math.PI / 2,         sizeF: 1.22 }, // top     (mc-lobe-1 tallest)
+        { baseAngle: -Math.PI / 6,         sizeF: 1.06 }, // upper-R (mc-lobe-3)
+        { baseAngle:  Math.PI * 5 / 6,     sizeF: 0.96 }, // lower-L (mc-lobe-4)
+        { baseAngle: -Math.PI * 5 / 6,     sizeF: 1.06 }, // upper-L (mc-lobe-2)
+        { baseAngle:  Math.PI / 6,         sizeF: 0.96 }, // lower-R (mc-lobe-5)
     ];
 
     function frame(now) {
-        const t = Math.min((now - START) / TOTAL, 1);
+        const t    = Math.min((now - START) / TOTAL, 1);
+        const tSec = (now - START) / 1000; // wall-clock seconds for oscillation
+
         ctx.clearRect(0, 0, canvasSz, canvasSz);
 
-        // ── A. BASE FIREBALL (mc-base + mc-base-fire) ───────────────────────────
-        // Rapid bloom from 0 → ~2.8 cells, same colours as mc-base-fire gradient
-        // Peak at t≈0.07, holds briefly, fades by t=0.55
-        if (t < 0.58) {
-            const grow  = easeOut5(Math.min(t / 0.10, 1));
-            const fade  = t > 0.12 ? Math.max(1 - (t - 0.12) / 0.46, 0) : 1;
-            const alpha = grow * fade;
-            const r     = grow * cs * 2.9;
+        // Global dissipation envelope — full brightness until t=0.68, then slow fade
+        const globalFade = t > 0.68 ? Math.max(1 - (t - 0.68) / 0.32, 0) : 1;
+
+        // ── A. BASE FIREBALL (mc-base-fire) ─────────────────────────────────────
+        // Rapid bloom, holds hot through middle phase, fades slowly with globalFade.
+        // Mimics base-flicker with a gentle sin oscillation.
+        if (t < 0.82) {
+            const grow    = easeOut5(Math.min(t / 0.10, 1));
+            const hold    = t > 0.44 ? Math.max(1 - (t - 0.44) / 0.38, 0) : 1;
+            const flicker = 1 + Math.sin(tSec * 8.5) * 0.055; // base-flicker equivalent
+            const alpha   = grow * hold * globalFade * flicker;
+            const r       = grow * cs * 2.9;
 
             const g = ctx.createRadialGradient(ox, oy, 0, ox, oy, r);
             g.addColorStop(0,    'rgba(255,255,230,' + alpha.toFixed(3) + ')');
@@ -3668,13 +3672,14 @@ function spawnNukeExplosionOverlay(cellId) {
         }
 
         // ── B. FIRE CORE (mc-fire-core) — blurred white-hot centre ──────────────
-        // Exact replica of the fire-core radial gradient, with blur filter, fades ~t=0.45
-        if (t < 0.48) {
-            const grow  = easeOut5(Math.min(t / 0.08, 1));
-            const fade  = t > 0.16 ? Math.max(1 - (t - 0.16) / 0.32, 0) : 1;
-            const alpha = grow * fade;
-            const r     = grow * cs * 1.5;
-            const blurPx = Math.max(3, Math.round(cs * 0.18));
+        // Holds white-hot for a long time with breathing scale, matching fire-core-pulse.
+        if (t < 0.78) {
+            const grow    = easeOut5(Math.min(t / 0.08, 1));
+            const hold    = t > 0.30 ? Math.max(1 - (t - 0.30) / 0.48, 0) : 1;
+            const pulse   = 1 + Math.sin(tSec * 4.2) * 0.08; // fire-core-pulse breathing
+            const alpha   = grow * hold * globalFade * pulse;
+            const r       = grow * cs * 1.55;
+            const blurPx  = Math.max(3, Math.round(cs * 0.18));
 
             ctx.save();
             ctx.filter = 'blur(' + blurPx + 'px)';
@@ -3693,11 +3698,11 @@ function spawnNukeExplosionOverlay(cellId) {
         }
 
         // ── C. SHOCKWAVE RING ───────────────────────────────────────────────────
-        // Crisp bright ring, same pale-yellow colour as the mc flash edge, expands fast
-        if (t < 0.42) {
-            const p     = t / 0.42;
-            const r     = easeOut3(p) * cs * 5.4;
-            const alpha = p < 0.28 ? p / 0.28 : Math.max(1 - (p - 0.28) / 0.72, 0);
+        // Fast outward ring — same as before, finishes early
+        if (t < 0.22) {
+            const p     = t / 0.22;
+            const r     = easeOut3(p) * cs * 5.8;
+            const alpha = p < 0.25 ? p / 0.25 : Math.max(1 - (p - 0.25) / 0.75, 0);
             const lw    = cs * 0.15 * (1 - p * 0.55);
 
             ctx.beginPath();
@@ -3705,7 +3710,6 @@ function spawnNukeExplosionOverlay(cellId) {
             ctx.strokeStyle = 'rgba(255,248,180,' + (alpha * 0.95).toFixed(3) + ')';
             ctx.lineWidth = lw;
             ctx.stroke();
-            // secondary trailing ring (same as the css double-edge effect)
             ctx.beginPath();
             ctx.arc(ox, oy, r * 0.80, 0, Math.PI * 2);
             ctx.strokeStyle = 'rgba(255,210,60,' + (alpha * 0.42).toFixed(3) + ')';
@@ -3713,23 +3717,23 @@ function spawnNukeExplosionOverlay(cellId) {
             ctx.stroke();
         }
 
-        // ── D. CAP TORUS + SKIRT (mc-dome + mc-skirt) ──────────────────────────
-        // Top-down mushroom cap = thick annular torus, same exact gradient colours as mc-dome.
-        // The ring expands from ~1 cell out to ~4 cells, billowing slowly.
-        if (t > 0.08) {
-            const p      = Math.min((t - 0.08) / 0.92, 1);
+        // ── D. CAP TORUS + SKIRT (mc-dome + mc-skirt top-down) ──────────────────
+        // The mushroom cap = thick annular ring.  Starts early, billows outward slowly,
+        // stays fully lit through mid-phase (dome-glow pulsing), fades only with globalFade.
+        if (t > 0.05) {
+            const p      = Math.min((t - 0.05) / 0.95, 1);
             const outerR = easeOut3(p) * cs * 4.4;
-            const ringW  = cs * (0.80 + p * 0.55);  // thickens as it billows (cap-billow)
+            const ringW  = cs * (0.80 + p * 0.55);
             const innerR = Math.max(outerR - ringW, cs * 0.12);
 
-            // warmth: 1=full fire colour, 0=dark smoke (matches dome-glow fading over time)
-            const warmth = Math.max(1 - p * 0.92, 0);
-            const w = warmth;
-            const alpha  = p < 0.10 ? p / 0.10
-                         : p > 0.80 ? Math.max(1 - (p - 0.80) / 0.20, 0)
-                         : 1;
+            // dome-glow: gentle brightness oscillation like the CSS animation
+            const domeGlow = 1 + Math.sin(tSec * 1.45) * 0.10;
+            // warmth: fire colour until p≈0.68, then cools to dark smoke
+            const warmth   = Math.max(1 - (Math.max(p - 0.35, 0) / 0.65), 0.05);
+            const w        = warmth;
+            // alpha: ramp in first 10% of p, then full glow, fades via globalFade only
+            const alpha    = (p < 0.10 ? p / 0.10 : 1) * globalFade * domeGlow;
 
-            // Interpolate mc-dome colours → dark smoke as it cools
             const col = (rh, rl, gh, gl, bh, bl, a) => {
                 const ri = Math.round(rh * w + rl * (1-w));
                 const gi = Math.round(gh * w + gl * (1-w));
@@ -3739,38 +3743,41 @@ function spawnNukeExplosionOverlay(cellId) {
 
             const cd = ctx.createRadialGradient(ox, oy, innerR, ox, oy, outerR);
             cd.addColorStop(0,    'rgba(0,0,0,0)');
-            cd.addColorStop(0.08, col(255,80, 248,44, 180,12, 0.60));  // white-yellow → dark
-            cd.addColorStop(0.22, col(255,80, 210,44, 60, 12, 0.88));  // bright yellow
-            cd.addColorStop(0.40, col(255,80, 155,44, 22, 10, 0.92));  // orange
-            cd.addColorStop(0.58, col(230,65, 100,38, 14, 8,  0.84));  // dark orange
-            cd.addColorStop(0.74, col(175,50,  68,30, 10, 6,  0.68));  // brown-orange
-            cd.addColorStop(0.88, col(110,36,  50,20, 10, 5,  0.45));  // dark brown
+            cd.addColorStop(0.08, col(255,80, 248,44, 180,12, 0.60));
+            cd.addColorStop(0.22, col(255,80, 210,44, 60, 12, 0.88));
+            cd.addColorStop(0.40, col(255,80, 155,44, 22, 10, 0.95));
+            cd.addColorStop(0.58, col(230,65, 100,38, 14,  8, 0.88));
+            cd.addColorStop(0.74, col(175,50,  68,30, 10,  6, 0.72));
+            cd.addColorStop(0.88, col(110,36,  50,20, 10,  5, 0.48));
             cd.addColorStop(1,    'rgba(0,0,0,0)');
             ctx.beginPath();
             ctx.arc(ox, oy, outerR, 0, Math.PI * 2);
             ctx.fillStyle = cd;
             ctx.fill();
 
-            // ── E. CAULIFLOWER LOBES (mc-lobe) — around the torus perimeter ──
+            // ── E. CAULIFLOWER LOBES (mc-lobe / lobe-pulse) ─────────────────────
             if (alpha > 0.04) {
-                const spin    = p * 0.30; // slow rotation == cap-billow skew translated
-                const lobeOrb = outerR - ringW * 0.28; // orbit radius sits inside outer edge
-                const blurPx  = Math.max(2, Math.round(cs * 0.055));
+                // lobe-pulse: brightness oscillation at different phase from dome-glow
+                const lobePulse = 1 + Math.sin(tSec * 2.2 + 1.1) * 0.12;
+                const spin      = p * 0.30;
+                const lobeOrb   = outerR - ringW * 0.28;
+                const blurPx    = Math.max(2, Math.round(cs * 0.055));
 
                 LOBES.forEach(lobe => {
                     const ang = lobe.baseAngle + spin;
                     const lx  = ox + Math.cos(ang) * lobeOrb;
                     const ly  = oy + Math.sin(ang) * lobeOrb;
                     const ls  = ringW * lobe.sizeF * 0.92;
+                    const la  = alpha * lobePulse;
 
                     ctx.save();
                     ctx.filter = 'blur(' + blurPx + 'px)';
 
                     const lg = ctx.createRadialGradient(lx, ly, 0, lx, ly, ls);
-                    lg.addColorStop(0,    col(255,100, 220,60,  80, 10, 0.92)); // bright lobe centre
-                    lg.addColorStop(0.30, col(255,90,  160,50,  28,  8, 0.82));
-                    lg.addColorStop(0.58, col(210,80,   90,36,  12,  6, 0.58));
-                    lg.addColorStop(0.80, col(130,44,   55,22,   8,  4, 0.28));
+                    lg.addColorStop(0,    col(255,100, 220,60,  80, 10, 0.94 * lobePulse));
+                    lg.addColorStop(0.30, col(255,90,  160,50,  28,  8, 0.84));
+                    lg.addColorStop(0.58, col(210,80,   90,36,  12,  6, 0.60));
+                    lg.addColorStop(0.80, col(130,44,   55,22,   8,  4, 0.30));
                     lg.addColorStop(1,    'rgba(0,0,0,0)');
 
                     ctx.beginPath();
@@ -3782,16 +3789,19 @@ function spawnNukeExplosionOverlay(cellId) {
             }
         }
 
-        // ── F. OUTER BASE SMOKE (mc-base expanded outward) ─────────────────────
-        if (t > 0.28) {
-            const p      = Math.min((t - 0.28) / 0.72, 1);
-            const smokeR = easeOut3(p) * cs * 6.0;
-            const alpha  = (1 - p) * 0.28 * (p < 0.06 ? p / 0.06 : 1);
+        // ── F. OUTER BASE SMOKE (mc-base expanded) ──────────────────────────────
+        // Starts earlier, persists through the full animation, fades with globalFade.
+        if (t > 0.18) {
+            const p      = Math.min((t - 0.18) / 0.82, 1);
+            const smokeR = easeOut3(p) * cs * 6.2;
+            // Outer smoke holds opacity well until globalFade takes over
+            const alpha  = Math.min(p * 4, 1) * 0.32 * globalFade;
 
-            const sg = ctx.createRadialGradient(ox, oy, smokeR * 0.48, ox, oy, smokeR);
+            const sg = ctx.createRadialGradient(ox, oy, smokeR * 0.38, ox, oy, smokeR);
             sg.addColorStop(0,    'rgba(58,30,8,0)');
-            sg.addColorStop(0.38, 'rgba(52,26,8,'  + (alpha * 0.52).toFixed(3) + ')');
-            sg.addColorStop(0.70, 'rgba(38,18,5,'  + alpha.toFixed(3) + ')');
+            sg.addColorStop(0.32, 'rgba(52,26,8,'  + (alpha * 0.55).toFixed(3) + ')');
+            sg.addColorStop(0.62, 'rgba(38,18,5,'  + alpha.toFixed(3) + ')');
+            sg.addColorStop(0.84, 'rgba(22,10,3,'  + (alpha * 0.60).toFixed(3) + ')');
             sg.addColorStop(1,    'rgba(0,0,0,0)');
             ctx.beginPath();
             ctx.arc(ox, oy, smokeR, 0, Math.PI * 2);
@@ -4051,14 +4061,8 @@ function showNukeCountdown(launch) {
                 countEl.style.transform = 'scale(1.05)';
                 setTimeout(() => { if (countEl) countEl.style.transform = 'scale(1)'; }, 150);
             } else {
-                // Detonate!
-                countEl.textContent = '💥';
-                countEl.style.fontSize = '140px';
-                countEl.style.color = '#ff8800';
-                countEl.style.textShadow = '0 0 60px #ffaa00';
-                setTimeout(() => {
-                    if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-                }, 1200);
+                // Detonate — remove banner immediately, explosion handled by spawnNukeExplosionOverlay
+                if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
                 return;
             }
         }
