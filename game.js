@@ -3582,6 +3582,177 @@ function executeNuclearStrike(targetId) {
 // ─── Nuke HUD + countdown logic ──────────────────────────────────────────────
 
 /**
+ * Top-down canvas explosion overlay for a nuke detonation.
+ * Renders expanding shockwave → fireball → toroidal smoke ring → cloud puffs → dissipation.
+ * Positioned over the grid-area so it scrolls correctly with the grid.
+ */
+function spawnNukeExplosionOverlay(cellId) {
+    const cellEl = document.querySelector('[data-id="' + cellId + '"]');
+    const gridArea = document.querySelector('.grid-area');
+    if (!cellEl || !gridArea) return;
+
+    const cellRect = cellEl.getBoundingClientRect();
+    const areaRect = gridArea.getBoundingClientRect();
+
+    // Center of target cell relative to scrollable grid-area content
+    const cx = (cellRect.left + cellRect.right) / 2 - areaRect.left + gridArea.scrollLeft;
+    const cy = (cellRect.top + cellRect.bottom) / 2 - areaRect.top + gridArea.scrollTop;
+    const cs = cellRect.width; // cell size in px
+
+    // Canvas needs to be big enough to contain the full blast (radius ~5 cells)
+    const canvasR = cs * 5.5;
+    const canvasSz = canvasR * 2;
+
+    const canvas = document.createElement('canvas');
+    canvas.width  = Math.round(canvasSz);
+    canvas.height = Math.round(canvasSz);
+    canvas.style.cssText = [
+        'position:absolute',
+        'left:' + Math.round(cx - canvasR) + 'px',
+        'top:'  + Math.round(cy - canvasR) + 'px',
+        'pointer-events:none',
+        'z-index:50',
+    ].join(';');
+    gridArea.appendChild(canvas);
+
+    const ctx   = canvas.getContext('2d');
+    const ox    = canvasSz / 2;   // canvas centre x / y
+    const oy    = canvasSz / 2;
+    const START = performance.now();
+    const TOTAL = 3800; // ms
+
+    // Pre-build 14 cloud puffs spread around the toroidal smoke ring
+    const PUFFS = Array.from({ length: 14 }, (_, i) => ({
+        baseAngle: (i / 14) * Math.PI * 2,
+        size: cs * (0.55 + Math.random() * 0.35),
+        radOffset: cs * (-0.2 + Math.random() * 0.4),
+    }));
+
+    function ease(t) { return 1 - Math.pow(1 - t, 3); }   // cubic ease-out
+    function easeIn(t) { return t * t; }
+
+    function frame(now) {
+        const t = Math.min((now - START) / TOTAL, 1);
+        ctx.clearRect(0, 0, canvasSz, canvasSz);
+
+        // ── 1. Shockwave ring: expands fast (t 0→0.45), fades by t 0.55 ──
+        if (t < 0.55) {
+            const p = t / 0.55;
+            const r = ease(p) * cs * 4.8;
+            const alpha = p < 0.4 ? p / 0.4 : 1 - (p - 0.4) / 0.6;
+            const lw = cs * 0.28 * (1 - p * 0.6);
+            ctx.beginPath();
+            ctx.arc(ox, oy, r, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255,245,180,' + (alpha * 0.9).toFixed(3) + ')';
+            ctx.lineWidth = lw;
+            ctx.stroke();
+            // secondary softer ring slightly behind
+            ctx.beginPath();
+            ctx.arc(ox, oy, r * 0.82, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255,190,60,' + (alpha * 0.45).toFixed(3) + ')';
+            ctx.lineWidth = lw * 0.6;
+            ctx.stroke();
+        }
+
+        // ── 2. Central fireball: blooms (t 0→0.25), holds, then fades (t 0.4→0.75) ──
+        if (t < 0.75) {
+            const grow   = Math.min(t / 0.25, 1);
+            const fade   = t > 0.4 ? 1 - (t - 0.4) / 0.35 : 1;
+            const fbR    = ease(grow) * cs * 1.9;
+            const alpha  = Math.max(fade, 0);
+
+            const g = ctx.createRadialGradient(ox, oy, 0, ox, oy, fbR);
+            g.addColorStop(0,    'rgba(255,255,230,' + alpha.toFixed(3) + ')');
+            g.addColorStop(0.12, 'rgba(255,245,100,' + (alpha * 0.97).toFixed(3) + ')');
+            g.addColorStop(0.30, 'rgba(255,185,22,'  + (alpha * 0.92).toFixed(3) + ')');
+            g.addColorStop(0.55, 'rgba(230,85,5,'    + (alpha * 0.78).toFixed(3) + ')');
+            g.addColorStop(0.80, 'rgba(140,42,4,'    + (alpha * 0.50).toFixed(3) + ')');
+            g.addColorStop(1,    'rgba(60,12,2,0)');
+            ctx.beginPath();
+            ctx.arc(ox, oy, fbR, 0, Math.PI * 2);
+            ctx.fillStyle = g;
+            ctx.fill();
+        }
+
+        // ── 3. Toroidal smoke ring: top-down mushroom cap annulus (t 0.12→1.0) ──
+        if (t > 0.10) {
+            const p      = Math.min((t - 0.10) / 0.90, 1);
+            const outerR = ease(p) * cs * 3.8;
+            const innerR = outerR * 0.38;
+            const alpha  = (1 - p * 0.85) * (p < 0.15 ? p / 0.15 : 1);
+
+            const g = ctx.createRadialGradient(ox, oy, innerR, ox, oy, outerR);
+            g.addColorStop(0,    'rgba(255,140,22,0)');
+            g.addColorStop(0.18, 'rgba(220,108,18,' + (alpha * 0.55).toFixed(3) + ')');
+            g.addColorStop(0.48, 'rgba(170,82,12,'  + (alpha * 0.72).toFixed(3) + ')');
+            g.addColorStop(0.72, 'rgba(110,62,22,'  + (alpha * 0.60).toFixed(3) + ')');
+            g.addColorStop(0.88, 'rgba(65,40,18,'   + (alpha * 0.38).toFixed(3) + ')');
+            g.addColorStop(1,    'rgba(30,18,8,0)');
+            ctx.beginPath();
+            ctx.arc(ox, oy, outerR, 0, Math.PI * 2);
+            ctx.fillStyle = g;
+            ctx.fill();
+        }
+
+        // ── 4. Cloud puffs orbiting the ring (t 0.18→1.0) ──
+        if (t > 0.15) {
+            const p      = Math.min((t - 0.15) / 0.85, 1);
+            const ringR  = ease(p) * cs * 2.9;
+            const alpha  = (1 - p * 0.92) * (p < 0.12 ? p / 0.12 : 1);
+            const spin   = p * 0.55; // slow clockwise rotation
+
+            PUFFS.forEach(puff => {
+                const angle = puff.baseAngle + spin;
+                const pr    = ringR + puff.radOffset * (0.5 + p * 0.5);
+                const px    = ox + Math.cos(angle) * pr;
+                const py    = oy + Math.sin(angle) * pr;
+                const ps    = puff.size * (0.75 + p * 0.55);
+
+                // colour shifts orange → dark grey as it cools
+                const warmth = Math.max(1 - p * 1.4, 0);
+                const r = Math.round(160 + warmth * 85);
+                const g = Math.round(68  + warmth * 62);
+                const b = Math.round(14  + warmth * 14);
+
+                const grad = ctx.createRadialGradient(px, py, 0, px, py, ps);
+                grad.addColorStop(0,    'rgba(' + r + ',' + g + ',' + b + ',' + (alpha * 0.88).toFixed(3) + ')');
+                grad.addColorStop(0.45, 'rgba(' + Math.round(r * 0.72) + ',' + Math.round(g * 0.62) + ',' + Math.round(b * 0.5) + ',' + (alpha * 0.62).toFixed(3) + ')');
+                grad.addColorStop(1,    'rgba(22,12,4,0)');
+                ctx.beginPath();
+                ctx.arc(px, py, ps, 0, Math.PI * 2);
+                ctx.fillStyle = grad;
+                ctx.fill();
+            });
+        }
+
+        // ── 5. Outer smoke haze fading out (t 0.38→1.0) ──
+        if (t > 0.35) {
+            const p     = Math.min((t - 0.35) / 0.65, 1);
+            const smokeR = ease(p) * cs * 5.0;
+            const alpha  = (1 - p) * 0.35 * (p < 0.08 ? p / 0.08 : 1);
+
+            const g = ctx.createRadialGradient(ox, oy, smokeR * 0.48, ox, oy, smokeR);
+            g.addColorStop(0,    'rgba(55,44,34,0)');
+            g.addColorStop(0.45, 'rgba(48,38,28,' + (alpha * 0.55).toFixed(3) + ')');
+            g.addColorStop(0.78, 'rgba(36,28,18,' + alpha.toFixed(3) + ')');
+            g.addColorStop(1,    'rgba(18,12,6,0)');
+            ctx.beginPath();
+            ctx.arc(ox, oy, smokeR, 0, Math.PI * 2);
+            ctx.fillStyle = g;
+            ctx.fill();
+        }
+
+        if (t < 1) {
+            requestAnimationFrame(frame);
+        } else {
+            canvas.remove();
+        }
+    }
+
+    requestAnimationFrame(frame);
+}
+
+/**
  * Handle a nuke detonation broadcast from the server.
  * Mirrors the nuke branch of the old sabotage:applied handler.
  */
@@ -3607,8 +3778,11 @@ function handleNukeDetonation({ launchId, cellId, attackerId, attackerName, dest
         });
     }
 
+    // Spawn top-down explosion animation over the grid
+    spawnNukeExplosionOverlay(cellId);
+
     // Create fallout zone locally
-    const blastRadius = falloutRadius || 4;
+    const blastRadius = falloutRadius || 3;
     const expiresAt = Date.now() + (falloutDuration || 120000);
     game.nukeZones.push({ center: cellId, radius: blastRadius, expiresAt });
     updateFalloutVisualization();
