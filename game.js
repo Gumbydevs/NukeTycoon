@@ -6213,8 +6213,7 @@ function onCellHover(id, e) {
         const icon = (buildingTypes[type] && buildingTypes[type].emoji) ? buildingTypes[type].emoji + ' ' : '';
         const ownerLabel = `<span style="display:inline-flex;align-items:center;gap:6px;color:#4CAF50;">${avatarBadge(game.playerAvatar, 18, game.playerPhoto)} ${escapeHtml(game.playerName || 'You')} <span style="font-size:10px;color:#aaa;">(You)</span></span>`;
         const mcOwned = buildingTypes[type]?.maintenanceCost || 0;
-        content = `<div style="font-weight:700;">${icon}${label}</div>` +
-            `<div style="margin-top:2px;">${ownerLabel}</div>` +
+        content = `<div style="font-weight:700;">${icon}${label} - ${ownerLabel}</div>` +
             `<div style="color:#ff9944;">⚙️ Operating: ${mcOwned.toLocaleString()} tokens</div>` +
             `<div>📐 Same-type neighbors: ${same} (${same>0? '+'+(same*11)+'%': 'none'})</div>` +
             `<div>⚠️ Nearby enemies: ${pen}</div>`;
