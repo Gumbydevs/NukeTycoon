@@ -1421,7 +1421,9 @@ setInterval(() => {
 }, 60000);
 
 function _updateLobbyFromServerState(run, players, yourWallet) {
-    const preview = parseInt(run.prize_pool, 10) || 0;
+    const existingPool = parseInt(run.prize_pool, 10) || 0;
+    const myContrib = Math.floor(game.buyIn * 0.80);
+    const preview = existingPool + myContrib;
     const el = (id) => document.getElementById(id);
     if (el('lobbyBuyIn'))      el('lobbyBuyIn').textContent      = game.buyIn.toLocaleString();
     if (el('lobbyBuyInBtn'))   el('lobbyBuyInBtn').textContent   = game.buyIn.toLocaleString();
