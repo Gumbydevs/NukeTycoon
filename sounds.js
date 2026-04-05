@@ -280,17 +280,23 @@ const NukeSounds = (() => {
 
         // Rising arpeggio: G3 → B3 → D4 → G4
         //                  196   247   294   392
-        brassHit(t,          196,  0.20, 0.18);
-        brassHit(t + 0.175,  247,  0.24, 0.18);
-        brassHit(t + 0.350,  294,  0.28, 0.20);
-        brassHit(t + 0.545,  392,  0.40, 0.75);  // G4 — final big chord, long ring-out
+        brassHit(t,          196,  0.14, 0.18);
+        brassHit(t + 0.175,  247,  0.17, 0.18);
+        brassHit(t + 0.350,  294,  0.20, 0.20);
+        brassHit(t + 0.545,  392,  0.28, 0.75);  // G4 — final big chord, long ring-out
 
         // Final chord bloom: wide high shimmer that swells overtop
-        _tone(784,  'sine',     t + 0.55,  0.70, 0.18, { attack: 0.045 });           // G5
-        _tone(1175, 'sine',     t + 0.60,  0.60, 0.10, { attack: 0.065 });           // D6
-        _tone(1568, 'sine',     t + 0.65,  0.50, 0.055, { attack: 0.080 });          // G6
+        _tone(784,  'sine',     t + 0.55,  0.70, 0.12,  { attack: 0.045 });          // G5
+        _tone(1175, 'sine',     t + 0.60,  0.60, 0.07,  { attack: 0.065 });          // D6
+        _tone(1568, 'sine',     t + 0.65,  0.50, 0.038, { attack: 0.080 });          // G6
         // Rising noise "whoosh" into the final hit
-        _noise(t + 0.48, 0.12, 0.12, { filterType: 'bandpass', filterFreq: 1200, Q: 0.8 });
+        _noise(t + 0.48, 0.12, 0.08, { filterType: 'bandpass', filterFreq: 1200, Q: 0.8 });
+
+        // Gun cock — sharp click → metallic slide → satisfying lock clack
+        // timed to complete just as the big G4 lands
+        _noise(t + 0.38,  0.018, 0.30, { filterType: 'bandpass', filterFreq: 4200, Q: 12 }); // pull-back click
+        _noise(t + 0.392, 0.13,  0.11, { filterType: 'highpass',  filterFreq: 2400, Q: 1.0 }); // chamber slide
+        _noise(t + 0.525, 0.022, 0.36, { filterType: 'bandpass', filterFreq: 2800, Q: 9  }); // lock clack
     }
 
     /**
