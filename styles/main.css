@@ -1897,7 +1897,7 @@ body.mobile-menu-open .dropdown { display: none !important; }
    =================================================================== */
 .mcloud {
     position: fixed;
-    bottom: 0;
+    bottom: 20px;
     /* z-index 1 within the landing page stacking context — above the background,
        below all landing page content (header, cards, etc.) */
     z-index: 1;
@@ -1909,8 +1909,8 @@ body.mobile-menu-open .dropdown { display: none !important; }
     max-width: none;
     isolation: isolate;
 }
-.mcloud--left  { left: -80px; }
-.mcloud--right { right: -80px; transform: scaleX(-1); transform-origin: center bottom; }
+.mcloud--left  { left: -800px; }
+.mcloud--right { right: -800px; transform: scaleX(-1); transform-origin: center bottom; }
 
 /* ── CAP WRAP: the whole mushroom head ── */
 .mc-cap-wrap {
