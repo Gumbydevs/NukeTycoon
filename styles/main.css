@@ -1163,6 +1163,7 @@ body.mobile-menu-open .dropdown { display: none !important; }
 .nuke-mfg-phase {
     color: #ffa500;
     font-size: 11px;
+    white-space: nowrap;
 }
 
 /* Drop-targeting mode: crosshair cursor on grid cells */

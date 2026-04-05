@@ -3885,13 +3885,13 @@ function updateNukeHUD() {
 
         // Progressive phase messages matching manufacture stages
         const _phases = [
-            { above: 0.86, text: 'Sourcing fissile material' },
-            { above: 0.72, text: 'Enriching uranium core' },
-            { above: 0.57, text: 'Machining components' },
-            { above: 0.42, text: 'Assembling warhead casing' },
-            { above: 0.27, text: 'Loading onto delivery system' },
-            { above: 0.13, text: 'Mating warhead to missile' },
-            { above: 0.03, text: 'Entering arming codes' },
+            { above: 0.86, text: 'Manufacturing' },
+            { above: 0.72, text: 'Enriching core' },
+            { above: 0.57, text: 'Machining parts' },
+            { above: 0.42, text: 'Casing assembly' },
+            { above: 0.27, text: 'Mounting to missile' },
+            { above: 0.13, text: 'Warhead integration' },
+            { above: 0.03, text: 'Arming sequence' },
         ];
         let phaseText = 'Final checks';
         for (const p of _phases) {
@@ -3911,7 +3911,7 @@ function updateNukeHUD() {
         const buildTimeStr = buildMin > 0 ? (buildSecRem > 0 ? `${buildMin}m ${buildSecRem}s` : `${buildMin}m`) : `${buildSecs}s`;
         const radiusCells = cfg.falloutRadius ?? 3;
         html += `<div id="nukeMfgBtn" class="nuke-hud-mfg-btn">
-            <span style="font-size:11px;color:#aaa;">Manufacture</span>
+            <span style="font-size:11px;color:#aaa;">Manufacture Nuke</span>
             <div class="nuke-mfg-tooltip">
                 <div class="nuke-mfg-tooltip-title">MANUFACTURE WARHEAD</div>
                 <div class="nuke-mfg-tooltip-row"><span>Cost</span><span style="color:#ffb84d;">${costTokens} tokens</span></div>
