@@ -416,10 +416,6 @@ const NukeSounds = (() => {
         _tone(140, 'sawtooth', t + 0.18, 0.55, 0.09, { attack: 0.020, freqRamp: 440 });
         // Harmonic layer on top of whirr — triangle octave
         _tone(280, 'triangle', t + 0.22, 0.45, 0.06, { attack: 0.018, freqRamp: 660 });
-
-        // ── Confirmation ping — "locked and loaded" ──────────────────────
-        _tone(880,  'triangle', t + 0.62, 0.22, 0.11, { attack: 0.010 });
-        _tone(1320, 'sine',     t + 0.70, 0.18, 0.07, { attack: 0.008 });
     }
 
     /**

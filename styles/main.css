@@ -1909,8 +1909,8 @@ body.mobile-menu-open .dropdown { display: none !important; }
     max-width: none;
     isolation: isolate;
 }
-.mcloud--left  { left: 20px; }
-.mcloud--right { right: 20px; transform: scaleX(-1); transform-origin: center bottom; }
+.mcloud--left  { left: -80px; }
+.mcloud--right { right: -80px; transform: scaleX(-1); transform-origin: center bottom; }
 
 /* ── CAP WRAP: the whole mushroom head ── */
 .mc-cap-wrap {
