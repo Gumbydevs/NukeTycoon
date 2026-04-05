@@ -869,7 +869,7 @@ body.mobile-menu-open .dropdown { display: none !important; }
 .legend-toggle {
     position: fixed;
     left: 10px;
-    top: 62px;
+    top: 80px;
     width: 32px;
     height: 32px;
     background: #111;
