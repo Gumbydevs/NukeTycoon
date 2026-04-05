@@ -3962,9 +3962,9 @@ function showNukeCountdown(launch) {
     `;
     header.innerHTML = `${avatarHtml}
         <div>
-            <div style="font-size:11px;letter-spacing:2px;color:#ff6666;font-weight:700;">⚡ INCOMING NUCLEAR LAUNCH ⚡</div>
-            <div style="font-size:13px;color:#ffb84d;font-weight:600;">${attackerName} has initiated a nuclear strike</div>
-            <div style="font-size:11px;color:#ff8888;">ALL UNITS SEEK COVER — IMPACT IN:</div>
+            <div style="font-size:11px;letter-spacing:2px;color:#ff6666;font-weight:700;">⚡ IMMINENT LAUNCH ⚡</div>
+            <div style="font-size:13px;color:#ffb84d;font-weight:600;">${attackerName} has launched a nuclear warhead</div>
+            <div style="font-size:11px;color:#ff8888;">IMPACT IN:</div>
         </div>`;
     overlay.appendChild(header);
 
