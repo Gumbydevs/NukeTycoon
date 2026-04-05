@@ -20,7 +20,11 @@ function getOrGenerateTerrain(runId) {
 function getOrGenerateDeposits(runId) {
     const terrain = getOrGenerateTerrain(runId);
     if (!_depositsCache.has(runId)) {
-        const deps = generateDepositsForRun(runId, terrain);
+        const ROAD_TYPES = new Set(['road', 'road-h', 'road-x']);
+        const raw = generateDepositsForRun(runId, terrain);
+        // Safety-net: strip any deposit that landed on a road cell (guards against
+        // stale cached data or edge cases in generation).
+        const deps = raw.filter(d => !ROAD_TYPES.has(terrain[d.cellId]));
         console.log(`[deposits] generated ${deps.length} cells in ${new Set(deps.map(d => d.cellId)).size} unique positions for run ${runId} (minClusters=${DEPOSIT_MIN_CLUSTERS} maxExtra=${DEPOSIT_MAX_EXTRA_CLUSTERS})`);
         _depositsCache.set(runId, deps);
     }
@@ -1265,6 +1269,9 @@ async function endRun(io, run) {
     }
 
     console.log(`🏁 Run #${run.run_number} ended. Awarded ${payouts.length} players.`);
+    // Clear per-run caches so memory doesn't grow across many runs
+    _terrainCache.delete(run.id);
+    _depositsCache.delete(run.id);
 
     // Update all-time player records (uses post-payout balances)
     try {

@@ -6329,20 +6329,20 @@ function addButtonTooltips() {
                 if (typeKey === 'mine' || /mine/i.test(typeKey)) {
                     content = '<div style="font-weight:700;">⛏️ ' + label + '</div>';
                     content += '<div>Place a Mine to extract raw uranium from the ground.</div>';
-                    content += '<div>💰 Cost: ' + buildingTypes.mine.cost + ' tokens</div>';
+                    content += '<div>💰 Cost: <span class="cost-yellow">' + buildingTypes.mine.cost + ' tokens</span></div>';
                 } else if (typeKey === 'processor' || /process/i.test(typeKey)) {
                     content = '<div style="font-weight:700;">🏭 ' + label + '</div>';
                     content += '<div>Refines raw uranium into fuel for Reactors.</div>';
-                    content += '<div>💰 Cost: ' + buildingTypes.processor.cost + ' tokens</div>';
+                    content += '<div>💰 Cost: <span class="cost-yellow">' + buildingTypes.processor.cost + ' tokens</span></div>';
                 } else if (typeKey === 'storage' || /store/i.test(typeKey)) {
                     content = '<div style="font-weight:700;">🗄️ ' + label + '</div>';
                     content += '<div>Increases your uranium storage capacity.</div>';
-                    content += '<div>💰 Cost: ' + buildingTypes.storage.cost + ' tokens</div>';
+                    content += '<div>💰 Cost: <span class="cost-yellow">' + buildingTypes.storage.cost + ' tokens</span></div>';
                 } else if (typeKey === 'plant' || /plant/i.test(typeKey)) {
                     content = '<div style="font-weight:700;">☢️ ' + label + '</div>';
                     content += '<div>Consumes refined uranium to generate power &amp; income.</div>';
                     content += '<div>🛣️ Place near a road for +22% income bonus.</div>';
-                    content += '<div>💰 Cost: ' + buildingTypes.plant.cost + ' tokens</div>';
+                    content += '<div>💰 Cost: <span class="cost-yellow">' + buildingTypes.plant.cost + ' tokens</span></div>';
                 } else if (typeKey === 'hireSurveyor') {
                     const svCfg = game._surveyorConfig || {};
                     const cost = (svCfg.cost || 500).toLocaleString();
@@ -6361,7 +6361,7 @@ function addButtonTooltips() {
                     content = '<div style="font-weight:700;">💥 Silo</div>';
                     content += '<div>Nukes. The ultimate weapon.</div>';
                     content += '<div>Requires 1 completed Reactor to build.</div>';
-                    content += '<div>💰 Cost: ' + buildingTypes.silo.cost + ' tokens</div>';
+                    content += '<div>💰 Cost: <span class="cost-yellow">' + buildingTypes.silo.cost + ' tokens</span></div>';
                     content += '<div>⚠️ Limit: ' + game.maxSilosPerRound + ' per round</div>';
                 }
                 // Anchor tooltip to the LEFT of the actions menu, vertically centered to the item
