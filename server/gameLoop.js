@@ -84,17 +84,15 @@ function chebyshevDist(a, b) {
     return Math.max(Math.abs(ax - bx), Math.abs(ay - by));
 }
 
-// Minesweeper-style cluster expansion: starting from seed deposit cells,
-// flood-fill to include any adjacent deposits within clusterRadius of each found cell.
+// Single-ring cluster expansion: from seed deposit cells, reveal any deposits
+// within clusterRadius of those seeds — but does NOT recurse from newly-found
+// cells, so only the immediately adjacent ring is added, not the whole cluster at once.
 function expandDepositCluster(seedCellIds, allDeposits, clusterRadius = 2) {
     const found = new Set(seedCellIds);
-    const queue = [...seedCellIds];
-    while (queue.length > 0) {
-        const current = queue.shift();
+    for (const seed of seedCellIds) {
         for (const d of allDeposits) {
-            if (!found.has(d.cellId) && chebyshevDist(current, d.cellId) <= clusterRadius) {
+            if (!found.has(d.cellId) && chebyshevDist(seed, d.cellId) <= clusterRadius) {
                 found.add(d.cellId);
-                queue.push(d.cellId);
             }
         }
     }
