@@ -64,6 +64,28 @@ let SABOTAGE_NUKE_FALLOUT_DURATION_MS = Number(process.env.SABOTAGE_NUKE_FALLOUT
 let STRIKE_LIMIT_PER_DAY = Number(process.env.STRIKE_LIMIT_PER_DAY || 1);
 let MAINTENANCE_REFUND_PCT = Number(process.env.MAINTENANCE_REFUND_PCT || 0.75);
 
+// ── Surveyor config ──────────────────────────────────────────────────────────
+const SURVEYOR_COST            = Number(process.env.SURVEYOR_COST || 500);
+const SURVEYOR_MAINT_PER_TICK  = Number(process.env.SURVEYOR_MAINT_PER_TICK || 1);
+const SURVEYOR_DURATION_MS     = Number(process.env.SURVEYOR_DURATION_MS || 300000); // 5 min
+const SURVEYOR_DISCOVER_RADIUS = Number(process.env.SURVEYOR_DISCOVER_RADIUS || 2);
+
+function chebyshevDist(a, b) {
+    const ax = a % GRID_COLS, ay = Math.floor(a / GRID_COLS);
+    const bx = b % GRID_COLS, by = Math.floor(b / GRID_COLS);
+    return Math.max(Math.abs(ax - bx), Math.abs(ay - by));
+}
+
+function surveyorRandomWalk(cellId) {
+    const x = cellId % GRID_COLS;
+    const y = Math.floor(cellId / GRID_COLS);
+    const dx = Math.floor(Math.random() * 3) - 1; // -1, 0, or 1
+    const dy = Math.floor(Math.random() * 3) - 1;
+    const nx = Math.max(0, Math.min(GRID_COLS - 1, x + dx));
+    const ny = Math.max(0, Math.min(GRID_ROWS - 1, y + dy));
+    return ny * GRID_COLS + nx;
+}
+
 function setBuildingRules(type, cost, constructionMs, maintenanceCost) {
     if (!BUILDING_RULES[type]) return false;
     if (Number.isFinite(Number(cost)) && Number(cost) >= 0) BUILDING_RULES[type].cost = Math.floor(Number(cost));
@@ -472,7 +494,7 @@ async function getRunSnapshot(runId) {
     if (!runId) return null;
     await ensureRunPlayerStates(runId);
 
-    const [runResult, playersResult, buildingsResult, playerStatesResult, falloutResult, scores] = await Promise.all([
+    const [runResult, playersResult, buildingsResult, playerStatesResult, falloutResult, scores, surveyorsResult] = await Promise.all([
         db.query('SELECT * FROM runs WHERE id = $1 LIMIT 1', [runId]),
         db.query(
             `SELECT
@@ -508,6 +530,7 @@ async function getRunSnapshot(runId) {
             [runId]
         ),
         calculateScores(runId),
+        db.query('SELECT id, player_id, cell_id, expires_at FROM surveyors WHERE run_id = $1 AND expires_at > NOW()', [runId]),
     ]);
 
     const run = parseRunRow(runResult.rows[0]);
@@ -527,6 +550,7 @@ async function getRunSnapshot(runId) {
         score: Number(row.score || 0),
         strikes_used_today: parseInt(row.strikes_used_today, 10) || 0,
         used_nuke: !!row.used_nuke,
+        discovered_deposits: Array.isArray(row.discovered_deposits) ? row.discovered_deposits : [],
     }));
 
     const playerNameById = new Map(playersResult.rows.map((player) => [player.id, player.username]));
@@ -559,6 +583,7 @@ async function getRunSnapshot(runId) {
         nuclearThreats,
         terrain,
         deposits,
+        surveyors: surveyorsResult.rows,
     };
 }
 
@@ -608,14 +633,25 @@ async function emitRunSnapshot(io, runId, eventName = 'run:tick') {
     }
 
     sockets.forEach((roomSocket) => {
+        const pState = stateByPlayer.get(roomSocket.playerId) || null;
+        const discoveredSet = new Set(pState?.discovered_deposits || []);
+        const visibleDeposits = (snapshot.deposits || []).filter(d => discoveredSet.has(d.cellId));
+        const surveyorList = (snapshot.surveyors || []).map(sv => ({
+            id: sv.id,
+            playerId: sv.player_id,
+            cellId: sv.cell_id,
+            expiresAt: sv.expires_at,
+        }));
         roomSocket.emit(eventName, {
             run: snapshot.run,
             scores: snapshot.scores,
-            playerState: stateByPlayer.get(roomSocket.playerId) || null,
+            playerState: pState,
             yourWallet: parseInt(playerById.get(roomSocket.playerId)?.token_balance, 10) || 0,
             falloutZones: snapshot.falloutZones,
             nuclearThreats: snapshot.nuclearThreats,
             serverTime: serverNow,
+            deposits: visibleDeposits,
+            surveyors: surveyorList,
         });
 
         // Notify about just-completed buildings
@@ -634,7 +670,7 @@ async function processRunEconomy(io, run) {
     if (!run?.id || run.status !== 'active') return;
     await ensureRunPlayerStates(run.id);
 
-    const [runResult, playersResult, statesResult, buildingsResult, falloutResult] = await Promise.all([
+    const [runResult, playersResult, statesResult, buildingsResult, falloutResult, surveyorsResult] = await Promise.all([
         db.query('SELECT * FROM runs WHERE id = $1 LIMIT 1', [run.id]),
         db.query(
             `SELECT p.id, p.username, p.token_balance
@@ -646,6 +682,7 @@ async function processRunEconomy(io, run) {
         db.query('SELECT * FROM run_player_state WHERE run_id = $1', [run.id]),
         db.query('SELECT * FROM buildings WHERE run_id = $1 AND is_active = TRUE', [run.id]),
         db.query('SELECT * FROM fallout_zones WHERE run_id = $1 AND expires_at > NOW()', [run.id]),
+        db.query('SELECT id, player_id, cell_id, expires_at FROM surveyors WHERE run_id = $1 AND expires_at > NOW()', [run.id]),
     ]);
 
     const liveRun = parseRunRow(runResult.rows[0]);
@@ -726,8 +763,9 @@ async function processRunEconomy(io, run) {
                 income = Math.floor(totalPower * powerFraction * INCOME_POWER_MULT);
             }
 
-            // Deduct maintenance cost for every completed building
-            const totalMaintenance = completedBuildings.reduce((sum, b) => sum + (BUILDING_RULES[b.type]?.maintenanceCost || 0), 0);
+            // Deduct maintenance cost for every completed building and active surveyor
+            const surveyorMaint = surveyorsResult.rows.filter(sv => sv.player_id === state.player_id).length * SURVEYOR_MAINT_PER_TICK;
+            const totalMaintenance = completedBuildings.reduce((sum, b) => sum + (BUILDING_RULES[b.type]?.maintenanceCost || 0), 0) + surveyorMaint;
             const netIncome = income - totalMaintenance;
             const nextBalance = Math.max(0, (parseInt(player.token_balance, 10) || 0) + netIncome);
             dailyIncome += income;
@@ -864,6 +902,33 @@ async function processRunEconomy(io, run) {
         throw err;
     } finally {
         client.release();
+    }
+
+    // ── Surveyor movement + deposit discovery ────────────────────────────────
+    try {
+        await db.query('DELETE FROM surveyors WHERE run_id = $1 AND expires_at <= NOW()', [run.id]);
+        for (const sv of surveyorsResult.rows) {
+            const newCell = surveyorRandomWalk(sv.cell_id);
+            const nearbyIds = (deposits || [])
+                .filter(d => chebyshevDist(d.cellId, newCell) <= SURVEYOR_DISCOVER_RADIUS)
+                .map(d => d.cellId);
+            await db.query('UPDATE surveyors SET cell_id = $1 WHERE id = $2', [newCell, sv.id]);
+            if (nearbyIds.length > 0) {
+                await db.query(
+                    `UPDATE run_player_state
+                     SET discovered_deposits = (
+                         SELECT jsonb_agg(DISTINCT elem::int)
+                         FROM jsonb_array_elements(
+                             COALESCE(discovered_deposits, '[]'::jsonb) || $1::jsonb
+                         ) AS elem
+                     )
+                     WHERE run_id = $2 AND player_id = $3`,
+                    [JSON.stringify(nearbyIds), run.id, sv.player_id]
+                );
+            }
+        }
+    } catch (e) {
+        console.warn('[surveyor] tick failed:', e && e.message);
     }
 
     await emitRunSnapshot(io, run.id, 'run:tick');
@@ -1277,6 +1342,12 @@ module.exports = {
         nukeFalloutDurationMs: SABOTAGE_NUKE_FALLOUT_DURATION_MS,
         strikeLimitPerDay: STRIKE_LIMIT_PER_DAY,
         maintenanceRefundPct: MAINTENANCE_REFUND_PCT,
+    }),
+    getSurveyorConfig: () => ({
+        cost: SURVEYOR_COST,
+        durationMs: SURVEYOR_DURATION_MS,
+        maintPerTick: SURVEYOR_MAINT_PER_TICK,
+        discoverRadius: SURVEYOR_DISCOVER_RADIUS,
     }),
     setNextRunLength,
     getNextRunLength: () => _nextRunLength,

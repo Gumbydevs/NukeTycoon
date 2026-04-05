@@ -643,7 +643,7 @@ function connectSocket() {
     });
 
     // ── Run events ──────────────────────────────────────────────────────
-    socket.on('run:state', ({ run, buildings, players, scores, playerState, falloutZones, nuclearThreats, yourWallet, isNewJoiner, serverTime, terrain, deposits, chatMessages, notifications, buildQueue = [] }) => {
+    socket.on('run:state', ({ run, buildings, players, scores, playerState, falloutZones, nuclearThreats, yourWallet, isNewJoiner, serverTime, terrain, deposits, surveyors = [], chatMessages, notifications, buildQueue = [] }) => {
         // Store server clock for interpolation
         if (serverTime) {
             game._serverTime = serverTime;
@@ -686,7 +686,9 @@ function connectSocket() {
         if (Array.isArray(deposits)) {
             game._serverDeposits = deposits;
         }
+        game.surveyors = Array.isArray(surveyors) ? surveyors : [];
         initGrid();
+        renderSurveyors();
         game.buildings      = [];
         game.enemyBuildings = [];
         buildings.forEach(b => {
@@ -834,7 +836,7 @@ function connectSocket() {
         applyServerScores(scores);
     });
 
-    socket.on('run:tick', ({ run, playerState, yourWallet, scores, falloutZones, nuclearThreats, serverTime }) => {
+    socket.on('run:tick', ({ run, playerState, yourWallet, scores, falloutZones, nuclearThreats, serverTime, deposits, surveyors }) => {
         // Store server clock for interpolation
         if (serverTime) {
             game._serverTime = serverTime;
@@ -884,7 +886,27 @@ function connectSocket() {
             game._pendingBuildingIncome = (game._pendingBuildingIncome || 0)
                 + (parseInt(playerState.last_income, 10) || 0);
         }
+        // ── Update visible deposits and surveyors from server ─────────────────
+        if (Array.isArray(deposits)) {
+            game.deposits = deposits;
+            game._serverDeposits = deposits;
+            renderDeposits();
+        }
+        if (Array.isArray(surveyors)) {
+            game.surveyors = surveyors;
+            renderSurveyors();
+        }
         // ────────────────────────────────────────────────────────────────────────
+    });
+
+    socket.on('surveyor:placed', ({ surveyorId, cellId, expiresAt }) => {
+        const expTime = expiresAt ? new Date(expiresAt).toLocaleTimeString() : 'a while';
+        addNotification('success', `🧭 Surveyor deployed at cell ${cellId}! Exploring until ${expTime}.`);
+    });
+
+    socket.on('surveyor:error', ({ message }) => {
+        addNotification('danger', `🧭 Surveyor: ${message}`);
+        game.selectedMode = null;
     });
 
     // Server says these buildings finished construction
@@ -2248,9 +2270,28 @@ function generateDeposits(width, height, terrain) {
  */
 function renderDeposits() {
     const grid = document.getElementById('gameGrid');
-    game.deposits.forEach(deposit => {
+    // Clear existing deposit markers before re-applying (deposits can update per tick)
+    grid.querySelectorAll('.cell.has-deposit').forEach(c => c.classList.remove('has-deposit'));
+    (game.deposits || []).forEach(deposit => {
         const cell = grid.querySelector(`[data-id="${deposit.cellId}"]`);
         if (cell) cell.classList.add('has-deposit');
+    });
+}
+
+/**
+ * Render surveyor units on the grid (one marker div per surveyor)
+ */
+function renderSurveyors() {
+    const grid = document.getElementById('gameGrid');
+    // Remove all existing surveyor markers
+    grid.querySelectorAll('.surveyor-marker').forEach(m => m.remove());
+    (game.surveyors || []).forEach(sv => {
+        const cell = grid.querySelector(`[data-id="${sv.cellId}"]`);
+        if (!cell) return;
+        const marker = document.createElement('div');
+        marker.className = 'surveyor-marker';
+        marker.title = 'Surveyor';
+        cell.appendChild(marker);
     });
 }
 
@@ -2732,6 +2773,13 @@ function placeOrSelect(id) {
     } else if (game.selectedMode === 'strike') {
         // Strike mode: target enemy buildings in AoE
         executeNuclearStrike(id);
+    } else if (game.selectedMode === 'hireSurveyor') {
+        if (socket?.connected && _authJWT) {
+            socket.emit('surveyor:hire', { jwt: _authJWT, cellId: id });
+            game.selectedMode = null;
+        } else {
+            addNotification('danger', '⚠️ Not connected to server.');
+        }
     } else {
         // For building placement, check that cell is empty
         // Use trimmed innerHTML to avoid invisible whitespace counting as occupied

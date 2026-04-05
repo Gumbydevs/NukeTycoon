@@ -638,6 +638,25 @@ body.mobile-menu-open .dropdown { display: none !important; }
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
 }
 
+/* Surveyor unit marker */
+.surveyor-marker {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    font-size: 9px;
+    line-height: 1;
+    pointer-events: none;
+    z-index: 5;
+    animation: surveyor-bob 1.2s ease-in-out infinite alternate;
+}
+.surveyor-marker::after {
+    content: '🧭';
+}
+@keyframes surveyor-bob {
+    from { transform: translateY(0); }
+    to   { transform: translateY(-2px); }
+}
+
 /* Terrain visuals */
 .cell.terrain-grass {
     background-image: radial-gradient(circle at 10% 20%, rgba(255,255,255,0.02) 0 2px, transparent 2px),

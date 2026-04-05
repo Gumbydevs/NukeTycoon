@@ -108,6 +108,18 @@ CREATE TABLE IF NOT EXISTS run_player_state (
     UNIQUE(run_id, player_id)
 );
 CREATE INDEX IF NOT EXISTS idx_run_player_state_run_player ON run_player_state(run_id, player_id);
+ALTER TABLE run_player_state ADD COLUMN IF NOT EXISTS discovered_deposits JSONB DEFAULT '[]';
+
+-- ── Surveyor units (fog-of-war deposit discovery) ────────────────────────────
+CREATE TABLE IF NOT EXISTS surveyors (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    run_id      UUID NOT NULL REFERENCES runs(id),
+    player_id   UUID NOT NULL REFERENCES players(id),
+    cell_id     INTEGER NOT NULL,
+    expires_at  TIMESTAMPTZ NOT NULL,
+    hired_at    TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_surveyors_run_expires ON surveyors(run_id, expires_at);
 
 -- ── Persistent fallout / radiation zones ─────────────────────────────────────
 CREATE TABLE IF NOT EXISTS fallout_zones (

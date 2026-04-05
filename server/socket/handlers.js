@@ -1,6 +1,6 @@
 const { sendOTP, verifyOTP, verifyJWT, generateJWT, signupWithPassword, loginWithPassword } = require('../auth');
 const db = require('../db');
-const { getActiveRun, getRunSnapshot, ensureRunPlayerState, BUILDING_RULES, getBuyIn, getBuildSlots, getMarketPoolBurnRate, getGridSize, getSabotageConfig, getProductionConfig } = require('../gameLoop');
+const { getActiveRun, getRunSnapshot, ensureRunPlayerState, BUILDING_RULES, getBuyIn, getBuildSlots, getMarketPoolBurnRate, getGridSize, getSabotageConfig, getProductionConfig, emitRunSnapshot, getSurveyorConfig, getDepositsForRun } = require('../gameLoop');
 
 const DEFAULT_AVATAR = '☢️';
 const VALID_AVATARS = new Set(['☢️', '🧑‍🚀', '👩‍🔬', '👨‍🔬', '🤖', '🦊', '🐺', '🐉']);
@@ -494,7 +494,17 @@ function registerHandlers(io, socket) {
                 isNewJoiner,
                 serverTime: Date.now(),
                 terrain: snapshot?.terrain || null,
-                deposits: snapshot?.deposits || null,
+                deposits: (() => {
+                    const allDeps = snapshot?.deposits || [];
+                    const discovered = new Set(meState?.discovered_deposits || []);
+                    return allDeps.filter(d => discovered.has(d.cellId));
+                })(),
+                surveyors: (snapshot?.surveyors || []).map(sv => ({
+                    id: sv.id,
+                    playerId: sv.player_id,
+                    cellId: sv.cell_id,
+                    expiresAt: sv.expires_at,
+                })),
                 chatMessages: chatRows,
                 notifications: notesRes.rows || [],
                 buildQueue: queueRes.rows || [],
@@ -811,6 +821,87 @@ function registerHandlers(io, socket) {
             const walletRes = await db.query('SELECT token_balance FROM players WHERE id = $1', [player.id]);
             socket.emit('player:wallet_update', { token_balance: parseInt(walletRes.rows[0]?.token_balance, 10) || 0 });
             await emitRunEconomy(io, run.id);
+            if (typeof ack === 'function') ack({ ok: true });
+        });
+    });
+
+    // ── SURVEYOR HIRE ─────────────────────────────────────────────────────────
+
+    socket.on('surveyor:hire', async ({ jwt, cellId }, ack) => {
+        await requireAuth(socket, jwt, async (decoded, player) => {
+            if (typeof cellId !== 'number' || cellId < 0 || cellId > 399) {
+                socket.emit('surveyor:error', { message: 'Invalid cell.' });
+                if (typeof ack === 'function') ack({ ok: false, error: 'Invalid cell.' });
+                return;
+            }
+            const run = await getActiveRun();
+            if (!run) {
+                socket.emit('surveyor:error', { message: 'No active run.' });
+                if (typeof ack === 'function') ack({ ok: false, error: 'No active run.' });
+                return;
+            }
+            const membership = await db.query(
+                'SELECT id FROM run_players WHERE run_id = $1 AND player_id = $2',
+                [run.id, player.id]
+            );
+            if (membership.rows.length === 0) {
+                socket.emit('surveyor:error', { message: 'You are not in this run.' });
+                if (typeof ack === 'function') ack({ ok: false, error: 'Not in run.' });
+                return;
+            }
+            const { cost, durationMs, discoverRadius } = getSurveyorConfig();
+            const bal = parseInt(player.token_balance, 10) || 0;
+            if (bal < cost) {
+                socket.emit('surveyor:error', { message: `Not enough tokens (need ${cost}, have ${bal}).` });
+                if (typeof ack === 'function') ack({ ok: false, error: 'Not enough tokens.' });
+                return;
+            }
+
+            // Deduct cost and insert surveyor row
+            await db.query('UPDATE players SET token_balance = token_balance - $1 WHERE id = $2', [cost, player.id]);
+            const expiresAt = new Date(Date.now() + durationMs);
+            const svRes = await db.query(
+                'INSERT INTO surveyors (run_id, player_id, cell_id, expires_at) VALUES ($1,$2,$3,$4) RETURNING id, cell_id, expires_at',
+                [run.id, player.id, cellId, expiresAt]
+            );
+            const sv = svRes.rows[0];
+
+            // Immediate discovery around the starting cell
+            try {
+                const allDeposits = getDepositsForRun(run.id) || [];
+                const cols = getGridSize().cols || 20;
+                const ax = cellId % cols, ay = Math.floor(cellId / cols);
+                const nearbyIds = allDeposits
+                    .filter(d => {
+                        const bx = d.cellId % cols, by = Math.floor(d.cellId / cols);
+                        return Math.max(Math.abs(ax - bx), Math.abs(ay - by)) <= discoverRadius;
+                    })
+                    .map(d => d.cellId);
+                if (nearbyIds.length > 0) {
+                    await db.query(
+                        `UPDATE run_player_state
+                         SET discovered_deposits = (
+                             SELECT jsonb_agg(DISTINCT elem::int)
+                             FROM jsonb_array_elements(
+                                 COALESCE(discovered_deposits, '[]'::jsonb) || $1::jsonb
+                             ) AS elem
+                         )
+                         WHERE run_id = $2 AND player_id = $3`,
+                        [JSON.stringify(nearbyIds), run.id, player.id]
+                    );
+                }
+            } catch (e) {
+                console.warn('[surveyor:hire] initial discovery failed:', e && e.message);
+            }
+
+            // Confirm to the hiring player
+            socket.emit('surveyor:placed', { surveyorId: sv.id, cellId: sv.cell_id, expiresAt: sv.expires_at });
+            const walletRes = await db.query('SELECT token_balance FROM players WHERE id = $1', [player.id]);
+            socket.emit('player:wallet_update', { token_balance: parseInt(walletRes.rows[0]?.token_balance, 10) || 0 });
+
+            // Broadcast updated snapshot so all players see the surveyor and the hiring
+            // player's visible deposits update
+            await emitRunSnapshot(io, run.id, 'run:tick');
             if (typeof ack === 'function') ack({ ok: true });
         });
     });
