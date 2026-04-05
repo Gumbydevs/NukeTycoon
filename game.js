@@ -3667,6 +3667,10 @@ function updateNukeHUD() {
     hud.style.borderColor = isDropMode ? '#ff4444' : '#333';
     hud.style.boxShadow = isDropMode ? '0 0 10px rgba(255,68,68,0.5)' : '';
 
+    // Toggle crosshair cursor class on the grid container
+    const gridEl = document.getElementById('grid');
+    if (gridEl) gridEl.classList.toggle('nuke-drop-mode', isDropMode);
+
     // Wire events
     const invBtn = document.getElementById('nukeInvBtn');
     if (invBtn) {

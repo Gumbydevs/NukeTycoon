@@ -1057,7 +1057,8 @@ body.mobile-menu-open .dropdown { display: none !important; }
 .legend-toggle { caret-color: transparent; }
 
 /* Nuke blast crater â€” grey scorched zone */
-.cell.nuked-crater {
+.cell.nuked-crater,
+.cell.nuke-crater {
     background-color: #4a4a4a !important;
     filter: saturate(0.1) brightness(0.7);
     border-color: rgba(80, 80, 80, 0.5) !important;
@@ -1074,6 +1075,48 @@ body.mobile-menu-open .dropdown { display: none !important; }
 
 .btn.nuclear:hover {
     box-shadow: 0 0 15px rgba(255, 0, 0, 0.6), inset 0 0 10px rgba(255, 0, 0, 0.3);
+}
+
+/* ── Nuke HUD (bottom-right inventory panel) ─────────────────────────────── */
+.nuke-hud-inv {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 4px;
+    border-radius: 4px;
+    transition: background 0.15s;
+}
+.nuke-hud-inv:hover {
+    background: rgba(255, 68, 68, 0.12);
+}
+.nuke-hud-mfg {
+    border-top: 1px solid #2a2a2a;
+    padding-top: 4px;
+    margin-top: 2px;
+    font-size: 11px;
+    color: #ffa500;
+}
+.nuke-hud-mfg-btn {
+    cursor: pointer;
+    border-top: 1px solid #2a2a2a;
+    border-radius: 4px;
+    padding: 3px 4px;
+    margin-top: 2px;
+    font-size: 11px;
+    color: #aaa;
+    transition: background 0.15s, color 0.15s;
+}
+.nuke-hud-mfg-btn:hover {
+    background: rgba(255, 160, 0, 0.12);
+    color: #ffb84d;
+}
+
+/* Drop-targeting mode: crosshair cursor on grid cells */
+.nuke-drop-mode .cell {
+    cursor: crosshair !important;
+}
+.nuke-drop-mode .cell:hover {
+    outline: 2px solid rgba(255, 68, 68, 0.65) !important;
 }
 /* â”€â”€ Game Juice animations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
