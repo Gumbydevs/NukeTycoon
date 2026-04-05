@@ -60,32 +60,73 @@ function setConnectionReconnecting(reconnecting) {
 }
 
 // Fetch and display app version from server
-function fetchAndDisplayVersion() {
+async function fetchAndDisplayVersion() {
     try {
-        fetch('/api/version', { cache: 'no-store' })
-            .then(r => {
-                const ct = r.headers.get('content-type') || '';
-                if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                if (ct.includes('application/json')) return r.json().then(j => ({ json: j }));
-                // If server returns plain text (version string), parse it
-                if (ct.includes('text/plain') || ct.includes('text/')) return r.text().then(t => ({ text: t }));
-                // Unexpected content-type (HTML/proxy) — treat as error
-                throw new Error('Unexpected content-type');
-            })
-            .then(data => {
-                const els = document.querySelectorAll('.app-version');
-                if (!els || els.length === 0) return;
-                let displayText = 'v?';
-                if (data.json && data.json.version) displayText = `v${data.json.version}`;
-                else if (data.text) {
-                    const txt = (typeof data.text === 'string') ? data.text.trim() : '';
-                    if (/^\d+\.\d+\.\d+/.test(txt)) displayText = `v${txt}`;
+        const els = document.querySelectorAll('.app-version');
+        if (!els || els.length === 0) return;
+        let displayText = 'v?';
+
+        // Primary: /api/version
+        try {
+            const r = await fetch('/api/version', { cache: 'no-store' });
+            const ct = r.headers.get('content-type') || '';
+            const raw = await r.text().catch(() => '');
+            if (!r.ok) throw new Error(raw || `HTTP ${r.status}`);
+
+            if (ct.includes('application/json')) {
+                try {
+                    const j = JSON.parse(raw);
+                    if (j && j.version) displayText = `v${j.version}`;
+                } catch (e) {
+                    // try r.json() as a fallback
+                    const j = await r.json().catch(() => null);
+                    if (j && j.version) displayText = `v${j.version}`;
                 }
-                els.forEach(el => { el.textContent = displayText; el.style.display = ''; });
-            }).catch((err) => {
-                console.warn('Version fetch failed:', err && err.message);
-                document.querySelectorAll('.app-version').forEach(el => { el.textContent = 'v?'; });
-            });
+            } else {
+                // text/plain, text/markdown, text/html, or other — try to extract semver from raw body
+                const m = (raw || '').match(/\d+\.\d+\.\d+/);
+                if (m) displayText = `v${m[0]}`;
+                else {
+                    // maybe the body contains JSON embedded in HTML; try parsing
+                    try { const j2 = JSON.parse(raw); if (j2 && j2.version) displayText = `v${j2.version}`; } catch (e) { /* ignore */ }
+                }
+            }
+        } catch (err) {
+            console.warn('Primary version fetch failed:', err && err.message);
+            // fall through to package.json / changelog fallbacks below
+        }
+
+        // If still unknown, try fetching package.json from common locations
+        if (displayText === 'v?') {
+            const tryPkg = async (url) => {
+                try {
+                    const r2 = await fetch(url, { cache: 'no-store' });
+                    if (!r2.ok) return null;
+                    // prefer JSON parse
+                    const j = await r2.json().catch(() => null);
+                    if (j && j.version) return `v${j.version}`;
+                    const txt = await r2.text().catch(() => '');
+                    const m = txt.match(/\d+\.\d+\.\d+/);
+                    if (m) return `v${m[0]}`;
+                } catch (e) { /* ignore */ }
+                return null;
+            };
+            displayText = await tryPkg('/package.json') || await tryPkg('/server/package.json') || displayText;
+        }
+
+        // Final fallback: try CHANGELOG.md (search for first semver-looking string)
+        if (displayText === 'v?') {
+            try {
+                const r3 = await fetch('/CHANGELOG.md', { cache: 'no-store' });
+                if (r3 && r3.ok) {
+                    const t3 = await r3.text().catch(() => '');
+                    const m3 = (t3 || '').match(/\d+\.\d+\.\d+/);
+                    if (m3) displayText = `v${m3[0]}`;
+                }
+            } catch (e) { /* ignore */ }
+        }
+
+        els.forEach(el => { el.textContent = displayText; el.style.display = ''; });
     } catch (e) { /* ignore */ }
 }
 
@@ -96,41 +137,59 @@ function showChangelog() {
     if (!modal || !content) return;
     content.textContent = 'Loading…';
     modal.style.display = 'flex';
+    // Helper: sanitize HTML or error text into readable plain text
+    const sanitizeText = (raw) => {
+        if (!raw) return '';
+        // If it looks like HTML, use DOM parsing to extract text (and decode entities)
+        if (/<[a-z][\s\S]*>/i.test(raw)) {
+            try {
+                const tmp = document.createElement('div');
+                tmp.innerHTML = raw;
+                return (tmp.textContent || tmp.innerText || '').trim();
+            } catch (e) {
+                return raw.replace(/<[^>]+>/g, '').trim();
+            }
+        }
+        return String(raw).trim();
+    };
+
     fetch('/api/changelog', { cache: 'no-store' })
         .then(async (r) => {
             const ct = r.headers.get('content-type') || '';
-            // If the request failed, prefer a text fallback so we don't try to parse HTML as JSON
-            if (!r.ok) {
-                const txt = await r.text().catch(() => '');
-                throw new Error(txt || `HTTP ${r.status}`);
-            }
-            // Plain text response (ideal)
-            if (ct.includes('text/plain') || ct.includes('text/markdown')) return r.text();
-            // JSON response — stringify for display
-            if (ct.includes('application/json')) {
-                const j = await r.json().catch(() => null);
-                if (j && j.ok === false && j.error) throw new Error(j.error);
-                return JSON.stringify(j, null, 2);
-            }
-            // HTML or unknown: try to extract meaningful text from HTML, else return raw text
             const raw = await r.text().catch(() => '');
-            // Strip tags to get readable content if possible
-            const stripped = raw.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '').replace(/<[^>]+>/g, '').trim();
+            if (!r.ok) throw new Error(raw || `HTTP ${r.status}`);
+
+            if (ct.includes('text/plain') || ct.includes('text/markdown')) return raw;
+            if (ct.includes('application/json')) {
+                try {
+                    const j = JSON.parse(raw);
+                    if (j && j.ok === false && j.error) throw new Error(j.error);
+                    return JSON.stringify(j, null, 2);
+                } catch (e) {
+                    // Fallback: return raw text
+                    return raw;
+                }
+            }
+
+            // For HTML or unknown content-types, sanitize the raw HTML into readable text
+            const stripped = sanitizeText(raw);
             if (stripped) return stripped;
             throw new Error('Changelog unavailable (unexpected HTML response)');
         })
-        .then(t => { content.textContent = t || '(No changelog entries yet)'; })
+        .then(t => { content.textContent = sanitizeText(t) || '(No changelog entries yet)'; })
         .catch(async (err) => {
             // As a final fallback, try to load the repo CHANGELOG.md directly from the site root.
             try {
                 const r2 = await fetch('/CHANGELOG.md', { cache: 'no-store' });
                 if (r2 && r2.ok) {
-                    const md = await r2.text();
-                    content.textContent = md || '(No changelog entries yet)';
+                    const md = await r2.text().catch(() => '');
+                    content.textContent = sanitizeText(md) || '(No changelog entries yet)';
                     return;
                 }
             } catch (e) { /* ignore fallback failure */ }
-            content.textContent = `(Unable to load changelog) ${err && err.message ? '- ' + err.message : ''}`;
+
+            const msg = err && err.message ? sanitizeText(err.message) : String(err);
+            content.textContent = `(Unable to load changelog) - ${msg}`;
         });
 }
 
