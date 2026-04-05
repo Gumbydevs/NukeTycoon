@@ -3578,7 +3578,7 @@ function executeNuclearStrike(targetId) {
     }
 
     console.warn('[nuke] Not connected to server, cannot launch');
-    addNotification('warning', '⚠️ Cannot launch — not connected to server.');
+    addNotification('warning', '⚠️ Cannot launch. Not connected to server.');
     game.selectedMode = null;
 }
 
@@ -3925,14 +3925,21 @@ function updateNukeHUD() {
         const buildSecRem = buildSecs % 60;
         const buildTimeStr = buildMin > 0 ? (buildSecRem > 0 ? `${buildMin}m ${buildSecRem}s` : `${buildMin}m`) : `${buildSecs}s`;
         const radiusCells = cfg.falloutRadius ?? 3;
-        html += `<div id="nukeMfgBtn" class="nuke-hud-mfg-btn">
-            <span style="font-size:11px;color:#aaa;">Manufacture Nuke</span>
+        const maxInv = cfg.maxInventory ?? 3;
+        const siloFull = inv >= maxInv;
+        const cooldownMs = cfg.launchCooldownMs ?? 0;
+        const cooldownStr = cooldownMs > 0 ? `${Math.round(cooldownMs / 1000)}s cooldown between launches` : 'No launch cooldown';
+        html += `<div id="nukeMfgBtn" class="nuke-hud-mfg-btn" style="opacity:${siloFull ? '0.45' : '1'};cursor:${siloFull ? 'not-allowed' : 'pointer'}">
+            <span style="font-size:11px;color:${siloFull ? '#ff6b6b' : '#aaa'};">${siloFull ? `Silo Full (${inv}/${maxInv})` : 'Manufacture Nuke'}</span>
             <div class="nuke-mfg-tooltip">
                 <div class="nuke-mfg-tooltip-title">MANUFACTURE WARHEAD</div>
+                ${siloFull ? `<div class="nuke-mfg-tooltip-row" style="color:#ff6b6b;">Silo at capacity (${inv}/${maxInv}). Fire a nuke to free space.</div>` : ''}
                 <div class="nuke-mfg-tooltip-row"><span>Cost</span><span style="color:#ffb84d;">${costTokens} tokens</span></div>
                 <div class="nuke-mfg-tooltip-row"><span>Requires</span><span>Silo (built)</span></div>
                 <div class="nuke-mfg-tooltip-row"><span>Build time</span><span>${buildTimeStr}</span></div>
                 <div class="nuke-mfg-tooltip-row"><span>Blast radius</span><span>${radiusCells} cells</span></div>
+                <div class="nuke-mfg-tooltip-row"><span>Max stored</span><span>${maxInv} nukes</span></div>
+                <div class="nuke-mfg-tooltip-row"><span>Cooldown</span><span>${cooldownStr}</span></div>
             </div>
         </div>`;
     }
@@ -3963,6 +3970,14 @@ function updateNukeHUD() {
     const mfgBtn = document.getElementById('nukeMfgBtn');
     if (mfgBtn) {
         mfgBtn.onclick = () => {
+            if (siloFull) {
+                addNotification('warning', `Silo full (${inv}/${maxInv}). Fire a nuke first to free space.`);
+                return;
+            }
+            if (mfg) {
+                addNotification('info', 'Already manufacturing a nuke. Wait for it to complete.');
+                return;
+            }
             if (socket?.connected && _authJWT) {
                 socket.emit('nuke:manufacture', { jwt: _authJWT });
             }
