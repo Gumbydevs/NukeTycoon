@@ -3993,8 +3993,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Connect to the server immediately on page load
     connectSocket();
 
-    // Update UI elements: fetch app version and initialize connection indicator
-    fetchAndDisplayVersion();
+    // Update UI elements: (version hardcoded in HTML) initialize connection indicator
+    // NOTE: version is hardcoded into the page by build step; remove dynamic fetch.
     setConnectionIndicator(false);
 
     // Wire up changelog modal interactions on any visible version element
