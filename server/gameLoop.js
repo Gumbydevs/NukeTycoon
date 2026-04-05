@@ -65,10 +65,11 @@ let STRIKE_LIMIT_PER_DAY = Number(process.env.STRIKE_LIMIT_PER_DAY || 1);
 let MAINTENANCE_REFUND_PCT = Number(process.env.MAINTENANCE_REFUND_PCT || 0.75);
 
 // ── Surveyor config ──────────────────────────────────────────────────────────
-let SURVEYOR_COST            = Number(process.env.SURVEYOR_COST || 500);
-let SURVEYOR_MAINT_PER_TICK  = Number(process.env.SURVEYOR_MAINT_PER_TICK || 1);
-let SURVEYOR_DURATION_MS     = Number(process.env.SURVEYOR_DURATION_MS || 300000); // 5 min
-let SURVEYOR_DISCOVER_RADIUS = Number(process.env.SURVEYOR_DISCOVER_RADIUS || 2);
+let SURVEYOR_COST                = Number(process.env.SURVEYOR_COST || 500);
+let SURVEYOR_MAINT_PER_TICK      = Number(process.env.SURVEYOR_MAINT_PER_TICK || 1);
+let SURVEYOR_DURATION_MS         = Number(process.env.SURVEYOR_DURATION_MS || 300000); // 5 min
+let SURVEYOR_DISCOVER_RADIUS     = Number(process.env.SURVEYOR_DISCOVER_RADIUS || 2);
+let SURVEYOR_MOVE_EVERY_N_TICKS  = Number(process.env.SURVEYOR_MOVE_EVERY_N_TICKS || 3); // base move speed (1 = every tick = 1 s)
 
 function chebyshevDist(a, b) {
     const ax = a % GRID_COLS, ay = Math.floor(a / GRID_COLS);
@@ -205,6 +206,7 @@ async function loadRuntimeConfigFromDB() {
                 case 'surveyor.maint_per_tick': SURVEYOR_MAINT_PER_TICK = Number(value); break;
                 case 'surveyor.duration_ms': SURVEYOR_DURATION_MS = Number(value); break;
                 case 'surveyor.discover_radius': SURVEYOR_DISCOVER_RADIUS = Number(value); break;
+                case 'surveyor.move_every_n_ticks': SURVEYOR_MOVE_EVERY_N_TICKS = Math.max(1, Number(value)); break;
                 default: {
                     // building.* keys are handled by loadBuildingRulesFromDB earlier
                     break;
@@ -218,10 +220,11 @@ async function loadRuntimeConfigFromDB() {
         // admin-editable via balance.html. Uses DO NOTHING so existing DB values
         // (set via the admin panel) are never overwritten on restart.
         const surveyorDefaults = [
-            ['surveyor.cost',            String(SURVEYOR_COST)],
-            ['surveyor.duration_ms',     String(SURVEYOR_DURATION_MS)],
-            ['surveyor.maint_per_tick',  String(SURVEYOR_MAINT_PER_TICK)],
-            ['surveyor.discover_radius', String(SURVEYOR_DISCOVER_RADIUS)],
+            ['surveyor.cost',                 String(SURVEYOR_COST)],
+            ['surveyor.duration_ms',          String(SURVEYOR_DURATION_MS)],
+            ['surveyor.maint_per_tick',       String(SURVEYOR_MAINT_PER_TICK)],
+            ['surveyor.discover_radius',      String(SURVEYOR_DISCOVER_RADIUS)],
+            ['surveyor.move_every_n_ticks',   String(SURVEYOR_MOVE_EVERY_N_TICKS)],
         ];
         for (const [k, v] of surveyorDefaults) {
             await db.query(
@@ -234,10 +237,11 @@ async function loadRuntimeConfigFromDB() {
         const svRes = await db.query("SELECT key, value FROM server_config WHERE key LIKE 'surveyor.%'");
         svRes.rows.forEach(({ key, value }) => {
             switch (key) {
-                case 'surveyor.cost':            SURVEYOR_COST            = Number(value); break;
-                case 'surveyor.duration_ms':     SURVEYOR_DURATION_MS     = Number(value); break;
-                case 'surveyor.maint_per_tick':  SURVEYOR_MAINT_PER_TICK  = Number(value); break;
-                case 'surveyor.discover_radius': SURVEYOR_DISCOVER_RADIUS = Number(value); break;
+                case 'surveyor.cost':                 SURVEYOR_COST                = Number(value); break;
+                case 'surveyor.duration_ms':           SURVEYOR_DURATION_MS         = Number(value); break;
+                case 'surveyor.maint_per_tick':        SURVEYOR_MAINT_PER_TICK      = Number(value); break;
+                case 'surveyor.discover_radius':       SURVEYOR_DISCOVER_RADIUS     = Number(value); break;
+                case 'surveyor.move_every_n_ticks':    SURVEYOR_MOVE_EVERY_N_TICKS  = Math.max(1, Number(value)); break;
             }
         });
 
@@ -971,6 +975,12 @@ async function processRunEconomy(io, run) {
     }
 
     // ── Surveyor movement + deposit discovery ────────────────────────────────
+    // Rate-limit movement: only move on ticks that are a multiple of SURVEYOR_MOVE_EVERY_N_TICKS.
+    // Tick counter is tracked per run so restarts don't desync.
+    if (!processRunEconomy._surveyorTick) processRunEconomy._surveyorTick = {};
+    processRunEconomy._surveyorTick[run.id] = ((processRunEconomy._surveyorTick[run.id] || 0) + 1) % SURVEYOR_MOVE_EVERY_N_TICKS;
+    const shouldMoveSurveyors = processRunEconomy._surveyorTick[run.id] === 0;
+
     const surveyorDiscoveries = []; // { playerId, newCellIds[] } for post-tick notifications
     const expiredSurveyorOwners = []; // player_ids whose surveyor just expired
     try {
@@ -981,6 +991,7 @@ async function processRunEconomy(io, run) {
         );
         expiredSurveyorOwners.push(...expiredRes.rows.map(r => r.player_id));
         await db.query('DELETE FROM surveyors WHERE run_id = $1 AND expires_at <= NOW()', [run.id]);
+        if (shouldMoveSurveyors) {
         for (const sv of surveyorsResult.rows) {
             // Load this player's discovered deposits for biased walk
             const discRes = await db.query(
@@ -1014,6 +1025,7 @@ async function processRunEconomy(io, run) {
                 }
             }
         }
+        } // end shouldMoveSurveyors
     } catch (e) {
         console.warn('[surveyor] tick failed:', e && e.message);
     }
@@ -1475,6 +1487,7 @@ module.exports = {
             durationMs: SURVEYOR_DURATION_MS,
             maintPerTick: SURVEYOR_MAINT_PER_TICK,
             discoverRadius: SURVEYOR_DISCOVER_RADIUS,
+            moveEveryNTicks: SURVEYOR_MOVE_EVERY_N_TICKS,
         },
     }),
     getProductionConfig: () => ({

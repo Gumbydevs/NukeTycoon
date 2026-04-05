@@ -240,6 +240,11 @@
             <label style="width:160px">Discover radius (cells)</label>
             <input id="surveyor_discover_radius" type="number" class="small" style="width:100px" />
           </div>
+          <div class="row section">
+            <label style="width:160px">Move every N ticks</label>
+            <input id="surveyor_move_every_n_ticks" type="number" min="1" class="small" style="width:100px" />
+            <span class="muted" style="margin-left:6px">1 tick = 1 s &mdash; default 3 = moves every 3 s (upgradable per player later)</span>
+          </div>
         </div>
 
         <h4 class="section">Building Rules</h4>
@@ -345,6 +350,7 @@
         $('surveyor_duration_ms').value = sv.durationMs ?? '';
         $('surveyor_maint_per_tick').value = sv.maintPerTick ?? '';
         $('surveyor_discover_radius').value = sv.discoverRadius ?? '';
+        $('surveyor_move_every_n_ticks').value = sv.moveEveryNTicks ?? '';
 
         // Building rules
         const rules = cfg.buildingRules || {};
@@ -499,6 +505,7 @@
       changes['surveyor.duration_ms'] = Number($('surveyor_duration_ms').value) || 300000;
       changes['surveyor.maint_per_tick'] = Number($('surveyor_maint_per_tick').value) || 1;
       changes['surveyor.discover_radius'] = Number($('surveyor_discover_radius').value) || 2;
+      changes['surveyor.move_every_n_ticks'] = Math.max(1, Number($('surveyor_move_every_n_ticks').value) || 3);
 
       // Building rows
       document.querySelectorAll('#buildingRulesBody input[data-key]').forEach(inp => {

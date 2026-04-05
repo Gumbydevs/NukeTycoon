@@ -2353,6 +2353,10 @@ function renderSurveyors() {
     const grid = document.getElementById('gameGrid');
     if (!grid) return;
 
+    // Transition duration tracks the server move interval so the walk looks right
+    const moveIntervalMs = ((game._surveyorConfig?.moveEveryNTicks ?? 3) * 1000 * 0.88).toFixed(0);
+    const transitionCss = `left ${moveIntervalMs}ms cubic-bezier(0.4,0,0.2,1), top ${moveIntervalMs}ms cubic-bezier(0.4,0,0.2,1)`;
+
     // Lazily create abs-pos overlay inside .grid
     let overlay = document.getElementById('surveyor-overlay');
     if (!overlay) {
@@ -2386,6 +2390,7 @@ function renderSurveyors() {
         if (game._surveyorMarkerMap.has(sv.id)) {
             // Move existing marker — CSS transition animates left/top smoothly
             const el = game._surveyorMarkerMap.get(sv.id);
+            el.style.transition = transitionCss;
             const prevX = parseFloat(el.style.left) || x;
             // Flip inner span horizontally when moving right (emoji faces left by default)
             const inner = el.querySelector('span');
@@ -2408,6 +2413,7 @@ function renderSurveyors() {
             el.style.left = x + 'px';
             el.style.top  = y + 'px';
             el.style.animationDelay = (-Math.random() * 4).toFixed(2) + 's';
+            el.style.animationDuration = `${((game._surveyorConfig?.moveEveryNTicks ?? 3) * 2).toFixed(1)}s`;
             el.style.pointerEvents = 'auto';
             el._svData = sv;
             el.addEventListener('mouseenter', function() {
