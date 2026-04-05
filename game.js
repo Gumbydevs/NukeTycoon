@@ -2959,7 +2959,7 @@ function showSabotageMenu(cellId) {
     const completedSilo = game.buildings.find(b => b.type === 'silo' && !b.isUnderConstruction);
     const tempDisableCost = 300;
     const stealCost = 500;
-    const nukeCost = Math.floor(game.playerWallet * 0.5);
+    const nukeCost = Math.floor(game.playerWallet * 0.05);
 
     // Option 1: Temporary Disable
     const tempOption = document.createElement('div');
