@@ -2290,6 +2290,60 @@ function renderDeposits() {
 }
 
 /**
+ * D+P debug overlay: show ALL deposits server-side (including undiscovered).
+ * A separate overlay div is used so it can be torn down without touching real deposit state.
+ */
+function showAllDepositsOverlay(show) {
+    const grid = document.getElementById('gameGrid');
+    if (!grid) return;
+    const OVERLAY_ID = 'debug-deposit-overlay';
+    let overlay = document.getElementById(OVERLAY_ID);
+    if (!show) {
+        if (overlay) overlay.remove();
+        return;
+    }
+    // Use server terrain to derive all possible deposit cells.
+    // game._serverDeposits contains the FULL list (before fog-of-war filter).
+    // If not available, fall back to game.deposits (already-discovered ones).
+    const allDeposits = game._serverDeposits || game.deposits || [];
+    const discoveredSet = new Set((game.deposits || []).map(d => d.cellId));
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = OVERLAY_ID;
+        overlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:20;overflow:visible;';
+        grid.appendChild(overlay);
+    } else {
+        overlay.innerHTML = '';
+    }
+    const gridRect = grid.getBoundingClientRect();
+    allDeposits.forEach(deposit => {
+        const cell = grid.querySelector(`[data-id="${deposit.cellId}"]`);
+        if (!cell) return;
+        const r = cell.getBoundingClientRect();
+        const dot = document.createElement('div');
+        const discovered = discoveredSet.has(deposit.cellId);
+        dot.style.cssText = [
+            'position:absolute',
+            `left:${r.left - gridRect.left + r.width * 0.15}px`,
+            `top:${r.top - gridRect.top + r.height * 0.15}px`,
+            `width:${r.width * 0.7}px`,
+            `height:${r.height * 0.7}px`,
+            `background:${discovered ? 'rgba(255,215,0,0.55)' : 'rgba(255,80,80,0.45)'}`,
+            `border:2px solid ${discovered ? '#FFD700' : '#ff4444'}`,
+            'border-radius:3px',
+            `box-shadow:0 0 6px ${discovered ? 'rgba(255,215,0,0.8)' : 'rgba(255,0,0,0.6)'}`,
+        ].join(';');
+        dot.title = discovered ? '\u2705 Discovered deposit' : '\u26d4 Undiscovered deposit';
+        overlay.appendChild(dot);
+    });
+    // Label
+    const lbl = document.createElement('div');
+    lbl.style.cssText = 'position:absolute;top:4px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:#FFD700;font-size:11px;padding:3px 10px;border-radius:4px;border:1px solid #FFD700;white-space:nowrap;';
+    lbl.textContent = '\uD83D\uDD0D Deposit Debug (D+P) — gold=discovered, red=undiscovered';
+    overlay.appendChild(lbl);
+}
+
+/**
  * Render surveyor units using a persistent overlay inside .grid.
  * Markers are positioned by left/top (px from grid top-left) and transition
  * smoothly when a surveyor moves cells. Emoji set via textContent (CSS ::after
@@ -2567,6 +2621,7 @@ function initMenu() {
     });
 
     // Keyboard: Escape closes menu, M toggles it
+    const _keysHeld = new Set();
     document.addEventListener('keydown', (e) => {
         // Ignore key shortcuts when typing in an input/textarea
         const tag = document.activeElement && document.activeElement.tagName;
@@ -2579,6 +2634,12 @@ function initMenu() {
         if (e.key === 't' || e.key === 'T') {
             toggleChatPanel();
         }
+        _keysHeld.add(e.key.toLowerCase());
+        if (_keysHeld.has('d') && _keysHeld.has('p')) showAllDepositsOverlay(true);
+    });
+    document.addEventListener('keyup', (e) => {
+        _keysHeld.delete(e.key.toLowerCase());
+        if (!_keysHeld.has('d') || !_keysHeld.has('p')) showAllDepositsOverlay(false);
     });
 }
 
