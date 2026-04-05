@@ -20,7 +20,9 @@ function getOrGenerateTerrain(runId) {
 function getOrGenerateDeposits(runId) {
     const terrain = getOrGenerateTerrain(runId);
     if (!_depositsCache.has(runId)) {
-        _depositsCache.set(runId, generateDepositsForRun(runId, terrain));
+        const deps = generateDepositsForRun(runId, terrain);
+        console.log(`[deposits] generated ${deps.length} cells in ${new Set(deps.map(d => d.cellId)).size} unique positions for run ${runId} (minClusters=${DEPOSIT_MIN_CLUSTERS} maxExtra=${DEPOSIT_MAX_EXTRA_CLUSTERS})`);
+        _depositsCache.set(runId, deps);
     }
     return _depositsCache.get(runId);
 }
@@ -64,12 +66,17 @@ let SABOTAGE_NUKE_FALLOUT_DURATION_MS = Number(process.env.SABOTAGE_NUKE_FALLOUT
 let STRIKE_LIMIT_PER_DAY = Number(process.env.STRIKE_LIMIT_PER_DAY || 1);
 let MAINTENANCE_REFUND_PCT = Number(process.env.MAINTENANCE_REFUND_PCT || 0.75);
 
+// ── Uranium deposit generation config ───────────────────────────────────────
+let DEPOSIT_MIN_CLUSTERS         = Number(process.env.DEPOSIT_MIN_CLUSTERS || 8);   // minimum deposit cluster centres per run
+let DEPOSIT_MAX_EXTRA_CLUSTERS   = Number(process.env.DEPOSIT_MAX_EXTRA_CLUSTERS || 6); // rand(0..N) extra clusters added on top
+
 // ── Surveyor config ──────────────────────────────────────────────────────────
 let SURVEYOR_COST                = Number(process.env.SURVEYOR_COST || 500);
 let SURVEYOR_MAINT_PER_TICK      = Number(process.env.SURVEYOR_MAINT_PER_TICK || 1);
 let SURVEYOR_DURATION_MS         = Number(process.env.SURVEYOR_DURATION_MS || 300000); // 5 min
 let SURVEYOR_DISCOVER_RADIUS     = Number(process.env.SURVEYOR_DISCOVER_RADIUS || 2);
 let SURVEYOR_MOVE_EVERY_N_TICKS  = Number(process.env.SURVEYOR_MOVE_EVERY_N_TICKS || 3); // base move speed (1 = every tick = 1 s)
+let SURVEYOR_MAGNETISM           = Number(process.env.SURVEYOR_MAGNETISM || 6);  // extra weight per nearby undiscovered deposit cell
 
 function chebyshevDist(a, b) {
     const ax = a % GRID_COLS, ay = Math.floor(a / GRID_COLS);
@@ -120,7 +127,7 @@ function surveyorRandomWalk(cellId, terrain, deposits, discoveredSet) {
         if (deposits && discoveredSet) {
             for (const d of deposits) {
                 if (!discoveredSet.has(d.cellId) && chebyshevDist(c, d.cellId) <= SURVEYOR_DISCOVER_RADIUS + 1) {
-                    w += 4; // strong pull towards undiscovered deposit clusters
+                    w += SURVEYOR_MAGNETISM; // configurable pull towards undiscovered deposit clusters
                 }
             }
         }
@@ -224,6 +231,9 @@ async function loadRuntimeConfigFromDB() {
                 case 'surveyor.duration_ms': SURVEYOR_DURATION_MS = Number(value); break;
                 case 'surveyor.discover_radius': SURVEYOR_DISCOVER_RADIUS = Number(value); break;
                 case 'surveyor.move_every_n_ticks': SURVEYOR_MOVE_EVERY_N_TICKS = Math.max(0.1, Number(value)); break;
+                case 'surveyor.magnetism': SURVEYOR_MAGNETISM = Math.max(0, Number(value)); break;
+                case 'deposit.min_clusters': DEPOSIT_MIN_CLUSTERS = Math.max(1, Math.floor(Number(value))); break;
+                case 'deposit.max_extra_clusters': DEPOSIT_MAX_EXTRA_CLUSTERS = Math.max(0, Math.floor(Number(value))); break;
                 default: {
                     // building.* keys are handled by loadBuildingRulesFromDB earlier
                     break;
@@ -242,6 +252,9 @@ async function loadRuntimeConfigFromDB() {
             ['surveyor.maint_per_tick',       String(SURVEYOR_MAINT_PER_TICK)],
             ['surveyor.discover_radius',      String(SURVEYOR_DISCOVER_RADIUS)],
             ['surveyor.move_every_n_ticks',   String(SURVEYOR_MOVE_EVERY_N_TICKS)],
+            ['surveyor.magnetism',            String(SURVEYOR_MAGNETISM)],
+            ['deposit.min_clusters',          String(DEPOSIT_MIN_CLUSTERS)],
+            ['deposit.max_extra_clusters',    String(DEPOSIT_MAX_EXTRA_CLUSTERS)],
         ];
         for (const [k, v] of surveyorDefaults) {
             await db.query(
@@ -259,6 +272,15 @@ async function loadRuntimeConfigFromDB() {
                 case 'surveyor.maint_per_tick':        SURVEYOR_MAINT_PER_TICK      = Number(value); break;
                 case 'surveyor.discover_radius':       SURVEYOR_DISCOVER_RADIUS     = Number(value); break;
                 case 'surveyor.move_every_n_ticks':    SURVEYOR_MOVE_EVERY_N_TICKS  = Math.max(0.1, Number(value)); break;
+                case 'surveyor.magnetism':             SURVEYOR_MAGNETISM           = Math.max(0, Number(value)); break;
+            }
+        });
+        // Re-read deposit keys separately (different prefix)
+        const depRes = await db.query("SELECT key, value FROM server_config WHERE key LIKE 'deposit.%'");
+        depRes.rows.forEach(({ key, value }) => {
+            switch (key) {
+                case 'deposit.min_clusters':       DEPOSIT_MIN_CLUSTERS       = Math.max(1, Math.floor(Number(value))); break;
+                case 'deposit.max_extra_clusters': DEPOSIT_MAX_EXTRA_CLUSTERS = Math.max(0, Math.floor(Number(value))); break;
             }
         });
 
@@ -411,7 +433,7 @@ function generateTerrainForRun(runId, width = GRID_COLS, height = GRID_ROWS) {
 function generateDepositsForRun(runId, terrain, width = GRID_COLS, height = GRID_ROWS) {
     const rand = createSeededRandom(`deposits:${width}x${height}`, runId);
     const deposits = [];
-    const numDeposits = 5 + Math.floor(rand() * 4);
+    const numDeposits = DEPOSIT_MIN_CLUSTERS + Math.floor(rand() * (DEPOSIT_MAX_EXTRA_CLUSTERS + 1));
 
     for (let d = 0; d < numDeposits; d++) {
         const cx = 2 + Math.floor(rand() * (width - 4));
@@ -1510,6 +1532,11 @@ module.exports = {
             maintPerTick: SURVEYOR_MAINT_PER_TICK,
             discoverRadius: SURVEYOR_DISCOVER_RADIUS,
             moveEveryNTicks: SURVEYOR_MOVE_EVERY_N_TICKS,
+            magnetism: SURVEYOR_MAGNETISM,
+        },
+        deposit: {
+            minClusters: DEPOSIT_MIN_CLUSTERS,
+            maxExtraClusters: DEPOSIT_MAX_EXTRA_CLUSTERS,
         },
     }),
     getProductionConfig: () => ({

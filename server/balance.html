@@ -245,6 +245,28 @@
             <input id="surveyor_move_every_n_ticks" type="number" min="0.1" step="0.5" class="small" style="width:100px" />
             <span class="muted" style="margin-left:6px">1 tick = 1 s &mdash; <strong>higher = slower</strong>: 1 = every 1s, 10 = every 10s, 30 = very slow. Supports decimals (e.g. 1.5).</span>
           </div>
+          <div class="row section">
+            <label style="width:160px">Magnetism (bias weight)</label>
+            <input id="surveyor_magnetism" type="number" min="0" step="1" class="small" style="width:100px" />
+            <span class="muted" style="margin-left:6px">Extra weight per undiscovered deposit cell nearby &mdash; 0 = pure random walk, 6 = default strong bias, 20+ = laser-focused</span>
+          </div>
+        </div>
+
+        <h4 class="section">Uranium Deposits</h4>
+        <div class="section-body">
+          <div class="row section" style="color:#FFA500;font-size:12px;margin-bottom:6px;">
+            &#9888;&#65039; Deposit settings take effect on the <strong>next new run</strong> (cached per run). Use admin wipe to force a reset.
+          </div>
+          <div class="row section">
+            <label style="width:160px">Min cluster centres</label>
+            <input id="deposit_min_clusters" type="number" min="1" step="1" class="small" style="width:100px" />
+            <span class="muted" style="margin-left:6px">Guaranteed deposit cluster origins per run (default 8). Before fog-of-war this was 5.</span>
+          </div>
+          <div class="row section">
+            <label style="width:160px">Max extra clusters</label>
+            <input id="deposit_max_extra_clusters" type="number" min="0" step="1" class="small" style="width:100px" />
+            <span class="muted" style="margin-left:6px">Random bonus clusters added (0–N). Total = min + rand(0..max). Default 6 &rarr; 8 to 14 clusters per run.</span>
+          </div>
         </div>
 
         <h4 class="section">Building Rules</h4>
@@ -351,6 +373,12 @@
         $('surveyor_maint_per_tick').value = sv.maintPerTick ?? '';
         $('surveyor_discover_radius').value = sv.discoverRadius ?? '';
         $('surveyor_move_every_n_ticks').value = sv.moveEveryNTicks ?? '';
+        $('surveyor_magnetism').value = sv.magnetism ?? '';
+
+        // Deposits
+        const dep = cfg.deposit || {};
+        $('deposit_min_clusters').value = dep.minClusters ?? '';
+        $('deposit_max_extra_clusters').value = dep.maxExtraClusters ?? '';
 
         // Building rules
         const rules = cfg.buildingRules || {};
@@ -506,6 +534,11 @@
       changes['surveyor.maint_per_tick'] = Number($('surveyor_maint_per_tick').value) || 1;
       changes['surveyor.discover_radius'] = Number($('surveyor_discover_radius').value) || 2;
       changes['surveyor.move_every_n_ticks'] = Math.max(0.1, Number($('surveyor_move_every_n_ticks').value) || 3);
+      changes['surveyor.magnetism'] = Math.max(0, Number($('surveyor_magnetism').value) || 6);
+
+      // Deposits
+      changes['deposit.min_clusters'] = Math.max(1, Math.floor(Number($('deposit_min_clusters').value) || 8));
+      changes['deposit.max_extra_clusters'] = Math.max(0, Math.floor(Number($('deposit_max_extra_clusters').value) || 6));
 
       // Building rows
       document.querySelectorAll('#buildingRulesBody input[data-key]').forEach(inp => {
