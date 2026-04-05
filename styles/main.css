@@ -1741,9 +1741,9 @@ body.mobile-menu-open .dropdown { display: none !important; }
 .chat-input {
     flex: 1;
     min-width: 0;
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 6px;
+    background: #0d0d0d;
+    border: 1px solid #2a2a2a;
+    border-radius: 0;
     color: #fff;
     font-size: 12px;
     padding: 6px 8px;
@@ -1751,12 +1751,12 @@ body.mobile-menu-open .dropdown { display: none !important; }
     font-family: inherit;
     transition: border-color 0.12s;
 }
-.chat-input:focus { border-color: rgba(255,184,77,0.4); }
+.chat-input:focus { border-color: rgba(255,184,77,0.5); }
 .chat-input::placeholder { color: #444; }
 .chat-send-btn {
-    background: rgba(255,184,77,0.15);
-    border: 1px solid rgba(255,184,77,0.3);
-    border-radius: 6px;
+    background: #1a1a1a;
+    border: 1px solid rgba(255,184,77,0.35);
+    border-radius: 0;
     color: #ffb84d;
     cursor: pointer;
     font-size: 14px;
@@ -1764,7 +1764,7 @@ body.mobile-menu-open .dropdown { display: none !important; }
     flex-shrink: 0;
     transition: background 0.12s;
 }
-.chat-send-btn:hover { background: rgba(255,184,77,0.28); }
+.chat-send-btn:hover { background: rgba(255,184,77,0.15); }
 
 /* Emoji picker (pops up above input bar) */
 .chat-emoji-picker {
@@ -1773,9 +1773,9 @@ body.mobile-menu-open .dropdown { display: none !important; }
     bottom: calc(100% + 4px);
     left: 10px;
     right: 10px;
-    background: rgba(10,10,14,0.97);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 8px;
+    background: #0d0d0d;
+    border: 1px solid #2a2a2a;
+    border-radius: 0;
     padding: 8px;
     grid-template-columns: repeat(8, 1fr);
     gap: 4px;
@@ -1789,13 +1789,13 @@ body.mobile-menu-open .dropdown { display: none !important; }
     border: none;
     font-size: 20px;
     cursor: pointer;
-    border-radius: 5px;
+    border-radius: 0;
     padding: 3px;
     line-height: 1;
     transition: background 0.1s;
     text-align: center;
 }
-.chat-emoji-item:hover { background: rgba(255,255,255,0.1); }
+.chat-emoji-item:hover { background: #1a1a1a; }
 
 /* GIF picker (pops up above input bar) */
 .chat-gif-picker {
@@ -1804,9 +1804,9 @@ body.mobile-menu-open .dropdown { display: none !important; }
     bottom: calc(100% + 4px);
     left: 10px;
     right: 10px;
-    background: rgba(10,10,14,0.97);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 8px;
+    background: #0d0d0d;
+    border: 1px solid #2a2a2a;
+    border-radius: 0;
     overflow: hidden;
     z-index: 10;
     box-shadow: 0 4px 20px rgba(0,0,0,0.8);
@@ -1824,7 +1824,7 @@ body.mobile-menu-open .dropdown { display: none !important; }
     scrollbar-color: rgba(255,255,255,0.1) transparent;
 }
 .chat-gif-item {
-    border-radius: 5px;
+    border-radius: 0;
     overflow: hidden;
     line-height: 0;
     transition: opacity 0.1s;
@@ -1835,7 +1835,7 @@ body.mobile-menu-open .dropdown { display: none !important; }
     height: 48px;
     object-fit: cover;
     display: block;
-    border-radius: 5px;
+    border-radius: 0;
 }
 .chat-gif-loading {
     grid-column: 1 / -1;
