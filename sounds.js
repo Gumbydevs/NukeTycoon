@@ -423,15 +423,21 @@ const NukeSounds = (() => {
     }
 
     /**
-     * Nuke countdown tick — precision clock click for final seconds.
-     * Crisp bandpass noise burst + brief high sine. Short, punchy, not harsh.
-     * Designed to play each second when ≤ 5s remain.
+     * Nuke countdown tick — hard digital clock pulse for final seconds.
+     * Sharp square-wave stab + metal crack noise + brief high-pitched beep.
+     * Cold, mechanical, urgent. NOT warm or organic.
      */
     function nukeCountdownTick() {
         const ctx = _init(); if (!ctx || !_enabled) return;
         const t = ctx.currentTime;
-        _noise(t, 0.028, 0.20, { filterType: 'bandpass', filterFreq: 2400, Q: 9 });
-        _tone(1600, 'sine', t, 0.022, 0.08, { attack: 0.001 });
+        // Hard square-wave stab — cold and digital
+        _tone(1200, 'square', t, 0.045, 0.16, { attack: 0.001, freqRamp: 1100 });
+        // Metal crack — tight high-Q bandpass noise, very short
+        _noise(t, 0.018, 0.40, { filterType: 'bandpass', filterFreq: 5000, Q: 18 });
+        // Sub-click body — gives it weight and menace
+        _noise(t, 0.030, 0.20, { filterType: 'lowpass', filterFreq: 280, Q: 2 });
+        // Tiny overtone ping — sterile, clinical
+        _tone(2400, 'square', t + 0.006, 0.012, 0.06, { attack: 0.001 });
     }
 
     /**
