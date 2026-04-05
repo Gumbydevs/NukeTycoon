@@ -623,6 +623,7 @@ app.post('/admin/api/wipe-player-state', requireAdmin, async (_req, res) => {
     try {
         const run = await getActiveRun();
         if (!run) { res.status(404).json({ error: 'No active run.' }); return; }
+        await db.query('DELETE FROM surveyors WHERE run_id = $1', [run.id]);
         const result = await db.query('DELETE FROM run_player_state WHERE run_id = $1', [run.id]);
         res.json({ ok: true, deleted: result.rowCount });
     } catch (err) {
@@ -647,6 +648,7 @@ app.post('/admin/api/full-db-reset', requireAdmin, async (_req, res) => {
         await db.query('DELETE FROM chat_messages');
         await db.query('DELETE FROM notifications');
         await db.query('DELETE FROM run_player_state');
+        await db.query('DELETE FROM surveyors');
         await db.query('DELETE FROM run_players');
         await db.query('DELETE FROM economy_snapshots');
         await db.query('DELETE FROM buildings');
@@ -891,6 +893,7 @@ app.post('/admin/api/wipe-old-runs', requireAdmin, async (_req, res) => {
         await db.query('DELETE FROM chat_messages WHERE run_id = ANY($1)', [ids]);
         await db.query('DELETE FROM notifications WHERE run_id = ANY($1)', [ids]);
         await db.query('DELETE FROM economy_snapshots WHERE run_id = ANY($1)', [ids]);
+        await db.query('DELETE FROM surveyors WHERE run_id = ANY($1)', [ids]);
         await db.query('DELETE FROM buildings WHERE run_id = ANY($1)', [ids]);
         await db.query('DELETE FROM run_player_state WHERE run_id = ANY($1)', [ids]);
         await db.query('DELETE FROM run_players WHERE run_id = ANY($1)', [ids]);
