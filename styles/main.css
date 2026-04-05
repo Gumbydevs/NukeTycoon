@@ -1408,23 +1408,11 @@ body.mobile-menu-open .dropdown { display: none !important; }
     position: fixed;
     bottom: 24px;
     left: 24px;
-    width: 52px;
-    height: 52px;
-    border-radius: 8px;
-    background: rgba(10, 10, 14, 0.92);
-    border: 1px solid rgba(255,184,77,0.35);
-    color: #fff;
-    font-size: 22px;
-    cursor: pointer;
-    align-items: center;
-    justify-content: center;
+    font-size: 14px;
     z-index: 500;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04);
-    transition: transform 0.15s, box-shadow 0.15s;
 }
 .chat-toggle-btn:hover {
     transform: scale(1.08);
-    box-shadow: 0 6px 32px rgba(0,0,0,0.8), 0 0 8px rgba(255,184,77,0.25);
 }
 
 .chat-toggle-btn { position: fixed; } /* ensure button stacks correctly */
