@@ -2022,6 +2022,10 @@ function initGrid() {
         const hasDeposit = game.deposits.find(d => d.cellId === i);
         if (hasDeposit) {
             cell.classList.add('has-deposit');
+            const flag = document.createElement('span');
+            flag.className = 'deposit-flag';
+            flag.textContent = '\uD83D\uDEA9';
+            cell.appendChild(flag);
         }
         
         cell.tabIndex = -1;
@@ -2285,11 +2289,18 @@ function generateDeposits(width, height, terrain) {
  */
 function renderDeposits() {
     const grid = document.getElementById('gameGrid');
-    // Clear existing deposit markers before re-applying (deposits can update per tick)
+    // Clear existing deposit flags before re-applying
+    grid.querySelectorAll('.deposit-flag').forEach(f => f.remove());
     grid.querySelectorAll('.cell.has-deposit').forEach(c => c.classList.remove('has-deposit'));
     (game.deposits || []).forEach(deposit => {
         const cell = grid.querySelector(`[data-id="${deposit.cellId}"]`);
-        if (cell) cell.classList.add('has-deposit');
+        if (cell) {
+            cell.classList.add('has-deposit');
+            const flag = document.createElement('span');
+            flag.className = 'deposit-flag';
+            flag.textContent = '\uD83D\uDEA9';
+            cell.appendChild(flag);
+        }
     });
 }
 
@@ -6477,6 +6488,10 @@ function restoreEmptyCell(cellId) {
     cell.classList.add('terrain-' + terrain);
     if ((game.deposits || []).some(d => d.cellId === cellId)) {
         cell.classList.add('has-deposit');
+        const flag = document.createElement('span');
+        flag.className = 'deposit-flag';
+        flag.textContent = '\uD83D\uDEA9';
+        cell.appendChild(flag);
     }
 }
 

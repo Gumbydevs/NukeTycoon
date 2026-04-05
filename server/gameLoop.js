@@ -77,6 +77,23 @@ function chebyshevDist(a, b) {
     return Math.max(Math.abs(ax - bx), Math.abs(ay - by));
 }
 
+// Minesweeper-style cluster expansion: starting from seed deposit cells,
+// flood-fill to include any adjacent deposits within clusterRadius of each found cell.
+function expandDepositCluster(seedCellIds, allDeposits, clusterRadius = 2) {
+    const found = new Set(seedCellIds);
+    const queue = [...seedCellIds];
+    while (queue.length > 0) {
+        const current = queue.shift();
+        for (const d of allDeposits) {
+            if (!found.has(d.cellId) && chebyshevDist(current, d.cellId) <= clusterRadius) {
+                found.add(d.cellId);
+                queue.push(d.cellId);
+            }
+        }
+    }
+    return [...found];
+}
+
 function surveyorRandomWalk(cellId, terrain, deposits, discoveredSet) {
     const x = cellId % GRID_COLS;
     const y = Math.floor(cellId / GRID_COLS);
@@ -206,7 +223,7 @@ async function loadRuntimeConfigFromDB() {
                 case 'surveyor.maint_per_tick': SURVEYOR_MAINT_PER_TICK = Number(value); break;
                 case 'surveyor.duration_ms': SURVEYOR_DURATION_MS = Number(value); break;
                 case 'surveyor.discover_radius': SURVEYOR_DISCOVER_RADIUS = Number(value); break;
-                case 'surveyor.move_every_n_ticks': SURVEYOR_MOVE_EVERY_N_TICKS = Math.max(1, Number(value)); break;
+                case 'surveyor.move_every_n_ticks': SURVEYOR_MOVE_EVERY_N_TICKS = Math.max(0.1, Number(value)); break;
                 default: {
                     // building.* keys are handled by loadBuildingRulesFromDB earlier
                     break;
@@ -241,7 +258,7 @@ async function loadRuntimeConfigFromDB() {
                 case 'surveyor.duration_ms':           SURVEYOR_DURATION_MS         = Number(value); break;
                 case 'surveyor.maint_per_tick':        SURVEYOR_MAINT_PER_TICK      = Number(value); break;
                 case 'surveyor.discover_radius':       SURVEYOR_DISCOVER_RADIUS     = Number(value); break;
-                case 'surveyor.move_every_n_ticks':    SURVEYOR_MOVE_EVERY_N_TICKS  = Math.max(1, Number(value)); break;
+                case 'surveyor.move_every_n_ticks':    SURVEYOR_MOVE_EVERY_N_TICKS  = Math.max(0.1, Number(value)); break;
             }
         });
 
@@ -978,8 +995,9 @@ async function processRunEconomy(io, run) {
     // Rate-limit movement: only move on ticks that are a multiple of SURVEYOR_MOVE_EVERY_N_TICKS.
     // Tick counter is tracked per run so restarts don't desync.
     if (!processRunEconomy._surveyorTick) processRunEconomy._surveyorTick = {};
-    processRunEconomy._surveyorTick[run.id] = ((processRunEconomy._surveyorTick[run.id] || 0) + 1) % SURVEYOR_MOVE_EVERY_N_TICKS;
-    const shouldMoveSurveyors = processRunEconomy._surveyorTick[run.id] === 0;
+    processRunEconomy._surveyorTick[run.id] = (processRunEconomy._surveyorTick[run.id] || 0) + 1;
+    const shouldMoveSurveyors = processRunEconomy._surveyorTick[run.id] >= SURVEYOR_MOVE_EVERY_N_TICKS;
+    if (shouldMoveSurveyors) processRunEconomy._surveyorTick[run.id] = 0;
 
     const surveyorDiscoveries = []; // { playerId, newCellIds[] } for post-tick notifications
     const expiredSurveyorOwners = []; // player_ids whose surveyor just expired
@@ -1001,10 +1019,12 @@ async function processRunEconomy(io, run) {
             );
             const discoveredSet = new Set(Array.isArray(discRes.rows[0]?.discovered_deposits) ? discRes.rows[0].discovered_deposits : []);
             const newCell = surveyorRandomWalk(sv.cell_id, terrain, deposits, discoveredSet);
-            const nearbyIds = (deposits || [])
+            const seedIds = (deposits || [])
                 .filter(d => chebyshevDist(d.cellId, newCell) <= SURVEYOR_DISCOVER_RADIUS)
                 .map(d => d.cellId);
-            console.log(`[surveyor] sv=${sv.id} player=${sv.player_id} ${sv.cell_id}->${newCell} nearbyDeposits=${nearbyIds.length}`);
+            // Cluster expand: also reveal any deposits clumped adjacent to the seed finds
+            const nearbyIds = seedIds.length > 0 ? expandDepositCluster(seedIds, deposits || []) : [];
+            console.log(`[surveyor] sv=${sv.id} player=${sv.player_id} ${sv.cell_id}->${newCell} seedDeposits=${seedIds.length} clusterTotal=${nearbyIds.length}`);
             await db.query('UPDATE surveyors SET cell_id = $1 WHERE id = $2', [newCell, sv.id]);
             if (nearbyIds.length > 0) {
                 const before = discoveredSet;
