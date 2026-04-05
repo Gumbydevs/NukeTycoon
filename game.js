@@ -563,6 +563,7 @@ function connectSocket() {
     socket.on('reconnect', (attemptNumber) => {
         setConnectionReconnecting(false);
         setConnectionIndicator(true);
+        addNotification('success', '✅ Reconnected to server!');
     });
     socket.on('reconnect_error', () => {
         setConnectionReconnecting(true);

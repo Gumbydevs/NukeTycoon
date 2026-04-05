@@ -197,49 +197,43 @@ body.authenticated .container {
 /* Conversion modal tweaks (keeps consistent with other modals) */
 #conversionModal > div { box-shadow: 0 10px 30px rgba(0,0,0,0.6); }
 
-/* Connection indicator (radioactive emoji) */
+/* Connection indicator — custom SVG radioactive symbol */
 .conn-indicator {
     display: inline-flex;
-    margin-left: 8px;
-    width: 22px;
-    height: 22px;
-    font-size: 14px; /* emoji size */
-    line-height: 1;
+    margin-left: 6px;
+    width: 20px;
+    height: 20px;
     align-items: center;
     justify-content: center;
-    transition: box-shadow 0.18s ease, transform 0.18s ease, opacity 0.18s ease, color 0.18s ease;
-    box-shadow: none;
-    transform-origin: center;
+    vertical-align: middle;
     position: relative;
-    z-index: 9999; /* keep above header elements */
-    background: transparent !important; /* ensure no hard square background */
-    padding: 0 !important; /* no internal padding to avoid box */
-    border: none !important;
-    border-radius: 50%;
-    -webkit-font-smoothing: antialiased;
+    z-index: 9999;
+    /* default color before socket connects — green */
+    color: #39ff14;
+    transition: color 0.2s ease, filter 0.2s ease;
 }
-.conn-indicator.off {
-    color: #ff6b6b; /* red emoji/tint when offline */
-    box-shadow: 0 0 8px rgba(255,60,60,0.95);
-    transform: scale(1.0);
-    opacity: 1;
+.conn-indicator .rn-icon {
+    width: 20px;
+    height: 20px;
+    display: block;
+    overflow: visible; /* let drop-shadow bleed beyond bounds */
 }
 .conn-indicator.on {
-    color: #9cff9c; /* green tint when online */
-    box-shadow: 0 0 12px rgba(80,255,100,0.95);
-    transform: scale(1.02);
-    opacity: 1;
+    color: #39ff14;
+    filter: drop-shadow(0 0 4px #39ff14) drop-shadow(0 0 9px rgba(57,255,20,0.55));
+}
+.conn-indicator.off {
+    color: #ff2222;
+    filter: drop-shadow(0 0 4px #ff2222) drop-shadow(0 0 9px rgba(255,30,30,0.6));
 }
 .conn-indicator.reconnecting {
-    color: #ffd27a; /* amber while reconnecting */
-    animation: conn-flash 900ms linear infinite;
+    animation: conn-flash 900ms ease-in-out infinite;
 }
 
 @keyframes conn-flash {
-    0% { box-shadow: 0 0 6px rgba(255,200,0,0.0); transform: scale(0.98); }
-    30% { box-shadow: 0 0 12px rgba(255,200,0,0.9); transform: scale(1.06); }
-    60% { box-shadow: 0 0 6px rgba(255,200,0,0.3); transform: scale(1.02); }
-    100% { box-shadow: 0 0 6px rgba(255,200,0,0.0); transform: scale(0.98); }
+    0%   { color: #ff6600; filter: drop-shadow(0 0 3px #ff6600); }
+    50%  { color: #ffd700; filter: drop-shadow(0 0 8px #ffd700) drop-shadow(0 0 14px rgba(255,165,0,0.55)); }
+    100% { color: #ff6600; filter: drop-shadow(0 0 3px #ff6600); }
 }
 
 /* App version in top-right */
