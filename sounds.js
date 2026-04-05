@@ -256,34 +256,41 @@ const NukeSounds = (() => {
     }
 
     /**
-     * Nuke armed / manufacture complete — cinematic three-hit rising stab.
-     * "Duh — Duh — DUHHHHH" feel: two quick punches then a massive sub-bass drop.
-     * Designed to be menacing-exciting, a big dopamine hit.
+     * Nuke armed — "YES, locked in!" power-up moment.
+     * Rising 4-step brass fanfare (like a cinematic "BWAAAH" ascending stab),
+     * topped with a bright shimmering overtone ring-out. Pure dopamine hit.
+     * G3 → B3 → D4 → G4 (G major arpeggio, universally triumphant).
      */
     function nukeArmed() {
         const ctx = _init(); if (!ctx || !_enabled) return;
         const t = ctx.currentTime;
 
-        // Shared stab builder: sawtooth brass punch + sub-bass sine + attack noise
-        function stab(t0, fund, vol, dur) {
-            _tone(fund,     'sawtooth', t0, dur,        vol,        { attack: 0.005, freqRamp: fund * 0.80 });
-            _tone(fund,     'sine',     t0, dur * 1.10, vol * 0.58, { attack: 0.008 });
-            _tone(fund / 2, 'sine',     t0, dur * 1.25, vol * 0.42, { attack: 0.010 });
-            _noise(t0, 0.06, vol * 0.22, { filterType: 'lowpass', filterFreq: 180 });
+        // Each step: thick detuned sawtooth (brass body) + pure sine fundamental + octave shimmer
+        function brassHit(t0, fund, vol, dur) {
+            // Sawtooth body — bright attack, decays to body
+            _tone(fund,       'sawtooth', t0,          dur,          vol,          { attack: 0.006, freqRamp: fund * 0.96, detune:  8 });
+            _tone(fund,       'sawtooth', t0,          dur,          vol * 0.55,   { attack: 0.006, freqRamp: fund * 0.96, detune: -8 });
+            // Sine fundamental for warmth and punch
+            _tone(fund,       'sine',     t0,          dur * 1.15,   vol * 0.70,   { attack: 0.008 });
+            // Octave shimmer — the "sparkle" on top
+            _tone(fund * 2,   'sine',     t0 + 0.02,   dur * 0.65,   vol * 0.30,   { attack: 0.012 });
+            // Fifth harmony underneath
+            _tone(fund * 1.5, 'triangle', t0 + 0.01,   dur * 0.80,   vol * 0.20,   { attack: 0.010 });
         }
 
-        // Hit 1 — "duh"  (E2, 82 Hz)
-        stab(t,        82.4, 0.22, 0.20);
-        // Hit 2 — "duh"  (E2 again, louder, slight gap)
-        stab(t + 0.30, 82.4, 0.32, 0.22);
-        // Hit 3 — "DUHHHHH"  (A1, 55 Hz — drop an octave+, long ring-out)
-        stab(t + 0.64, 55.0, 0.54, 1.50);
+        // Rising arpeggio: G3 → B3 → D4 → G4
+        //                  196   247   294   392
+        brassHit(t,          196,  0.20, 0.18);
+        brassHit(t + 0.175,  247,  0.24, 0.18);
+        brassHit(t + 0.350,  294,  0.28, 0.20);
+        brassHit(t + 0.545,  392,  0.40, 0.75);  // G4 — final big chord, long ring-out
 
-        // Final hit richness: harmonic overtones that swell in
-        _tone(110,  'triangle', t + 0.64, 1.30, 0.20, { attack: 0.028, freqRamp: 92  });
-        _tone(220,  'sine',     t + 0.64, 1.10, 0.10, { attack: 0.045 });
-        _tone(440,  'sine',     t + 0.82, 0.75, 0.055, { attack: 0.065 });
-        _noise(t + 0.64, 0.22, 0.09, { filterType: 'bandpass', filterFreq: 120, Q: 0.4 });
+        // Final chord bloom: wide high shimmer that swells overtop
+        _tone(784,  'sine',     t + 0.55,  0.70, 0.18, { attack: 0.045 });           // G5
+        _tone(1175, 'sine',     t + 0.60,  0.60, 0.10, { attack: 0.065 });           // D6
+        _tone(1568, 'sine',     t + 0.65,  0.50, 0.055, { attack: 0.080 });          // G6
+        // Rising noise "whoosh" into the final hit
+        _noise(t + 0.48, 0.12, 0.12, { filterType: 'bandpass', filterFreq: 1200, Q: 0.8 });
     }
 
     /**
