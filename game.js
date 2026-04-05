@@ -643,7 +643,7 @@ function connectSocket() {
     });
 
     // ── Run events ──────────────────────────────────────────────────────
-    socket.on('run:state', ({ run, buildings, players, scores, playerState, falloutZones, nuclearThreats, yourWallet, isNewJoiner, serverTime, terrain, deposits, surveyors = [], chatMessages, notifications, buildQueue = [] }) => {
+    socket.on('run:state', ({ run, buildings, players, scores, playerState, falloutZones, nuclearThreats, yourWallet, isNewJoiner, serverTime, terrain, deposits, surveyors = [], surveyorConfig, chatMessages, notifications, buildQueue = [] }) => {
         // Store server clock for interpolation
         if (serverTime) {
             game._serverTime = serverTime;
@@ -687,6 +687,7 @@ function connectSocket() {
             game._serverDeposits = deposits;
         }
         game.surveyors = Array.isArray(surveyors) ? surveyors : [];
+        if (surveyorConfig) game._surveyorConfig = surveyorConfig;
         initGrid();
         renderSurveyors();
         game.buildings      = [];
@@ -913,6 +914,11 @@ function connectSocket() {
         game.selectedMode = null;
     });
 
+    socket.on('surveyor:expired', ({ count }) => {
+        const plural = count > 1 ? `s (${count})` : '';
+        addNotification('warning', `⏰ Your surveyor${plural}'s contract has ended. Hire another to keep discovering uranium!`);
+    });
+
     // Server says these buildings finished construction
     socket.on('building:construction_complete', ({ buildings: completed, serverTime }) => {
         if (serverTime) {
@@ -1128,7 +1134,8 @@ function connectSocket() {
     });
 
     // Building cost/time config pushed from admin panel
-    socket.on('run:building_config', ({ buildingRules }) => {
+    socket.on('run:building_config', ({ buildingRules, surveyorConfig }) => {
+        if (surveyorConfig) game._surveyorConfig = surveyorConfig;
         if (!buildingRules || typeof buildingRules !== 'object') return;
         window._gameBuildingRules = buildingRules;  // expose for economy modal
         Object.entries(buildingRules).forEach(([type, rules]) => {
@@ -2283,22 +2290,95 @@ function renderDeposits() {
 }
 
 /**
- * Render surveyor units on the grid (one marker div per surveyor)
+ * Render surveyor units using a persistent overlay inside .grid.
+ * Markers are positioned by left/top (px from grid top-left) and transition
+ * smoothly when a surveyor moves cells. Emoji set via textContent (CSS ::after
+ * is unreliable for emoji rendering).
  */
 function renderSurveyors() {
     const grid = document.getElementById('gameGrid');
-    // Remove all existing surveyor markers
-    grid.querySelectorAll('.surveyor-marker').forEach(m => m.remove());
-    (game.surveyors || []).forEach(sv => {
-        const cell = grid.querySelector(`[data-id="${sv.cellId}"]`);
-        if (!cell) return;
-        const marker = document.createElement('div');
-        marker.className = 'surveyor-marker';
-        marker.title = 'Surveyor';
-        // Random phase so each surveyor wanders independently
-        marker.style.animationDelay = (-Math.random() * 5).toFixed(2) + 's';
-        cell.appendChild(marker);
-    });
+    if (!grid) return;
+
+    // Lazily create abs-pos overlay inside .grid
+    let overlay = document.getElementById('surveyor-overlay');
+    if (!overlay) {
+        game._surveyorMarkerMap = null; // stale map — grid was rebuilt
+        overlay = document.createElement('div');
+        overlay.id = 'surveyor-overlay';
+        overlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:15;overflow:visible;';
+        grid.appendChild(overlay);
+    }
+    if (!game._surveyorMarkerMap) game._surveyorMarkerMap = new Map();
+
+    const gridRect = grid.getBoundingClientRect();
+    const active = new Set((game.surveyors || []).map(sv => sv.id));
+
+    // Remove stale markers
+    for (const [id, el] of game._surveyorMarkerMap) {
+        if (!active.has(id)) {
+            el.remove();
+            game._surveyorMarkerMap.delete(id);
+        }
+    }
+
+    // Update or create a marker for each surveyor
+    for (const sv of (game.surveyors || [])) {
+        const targetCell = grid.querySelector(`[data-id="${sv.cellId}"]`);
+        if (!targetCell) continue;
+        const cellRect = targetCell.getBoundingClientRect();
+        const x = cellRect.left - gridRect.left + cellRect.width / 2;
+        const y = cellRect.top  - gridRect.top  + cellRect.height / 2;
+
+        if (game._surveyorMarkerMap.has(sv.id)) {
+            // Move existing marker — CSS transition animates left/top smoothly
+            const el = game._surveyorMarkerMap.get(sv.id);
+            el.style.left = x + 'px';
+            el.style.top  = y + 'px';
+            el._svData = sv;
+        } else {
+            // Create new marker; suppress transition for initial placement
+            const el = document.createElement('div');
+            el.className = 'surveyor-marker';
+            el.textContent = '\uD83D\uDEB6'; // 🚶
+            el.style.transitionProperty = 'none';
+            el.style.left = x + 'px';
+            el.style.top  = y + 'px';
+            el.style.animationDelay = (-Math.random() * 4).toFixed(2) + 's';
+            el.style.pointerEvents = 'auto';
+            el._svData = sv;
+            el.addEventListener('mouseenter', function() {
+                const d = el._svData || {};
+                const owner = (game.players || []).find(p => p.id === d.playerId);
+                const ownerName = owner ? escapeHtml(owner.name || owner.username || 'Unknown') : 'Unknown';
+                const isMe = d.playerId === getLocalPlayerId();
+                const badge = owner ? avatarBadge(owner.avatar, 18, owner.photo) : '';
+                const nameHtml = isMe
+                    ? `<span style="display:inline-flex;align-items:center;gap:5px;color:#4CAF50;">${badge} ${ownerName} <span style="color:#aaa;font-size:10px;">(You)</span></span>`
+                    : `<span style="display:inline-flex;align-items:center;gap:5px;color:#e05ce0;">${badge} ${ownerName}</span>`;
+                const expiresAt = d.expiresAt ? new Date(d.expiresAt) : null;
+                const secsLeft = expiresAt ? Math.max(0, Math.round((expiresAt - Date.now()) / 1000)) : 0;
+                const mins = Math.floor(secsLeft / 60), secs = secsLeft % 60;
+                const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+                let tt = '<div style="font-weight:700;">\uD83D\uDEB6 Surveyor</div>';
+                tt += `<div style="margin-top:3px;">Owner: ${nameHtml}</div>`;
+                if (isMe) {
+                    tt += `<div style="color:#aaa;margin-top:4px;">\u23F1\uFE0F Time remaining: ${timeStr}</div>`;
+                    tt += '<div style="color:#FFD700;font-size:11px;margin-top:4px;">Revealing uranium deposits for you only.</div>';
+                } else {
+                    tt += '<div style="color:#888;font-size:11px;margin-top:4px;">Exploring the map.</div>';
+                }
+                const r = el.getBoundingClientRect();
+                showTooltipAt(r.right + 6, r.top, tt);
+            });
+            el.addEventListener('mouseleave', hideTooltip);
+            overlay.appendChild(el);
+            game._surveyorMarkerMap.set(sv.id, el);
+            // Re-enable CSS transition after first paint
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+                el.style.transitionProperty = '';
+            }));
+        }
+    }
 }
 
 /**
@@ -5401,6 +5481,21 @@ function onCellHover(id, e) {
     const enemy = game.enemyBuildings.find(b => b.id === id);
     const deposit = game.deposits.find(d => d.cellId === id);
 
+    // If in hireSurveyor placement mode show cost/duration preview
+    if (game.selectedMode === 'hireSurveyor' && !player && !enemy) {
+        const svCfg = game._surveyorConfig || {};
+        const cost = (svCfg.cost || 500).toLocaleString();
+        const radius = svCfg.discoverRadius || 2;
+        const mins = Math.round((svCfg.durationMs || 300000) / 60000);
+        content = '<div style="font-weight:700;">\uD83D\uDEB6 Deploy Surveyor Here</div>';
+        content += '<div>Dispatches a worker who wanders and discovers uranium.</div>';
+        content += `<div style="color:#FFD700;">\uD83D\uDCB0 Cost: ${cost} tokens</div>`;
+        content += `<div>\u23F1\uFE0F Duration: ${mins} minute${mins !== 1 ? 's' : ''}</div>`;
+        content += `<div style="color:#aaa;font-size:11px;">\uD83D\uDD0D Discovers within ${radius}-cell radius</div>`;
+        showTooltipAt(rect.right + 8, rect.top, content);
+        return;
+    }
+
     // If hovering over a deposit cell (no buildings), show deposit info
     if (!player && !enemy && deposit && !game.selectedMode) {
         content = `<div style="font-weight:700; color:#FFD700;">🚩 Uranium Deposit</div>` +
@@ -6153,11 +6248,20 @@ function addButtonTooltips() {
                     content += '<div>Consumes refined uranium to generate power &amp; income.</div>';
                     content += '<div>🛣️ Place near a road for +22% income bonus.</div>';
                     content += '<div>💰 Cost: ' + buildingTypes.plant.cost + ' tokens</div>';
+                } else if (typeKey === 'hireSurveyor') {
+                    const svCfg = game._surveyorConfig || {};
+                    const cost = (svCfg.cost || 500).toLocaleString();
+                    const mins = Math.round((svCfg.durationMs || 300000) / 60000);
+                    content = '<div style="font-weight:700;">\uD83D\uDEB6 Hire Surveyor</div>';
+                    content += '<div>Deploy a worker who wanders and reveals hidden uranium deposits.</div>';
+                    content += '<div style="color:#aaa;font-size:11px;">Only you see the deposits your surveyor finds.</div>';
+                    content += `<div style="color:#FFD700;">\uD83D\uDCB0 Cost: ${cost} tokens</div>`;
+                    content += `<div>\u23F1\uFE0F Duration: ${mins} minute${mins !== 1 ? 's' : ''}</div>`;
                 } else if (typeKey === 'sabotage' || /sabotage/i.test(typeKey)) {
-                    content = '<div style="font-weight:700;">💥 Sabotage</div>';
+                    content = '<div style="font-weight:700;">\uD83D\uDCA5 Sabotage</div>';
                     content += '<div>Sabotage an enemy building.</div>';
                     content += '<div>Click Sabotage then click an enemy cell.</div>';
-                    content += '<div>⚠️ Cost varies by target type.</div>';
+                    content += '<div>\u26A0\uFE0F Cost varies by target type.</div>';
                 } else if (typeKey === 'silo' || /silo/i.test(typeKey)) {
                     content = '<div style="font-weight:700;">💥 Silo</div>';
                     content += '<div>Nukes. The ultimate weapon.</div>';

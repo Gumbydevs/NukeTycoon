@@ -939,7 +939,14 @@ async function processRunEconomy(io, run) {
 
     // ── Surveyor movement + deposit discovery ────────────────────────────────
     const surveyorDiscoveries = []; // { playerId, newCellIds[] } for post-tick notifications
+    const expiredSurveyorOwners = []; // player_ids whose surveyor just expired
     try {
+        // Capture expiring surveyors BEFORE deleting so we can notify their owners
+        const expiredRes = await db.query(
+            'SELECT player_id FROM surveyors WHERE run_id = $1 AND expires_at <= NOW()',
+            [run.id]
+        );
+        expiredSurveyorOwners.push(...expiredRes.rows.map(r => r.player_id));
         await db.query('DELETE FROM surveyors WHERE run_id = $1 AND expires_at <= NOW()', [run.id]);
         for (const sv of surveyorsResult.rows) {
             const newCell = surveyorRandomWalk(sv.cell_id);
@@ -1007,6 +1014,35 @@ async function processRunEconomy(io, run) {
             }
         } catch (e) {
             console.warn('[surveyor] discovery notify failed:', e && e.message);
+        }
+    }
+
+    // Notify players whose surveyor contract just expired
+    if (expiredSurveyorOwners.length > 0) {
+        try {
+            const sockets = await io.in(`run:${run.id}`).fetchSockets();
+            // Count per player in case they had multiple surveyors expire simultaneously
+            const byPlayer = {};
+            for (const pid of expiredSurveyorOwners) byPlayer[pid] = (byPlayer[pid] || 0) + 1;
+            for (const [pid, count] of Object.entries(byPlayer)) {
+                const playerId = parseInt(pid, 10);
+                const msg = `\u23f0 Your surveyor${count > 1 ? `s (${count})` : ''} finished their contract. Hire another to keep exploring for uranium!`;
+                const payload = JSON.stringify({ msg, ts: Date.now() });
+                try {
+                    const emailRes = await db.query('SELECT email FROM players WHERE id = $1', [playerId]);
+                    const email = (emailRes.rows[0]?.email || '').toLowerCase();
+                    await db.query(
+                        `INSERT INTO notifications (run_id, player_id, email, type, payload) VALUES ($1, $2, $3, $4, $5)`,
+                        [run.id, playerId, email, 'warning', payload]
+                    );
+                } catch (e) {
+                    console.warn('[surveyor] expiry notification persist failed:', e && e.message);
+                }
+                const playerSocket = sockets.find(s => s.playerId === playerId);
+                if (playerSocket) playerSocket.emit('surveyor:expired', { count });
+            }
+        } catch (e) {
+            console.warn('[surveyor] expiry notify failed:', e && e.message);
         }
     }
 

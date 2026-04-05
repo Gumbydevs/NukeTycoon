@@ -508,10 +508,11 @@ function registerHandlers(io, socket) {
                 chatMessages: chatRows,
                 notifications: notesRes.rows || [],
                 buildQueue: queueRes.rows || [],
+                surveyorConfig: getSurveyorConfig(),
             });
             await db.query('UPDATE players SET last_seen_at = NOW() WHERE id = $1', [player.id]);
             // Always send current building rules so tooltips/costs are accurate
-            socket.emit('run:building_config', { buildingRules: BUILDING_RULES });
+            socket.emit('run:building_config', { buildingRules: BUILDING_RULES, surveyorConfig: getSurveyorConfig() });
         });
     });
 

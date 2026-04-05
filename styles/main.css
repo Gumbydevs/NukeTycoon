@@ -557,6 +557,7 @@ body.mobile-menu-open .dropdown { display: none !important; }
     gap: var(--cell-gap);
     width: calc((var(--cell-size) * 20) + (var(--cell-gap) * 19));
     margin: 8px auto 40px; /* center and give bottom breathing room */
+    position: relative; /* needed for #surveyor-overlay absolute positioning */
 }
 
 .cell {
@@ -638,31 +639,28 @@ body.mobile-menu-open .dropdown { display: none !important; }
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
 }
 
-/* Surveyor unit marker */
+/* Surveyor unit marker - lives inside #surveyor-overlay (abs-pos div inside .grid)
+   left/top set to cell-centre pixels in JS; transition handles smooth cross-cell walks.
+   Wander @keyframes give a subtle in-cell sway without conflicting with left/top. */
 .surveyor-marker {
     position: absolute;
-    top: 50%;
-    left: 50%;
-    font-size: 11px;
+    font-size: 14px;
     line-height: 1;
-    pointer-events: none;
-    z-index: 5;
-    animation: surveyor-wander 5s ease-in-out infinite;
+    pointer-events: auto;
+    z-index: 15;
+    cursor: default;
+    user-select: none;
+    animation: surveyor-wander 6s ease-in-out infinite;
+    transition: left 0.9s cubic-bezier(0.4, 0, 0.2, 1),
+                top  0.9s cubic-bezier(0.4, 0, 0.2, 1);
     /* animation-delay set per-instance via inline style in JS */
-}
-.surveyor-marker::after {
-    content: '�';
-    display: block;
 }
 @keyframes surveyor-wander {
     0%   { transform: translate(-50%, -50%); }
-    12%  { transform: translate(-90%, -80%); }
-    25%  { transform: translate(10%, -85%); }
-    37%  { transform: translate(40%, -30%); }
-    50%  { transform: translate(20%,  20%); }
-    62%  { transform: translate(-80%,  30%); }
-    75%  { transform: translate(-70%, -40%); }
-    87%  { transform: translate(30%, -60%); }
+    20%  { transform: translate(-110%, -80%); }
+    40%  { transform: translate(10%, -90%); }
+    60%  { transform: translate(20%, 10%); }
+    80%  { transform: translate(-120%, 10%); }
     100% { transform: translate(-50%, -50%); }
 }
 
