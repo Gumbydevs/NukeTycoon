@@ -97,20 +97,41 @@ function showChangelog() {
     content.textContent = 'Loading…';
     modal.style.display = 'flex';
     fetch('/api/changelog', { cache: 'no-store' })
-        .then(r => {
+        .then(async (r) => {
             const ct = r.headers.get('content-type') || '';
-            if (!r.ok) return r.json().then(j => { throw new Error(j && j.error ? j.error : `HTTP ${r.status}`); });
-            if (ct.includes('text/plain')) return r.text();
-            // If server returned JSON with error, surface a friendly message
-            if (ct.includes('application/json')) return r.json().then(j => {
+            // If the request failed, prefer a text fallback so we don't try to parse HTML as JSON
+            if (!r.ok) {
+                const txt = await r.text().catch(() => '');
+                throw new Error(txt || `HTTP ${r.status}`);
+            }
+            // Plain text response (ideal)
+            if (ct.includes('text/plain') || ct.includes('text/markdown')) return r.text();
+            // JSON response — stringify for display
+            if (ct.includes('application/json')) {
+                const j = await r.json().catch(() => null);
                 if (j && j.ok === false && j.error) throw new Error(j.error);
                 return JSON.stringify(j, null, 2);
-            });
-            // Received HTML (proxy/site page) — treat as unavailable
+            }
+            // HTML or unknown: try to extract meaningful text from HTML, else return raw text
+            const raw = await r.text().catch(() => '');
+            // Strip tags to get readable content if possible
+            const stripped = raw.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '').replace(/<[^>]+>/g, '').trim();
+            if (stripped) return stripped;
             throw new Error('Changelog unavailable (unexpected HTML response)');
         })
         .then(t => { content.textContent = t || '(No changelog entries yet)'; })
-        .catch((err) => { content.textContent = `(Unable to load changelog) ${err && err.message ? '- ' + err.message : ''}`; });
+        .catch(async (err) => {
+            // As a final fallback, try to load the repo CHANGELOG.md directly from the site root.
+            try {
+                const r2 = await fetch('/CHANGELOG.md', { cache: 'no-store' });
+                if (r2 && r2.ok) {
+                    const md = await r2.text();
+                    content.textContent = md || '(No changelog entries yet)';
+                    return;
+                }
+            } catch (e) { /* ignore fallback failure */ }
+            content.textContent = `(Unable to load changelog) ${err && err.message ? '- ' + err.message : ''}`;
+        });
 }
 
 function hideChangelog() {
