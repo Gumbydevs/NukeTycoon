@@ -2732,7 +2732,7 @@ function initMenu() {
             const expanded = actionsBtn && actionsBtn.getAttribute('aria-expanded') === 'true';
             setMenuOpen(!expanded);
         }
-        if (e.key === 't' || e.key === 'T') {
+        if (e.key === 'Enter') {
             toggleChatPanel();
         }
         _keysHeld.add(e.key.toLowerCase());
