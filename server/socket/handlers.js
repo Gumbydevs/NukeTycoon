@@ -1065,29 +1065,11 @@ function registerHandlers(io, socket) {
                 if (typeof ack === 'function') ack({ ok: false, error: 'No inventory.' });
                 return;
             }
-            const bal = parseInt(player.token_balance, 10);
-            const sabotageCfg = getSabotageConfig();
-            const cost = Math.floor(bal * (sabotageCfg.nukeCostPct || 0.05));
-            if (bal < cost && cost > 0) {
-                socket.emit('error', { message: 'Not enough tokens.' });
-                if (typeof ack === 'function') ack({ ok: false, error: 'Insufficient funds.' });
-                return;
-            }
-            // Decrement inventory
+            // Decrement inventory — launch is free; cost was already paid at manufacture time
             await db.query(
                 'UPDATE run_player_state SET nuke_inventory = nuke_inventory - 1, updated_at = NOW() WHERE run_id = $1 AND player_id = $2',
                 [run.id, player.id]
             );
-            // Deduct cost
-            if (cost > 0) {
-                await db.query('UPDATE players SET token_balance = token_balance - $1 WHERE id = $2', [cost, player.id]);
-                const contrib = Math.floor(cost * 0.10);
-                await db.query(
-                    `UPDATE runs SET prize_pool = prize_pool + $1, tokens_burned = tokens_burned + $2,
-                     market_token_pool = GREATEST(1, market_token_pool - $3) WHERE id = $4`,
-                    [contrib, cost, cost / getMarketPoolBurnRate(), run.id]
-                );
-            }
             const nukeCfg = getNukeConfig();
             const countdownMs = nukeCfg.countdownMs || 15000;
             const detonatesAt = new Date(Date.now() + countdownMs);
@@ -1113,7 +1095,6 @@ function registerHandlers(io, socket) {
                 `☢️ ${player.username} launched a NUKE! Impact in ~${Math.round((nukeCfg.countdownMs || 15000) / 1000)}s.`,
                 { attackerName: player.username, targetCellId, launchId, attackType: 'nuke' }
             );
-            if (cost > 0) socket.emit('player:wallet_update', { token_balance: bal - cost });
             if (typeof ack === 'function') ack({ ok: true, launchId, detonatesAt: detonatesAt.toISOString() });
             // Schedule detonation
             setTimeout(async () => {
