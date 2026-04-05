@@ -74,6 +74,7 @@ let NUKE_MANUFACTURE_MS = Number(process.env.NUKE_MANUFACTURE_MS || 120000);
 let NUKE_MANUFACTURE_COST = Number(process.env.NUKE_MANUFACTURE_COST || 1000);
 let NUKE_MAX_INVENTORY = Number(process.env.NUKE_MAX_INVENTORY || 3);       // max nukes a player can hold in their silo
 let NUKE_LAUNCH_COOLDOWN_MS = Number(process.env.NUKE_LAUNCH_COOLDOWN_MS || 0); // ms player must wait between launches (0 = no cooldown)
+let NUKE_MAX_SILOS = Number(process.env.NUKE_MAX_SILOS || 3);                   // max silos a player can build per round
 
 // ── Uranium deposit generation config ───────────────────────────────────────
 let DEPOSIT_MIN_CLUSTERS         = Number(process.env.DEPOSIT_MIN_CLUSTERS || 8);   // minimum deposit cluster centres per run
@@ -237,6 +238,7 @@ async function loadRuntimeConfigFromDB() {
                 case 'nuke.manufacture_cost': NUKE_MANUFACTURE_COST = Math.max(0, Number(value)); break;
                 case 'nuke.max_inventory': NUKE_MAX_INVENTORY = Math.max(1, Number(value)); break;
                 case 'nuke.launch_cooldown_ms': NUKE_LAUNCH_COOLDOWN_MS = Math.max(0, Number(value)); break;
+                case 'nuke.max_silos': NUKE_MAX_SILOS = Math.max(1, Number(value)); break;
                 // Surveyor tuning
                 case 'surveyor.cost': SURVEYOR_COST = Number(value); break;
                 case 'surveyor.maint_per_tick': SURVEYOR_MAINT_PER_TICK = Number(value); break;
@@ -771,7 +773,7 @@ async function emitRunSnapshot(io, runId, eventName = 'run:tick') {
         // Nuke manufacture state for this player
         const myManufacture = (snapshot.nukeManufactures || []).find(m => m.player_id === roomSocket.playerId) || null;
         const nukeManufacture = myManufacture ? { id: myManufacture.id, completesAt: myManufacture.completes_at, manufactureMs: NUKE_MANUFACTURE_MS } : null;
-        const nukeCfgPublic = { manufactureCost: NUKE_MANUFACTURE_COST, manufactureMs: NUKE_MANUFACTURE_MS, falloutRadius: SABOTAGE_NUKE_FALLOUT_RADIUS };
+        const nukeCfgPublic = { manufactureCost: NUKE_MANUFACTURE_COST, manufactureMs: NUKE_MANUFACTURE_MS, falloutRadius: SABOTAGE_NUKE_FALLOUT_RADIUS, maxInventory: NUKE_MAX_INVENTORY, launchCooldownMs: NUKE_LAUNCH_COOLDOWN_MS, maxSilos: NUKE_MAX_SILOS };
 
         roomSocket.emit(eventName, {
             run: snapshot.run,
@@ -1632,6 +1634,7 @@ function getSabotageConfig() {
         nukeManufactureCost: NUKE_MANUFACTURE_COST,
         nukeMaxInventory: NUKE_MAX_INVENTORY,
         nukeLaunchCooldownMs: NUKE_LAUNCH_COOLDOWN_MS,
+        nukeMaxSilos: NUKE_MAX_SILOS,
     };
 }
 
@@ -1783,7 +1786,7 @@ module.exports = {
     getNextRunLength: () => _nextRunLength,
     getTerrainForRun: getOrGenerateTerrain,
     getDepositsForRun: getOrGenerateDeposits,
-    getNukeConfig: () => ({ countdownMs: NUKE_COUNTDOWN_MS, manufactureMs: NUKE_MANUFACTURE_MS, manufactureCost: NUKE_MANUFACTURE_COST, falloutRadius: SABOTAGE_NUKE_FALLOUT_RADIUS, maxInventory: NUKE_MAX_INVENTORY, launchCooldownMs: NUKE_LAUNCH_COOLDOWN_MS }),
+    getNukeConfig: () => ({ countdownMs: NUKE_COUNTDOWN_MS, manufactureMs: NUKE_MANUFACTURE_MS, manufactureCost: NUKE_MANUFACTURE_COST, falloutRadius: SABOTAGE_NUKE_FALLOUT_RADIUS, maxInventory: NUKE_MAX_INVENTORY, launchCooldownMs: NUKE_LAUNCH_COOLDOWN_MS, maxSilos: NUKE_MAX_SILOS }),
     processNukeLaunches,
     processNukeManufactures,
     detonateNukeLaunch,

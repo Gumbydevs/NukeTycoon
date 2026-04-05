@@ -104,7 +104,7 @@
     <div class="card two-col" id="controlsWrap">
       <div>
       <div>
-        <h3>Game Settings <button id="toggleGameSettings" class="small btn-ghost" style="margin-left:8px">Expand</button></h3>
+        <h3>Game Settings <button id="toggleGameSettings" class="small btn-ghost" style="margin-left:8px">Collapse</button></h3>
         <div id="gameSettingsBody">
         <h3>Game Settings</h3>
         <div class="row section">
@@ -132,7 +132,7 @@
           <input id="proximity_road_bonus" type="number" step="0.01" class="small" style="width:100px" placeholder="not hooked up" />
         </div>
 
-        <h4 class="section">Grid <button id="toggleGrid" class="small btn-ghost" style="margin-left:8px">Expand</button></h4>
+        <h4 class="section">Grid <button id="toggleGrid" class="small btn-ghost" style="margin-left:8px">Collapse</button></h4>
         <div id="gridBody" class="row section">
           <label style="width:160px">Cols</label>
           <input id="grid_cols" type="number" style="width:80px" class="small" />
@@ -141,7 +141,7 @@
         </div>
         
 
-        <h4 class="section">Economy / Market <button id="toggleEconomy" class="small btn-ghost" style="margin-left:8px">Expand</button></h4>
+        <h4 class="section">Economy / Market <button id="toggleEconomy" class="small btn-ghost" style="margin-left:8px">Collapse</button></h4>
         <div id="economyBody">
           <div class="row section">
             <label style="width:160px">Base price</label>
@@ -167,7 +167,7 @@
           </div>
         </div>
 
-        <h4 class="section">Production <button id="toggleProduction" class="small btn-ghost" style="margin-left:8px">Expand</button></h4>
+        <h4 class="section">Production <button id="toggleProduction" class="small btn-ghost" style="margin-left:8px">Collapse</button></h4>
         <div id="productionBody">
           <div class="row section">
             <label style="width:160px">Mine base (per tick)</label>
@@ -189,7 +189,7 @@
           </div>
         </div>
 
-        <h4 class="section">Sabotage / Nukes <button id="toggleSabotage" class="small btn-ghost" style="margin-left:8px">Expand</button></h4>
+        <h4 class="section">Sabotage / Nukes <button id="toggleSabotage" class="small btn-ghost" style="margin-left:8px">Collapse</button></h4>
         <div id="sabotageBody">
           <div class="row section">
             <label style="width:160px">Disable cost</label>
@@ -200,7 +200,7 @@
         <div class="row section">
           <label style="width:160px;color:#888;text-decoration:line-through" title="No longer used — launch is free; cost is set by Nuke manufacture cost">Nuke cost % of wallet</label>
           <input id="sabotage_nuke_cost_pct" type="number" step="0.01" class="small" style="width:100px;opacity:0.4" disabled title="Unused — launch is free" />
-          <span class="muted" style="margin-left:8px;color:#f5a623">⚠️ Unused — firing a nuke is free; the manufacture cost below is charged instead</span>
+          <span class="muted" style="margin-left:4px;color:#f5a623"> Legacy cost is unused. Firing a nuke is free once made, the manufacture cost below is charged instead</span>
           <label style="width:160px;margin-left:12px">Failure chance</label>
           <input id="sabotage_failure_chance" type="number" step="0.01" class="small" style="width:100px" />
         </div>
@@ -236,16 +236,21 @@
           <span class="muted" style="margin-left:6px">default 1000 tokens &mdash; charged on manufacture start</span>
         </div>
         <div class="row section">
-          <label style="width:160px">Max nukes in silo</label>
+          <label style="width:160px">Max nukes per silo</label>
           <input id="nuke_max_inventory" type="number" min="1" class="small" style="width:80px" />
-          <span class="muted" style="margin-left:6px">default 3 &mdash; max nukes a player can store; manufacture is blocked when full</span>
-          <label style="width:160px;margin-left:20px">Launch cooldown (ms)</label>
+          <span class="muted" style="margin-left:6px">default 3 &mdash; per-silo storage cap; total capacity = silos &times; this value</span>
+          <label style="width:160px;margin-left:20px">Max silos per player</label>
+          <input id="nuke_max_silos" type="number" min="1" class="small" style="width:80px" />
+          <span class="muted" style="margin-left:6px">default 3 &mdash; max silos a player can build per round</span>
+        </div>
+        <div class="row section">
+          <label style="width:160px">Launch cooldown (ms)</label>
           <input id="nuke_launch_cooldown_ms" type="number" min="0" class="small" style="width:120px" />
           <span class="muted" style="margin-left:6px">default 0 (no cooldown) &mdash; ms between launches per player</span>
         </div>
         </div>
 
-        <h4 class="section">Surveyor (Fog of War) <button id="toggleSurveyor" class="small btn-ghost" style="margin-left:8px">Expand</button></h4>
+        <h4 class="section">Surveyor (Fog of War) <button id="toggleSurveyor" class="small btn-ghost" style="margin-left:8px">Collapse</button></h4>
         <div id="surveyorBody">
           <div class="row section">
             <label style="width:160px">Hire cost (tokens)</label>
@@ -296,7 +301,7 @@
         <h4 class="section">Building Rules</h4>
         <div id="buildingRulesWrap" style="margin-top:8px">
           <div style="display:flex;justify-content:flex-start;align-items:center;margin-bottom:6px;gap:12px">
-            <button id="toggleRules" class="small btn-ghost">Expand</button>
+            <button id="toggleRules" class="small btn-ghost">Collapse</button>
             <div class="muted">Rules</div>
           </div>
           <div id="buildingRulesBody">
@@ -393,6 +398,7 @@
         $('nuke_manufacture_ms').value = sb.nukeManufactureMs ?? '';
         $('nuke_manufacture_cost').value = sb.nukeManufactureCost ?? '';
         $('nuke_max_inventory').value = sb.nukeMaxInventory ?? '';
+        $('nuke_max_silos').value = sb.nukeMaxSilos ?? '';
         $('nuke_launch_cooldown_ms').value = sb.nukeLaunchCooldownMs ?? '';
 
         // Surveyor
@@ -560,6 +566,7 @@
       changes['nuke.manufacture_ms'] = Math.max(5000, Number($('nuke_manufacture_ms').value) || 120000);
       changes['nuke.manufacture_cost'] = Math.max(0, Number($('nuke_manufacture_cost').value) || 1000);
       changes['nuke.max_inventory'] = Math.max(1, Number($('nuke_max_inventory').value) || 3);
+      changes['nuke.max_silos'] = Math.max(1, Number($('nuke_max_silos').value) || 3);
       changes['nuke.launch_cooldown_ms'] = Math.max(0, Number($('nuke_launch_cooldown_ms').value) || 0);
 
       // Surveyor
@@ -665,17 +672,11 @@
     $('toggleEconomy').addEventListener('click', () => toggle('economyBody', $('toggleEconomy')));
     $('toggleProduction').addEventListener('click', () => toggle('productionBody', $('toggleProduction')));
     $('toggleSabotage').addEventListener('click', () => toggle('sabotageBody', $('toggleSabotage')));
+    $('toggleSurveyor').addEventListener('click', () => toggle('surveyorBody', $('toggleSurveyor')));
 
     // Auto-load
     loadAll();
     loadBenchmarks();
-
-    // Initially hide section bodies so the "Expand" labels reflect state
-    const initiallyHidden = ['gameSettingsBody','gridBody','economyBody','productionBody','sabotageBody','buildingRulesBody','auditCardBody'];
-    initiallyHidden.forEach(id => {
-      const el = $(id);
-      if (el) el.style.display = 'none';
-    });
 
     // middle view history button wiring (not used anymore)
   </script>

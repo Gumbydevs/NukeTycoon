@@ -979,12 +979,11 @@ function registerHandlers(io, socket) {
                 if (typeof ack === 'function') ack({ ok: false, error: 'Not in run.' });
                 return;
             }
-            // Must have a completed silo
+            // Must have a completed silo; fetch all to count total capacity
             const siloRes = await db.query(
                 `SELECT id FROM buildings
                  WHERE run_id = $1 AND player_id = $2 AND type = 'silo' AND is_active = TRUE
-                   AND (construction_ends_at IS NULL OR construction_ends_at <= NOW())
-                 LIMIT 1`,
+                   AND (construction_ends_at IS NULL OR construction_ends_at <= NOW())`,
                 [run.id, player.id]
             );
             if (siloRes.rows.length === 0) {
@@ -993,16 +992,19 @@ function registerHandlers(io, socket) {
                 return;
             }
             const siloId = siloRes.rows[0].id;
-            // Check inventory not already at max
+            const siloCount = siloRes.rows.length;
+            // Check inventory not already at total cap (per-silo capacity × number of silos)
             const nukeCfg = getNukeConfig();
-            const maxInventory = nukeCfg.maxInventory || 3;
+            const maxPerSilo = nukeCfg.maxInventory || 3;
+            const totalCap = siloCount * maxPerSilo;
             const invRes = await db.query(
                 'SELECT nuke_inventory FROM run_player_state WHERE run_id = $1 AND player_id = $2',
                 [run.id, player.id]
             );
             const currentInventory = parseInt(invRes.rows[0]?.nuke_inventory, 10) || 0;
-            if (currentInventory >= maxInventory) {
-                socket.emit('error', { message: `Silo full. Maximum ${maxInventory} nuke(s) can be stored.` });
+            if (currentInventory >= totalCap) {
+                const siloLabel = siloCount > 1 ? `${siloCount} silos hold` : 'Silo holds';
+                socket.emit('error', { message: `Silo full. ${siloLabel} max ${totalCap} nuke(s) (${maxPerSilo} per silo).` });
                 if (typeof ack === 'function') ack({ ok: false, error: 'Silo full.' });
                 return;
             }
