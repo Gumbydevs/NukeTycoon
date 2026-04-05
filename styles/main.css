@@ -194,30 +194,39 @@ body.authenticated .container {
 
 /* Connection indicator (radioactive emoji) */
 .conn-indicator {
-    display: inline-block;
-    margin-left: 6px;
-    font-size: 14px; /* smaller so it doesn't get clipped */
+    display: inline-flex;
+    margin-left: 8px;
+    width: 22px;
+    height: 22px;
+    font-size: 14px; /* emoji size */
     line-height: 1;
-    transition: box-shadow 0.18s ease, transform 0.18s ease, opacity 0.18s ease;
+    align-items: center;
+    justify-content: center;
+    transition: box-shadow 0.18s ease, transform 0.18s ease, opacity 0.18s ease, color 0.18s ease;
     box-shadow: none;
     transform-origin: center;
     position: relative;
     z-index: 9999; /* keep above header elements */
-    background: transparent !important; /* ensure no background box */
+    background: transparent !important; /* ensure no hard square background */
     padding: 0 !important; /* no internal padding to avoid box */
     border: none !important;
+    border-radius: 50%;
+    -webkit-font-smoothing: antialiased;
 }
 .conn-indicator.off {
-    box-shadow: 0 0 6px rgba(255,60,60,0.95);
+    color: #ff6b6b; /* red emoji/tint when offline */
+    box-shadow: 0 0 8px rgba(255,60,60,0.95);
     transform: scale(1.0);
     opacity: 1;
 }
 .conn-indicator.on {
-    box-shadow: 0 0 10px rgba(80,255,100,0.95);
+    color: #9cff9c; /* green tint when online */
+    box-shadow: 0 0 12px rgba(80,255,100,0.95);
     transform: scale(1.02);
     opacity: 1;
 }
 .conn-indicator.reconnecting {
+    color: #ffd27a; /* amber while reconnecting */
     animation: conn-flash 900ms linear infinite;
 }
 
@@ -235,9 +244,9 @@ body.authenticated .container {
     margin-left: 10px;
     align-self: center;
     padding: 4px 6px;
-    border-radius: 4px;
-    background: rgba(255,255,255,0.02); /* very subtle, not a solid black box */
-    position: absolute;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.02); /* subtle */
+    position: fixed; /* visible on landing and in-game */
     right: 12px;
     top: 8px;
     z-index: 10001;

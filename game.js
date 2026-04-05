@@ -73,18 +73,18 @@ function fetchAndDisplayVersion() {
                 throw new Error('Unexpected content-type');
             })
             .then(data => {
-                const el = document.getElementById('appVersion');
-                if (!el) return;
-                if (data.json && data.json.version) el.textContent = `v${data.json.version}`;
+                const els = document.querySelectorAll('.app-version');
+                if (!els || els.length === 0) return;
+                let displayText = 'v?';
+                if (data.json && data.json.version) displayText = `v${data.json.version}`;
                 else if (data.text) {
                     const txt = (typeof data.text === 'string') ? data.text.trim() : '';
-                    // if the plain text looks like a semver, use it; otherwise fallback
-                    if (/^\d+\.\d+\.\d+/.test(txt)) el.textContent = `v${txt}`;
-                    else el.textContent = 'v?';
-                } else el.textContent = 'v?';
+                    if (/^\d+\.\d+\.\d+/.test(txt)) displayText = `v${txt}`;
+                }
+                els.forEach(el => { el.textContent = displayText; el.style.display = ''; });
             }).catch((err) => {
                 console.warn('Version fetch failed:', err && err.message);
-                const el = document.getElementById('appVersion'); if (el) el.textContent = 'v?';
+                document.querySelectorAll('.app-version').forEach(el => { el.textContent = 'v?'; });
             });
     } catch (e) { /* ignore */ }
 }
@@ -3917,9 +3917,8 @@ document.addEventListener('DOMContentLoaded', function() {
     fetchAndDisplayVersion();
     setConnectionIndicator(false);
 
-    // Wire up changelog modal interactions
-    const verEl = document.getElementById('appVersion');
-    if (verEl) verEl.addEventListener('click', (e) => { e.preventDefault(); showChangelog(); });
+    // Wire up changelog modal interactions on any visible version element
+    document.querySelectorAll('.app-version').forEach(el => el.addEventListener('click', (e) => { e.preventDefault(); showChangelog(); }));
     const changelogCloseBtnEl = document.getElementById('changelogCloseBtn');
     if (changelogCloseBtnEl) changelogCloseBtnEl.addEventListener('click', hideChangelog);
     const changelogModal = document.getElementById('changelogModal');
