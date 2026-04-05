@@ -679,6 +679,7 @@ app.post('/admin/api/full-db-reset', requireAdmin, async (_req, res) => {
         await db.query('DELETE FROM surveyors');
         await db.query('DELETE FROM run_players');
         await db.query('DELETE FROM economy_snapshots');
+        await db.query('DELETE FROM nuke_manufacture');
         await db.query('DELETE FROM buildings');
         await db.query('DELETE FROM nuke_launches');
         await db.query('DELETE FROM runs');
@@ -923,6 +924,7 @@ app.post('/admin/api/wipe-old-runs', requireAdmin, async (_req, res) => {
         await db.query('DELETE FROM notifications WHERE run_id = ANY($1)', [ids]);
         await db.query('DELETE FROM economy_snapshots WHERE run_id = ANY($1)', [ids]);
         await db.query('DELETE FROM surveyors WHERE run_id = ANY($1)', [ids]);
+        await db.query('DELETE FROM nuke_manufacture WHERE run_id = ANY($1)', [ids]);
         await db.query('DELETE FROM buildings WHERE run_id = ANY($1)', [ids]);
         await db.query('DELETE FROM run_player_state WHERE run_id = ANY($1)', [ids]);
         await db.query('DELETE FROM nuke_launches WHERE run_id = ANY($1)', [ids]);
@@ -939,6 +941,7 @@ app.post('/admin/api/wipe-buildings', requireAdmin, async (_req, res) => {
     try {
         const run = await getActiveRun();
         if (!run) { res.status(404).json({ error: 'No active run.' }); return; }
+        await db.query('DELETE FROM nuke_manufacture WHERE run_id = $1', [run.id]);
         const result = await db.query('DELETE FROM buildings WHERE run_id = $1', [run.id]);
         io.to(`run:${run.id}`).emit('buildings:reset', {});
         res.json({ ok: true, deleted: result.rowCount });
@@ -1021,6 +1024,7 @@ app.post('/admin/api/wipe-all-players', requireAdmin, async (_req, res) => {
         await db.query('DELETE FROM run_player_state');
         await db.query('DELETE FROM run_players');
         await db.query('DELETE FROM economy_snapshots');
+        await db.query('DELETE FROM nuke_manufacture');
         await db.query('DELETE FROM buildings');
         await db.query('DELETE FROM nuke_launches');
         await db.query('DELETE FROM runs');
