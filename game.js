@@ -1046,18 +1046,6 @@ function connectSocket() {
                 calculateProximity();
                 addNotification('success', `🛠️ ${displayNames[building.type] || building.type} construction started.`);
                 updateUI();
-            } else if (_existingBld && _existingBld._queued) {
-                // Queued building was promoted to active construction
-                delete _existingBld._queued;
-                delete _existingBld._queuePosition;
-                game._buildQueue = (game._buildQueue || []).filter(q => q.cellId != building.cell_id);
-                applyServerBuildingTiming(_existingBld, building);
-                if (building.type === 'storage') game.maxStorage += 1000;
-                renderBuilding(_existingBld.id, _existingBld.type, true, _existingBld);
-                scheduleConstructionTimers(_existingBld, true);
-                calculateProximity();
-                addNotification('success', `🛠️ ${displayNames[building.type] || building.type} construction started.`);
-                updateUI();
             } else if (!_existingBld) {
                 console.log('[building:placed] raw server row keys:', Object.keys(building), 'construction_ends_at:', building.construction_ends_at, 'placed_at:', building.placed_at);
                 const bObj = applyServerBuildingTiming({
@@ -3893,11 +3881,11 @@ function updateNukeHUD() {
     const hud = document.getElementById('nuke-hud');
     if (!hud) return;
 
-    const hasSilo = game.buildings.some(b => b.type === 'silo' && !b.isUnderConstruction && !b._queued);
+    const hasSilo = game.buildings.some(b => b.type === 'silo' && !b.isUnderConstruction);
     const inv = game.nukeInventory || 0;
     const mfg = game.nukeManufacturing;
     const isDropMode = game.selectedMode === 'nuke_drop';
-    const siloCount = game.buildings.filter(b => b.type === 'silo' && !b.isUnderConstruction && !b._queued).length;
+    const siloCount = game.buildings.filter(b => b.type === 'silo' && !b.isUnderConstruction).length;
     const maxPerSilo = (game.nukeCfg || {}).maxInventory ?? 3;
     const maxInv = Math.max(1, siloCount) * maxPerSilo;
     const siloFull = inv >= maxInv;
@@ -6225,7 +6213,8 @@ function onCellHover(id, e) {
         const icon = (buildingTypes[type] && buildingTypes[type].emoji) ? buildingTypes[type].emoji + ' ' : '';
         const ownerLabel = `<span style="display:inline-flex;align-items:center;gap:6px;color:#4CAF50;">${avatarBadge(game.playerAvatar, 18, game.playerPhoto)} ${escapeHtml(game.playerName || 'You')} <span style="font-size:10px;color:#aaa;">(You)</span></span>`;
         const mcOwned = buildingTypes[type]?.maintenanceCost || 0;
-        content = `<div style="font-weight:700;">${icon}${label} - ${ownerLabel}</div>` +
+        content = `<div style="font-weight:700;">${icon}${label}</div>` +
+            `<div style="margin-top:2px;">${ownerLabel}</div>` +
             `<div style="color:#ff9944;">⚙️ Operating: ${mcOwned.toLocaleString()} tokens</div>` +
             `<div>📐 Same-type neighbors: ${same} (${same>0? '+'+(same*11)+'%': 'none'})</div>` +
             `<div>⚠️ Nearby enemies: ${pen}</div>`;
