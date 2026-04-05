@@ -1,4 +1,9 @@
-﻿* {
+﻿/* Universal yellow cost text for menu/tooltips */
+.cost-yellow {
+    color: #ffb84d !important;
+    font-weight: 600;
+}
+* {
     margin: 0;
     padding: 0;
     box-sizing: border-box;

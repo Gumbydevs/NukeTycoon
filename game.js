@@ -1373,7 +1373,7 @@ function _updateLobbyFromServerState(run, players, yourWallet) {
         list.innerHTML = players.map(p =>
             `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #1e1e1e;gap:8px;">
                 <span style="display:inline-flex;align-items:center;gap:6px;color:${p.id === getLocalPlayerId() ? '#ffb84d' : '#888'};">${avatarBadge(p.avatar || DEFAULT_PLAYER_AVATAR, 18, p.avatar_photo || null)} ${escapeHtml(p.username)}</span>
-                <span style="color:#4CAF50;">${parseInt(p.token_balance,10).toLocaleString()} tokens</span>
+                <span class="cost-yellow">${parseInt(p.token_balance,10).toLocaleString()} tokens</span>
             </div>`
         ).join('');
     }
