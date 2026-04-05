@@ -76,14 +76,47 @@ function chebyshevDist(a, b) {
     return Math.max(Math.abs(ax - bx), Math.abs(ay - by));
 }
 
-function surveyorRandomWalk(cellId) {
+function surveyorRandomWalk(cellId, terrain, deposits, discoveredSet) {
     const x = cellId % GRID_COLS;
     const y = Math.floor(cellId / GRID_COLS);
-    const dx = Math.floor(Math.random() * 3) - 1; // -1, 0, or 1
-    const dy = Math.floor(Math.random() * 3) - 1;
-    const nx = Math.max(0, Math.min(GRID_COLS - 1, x + dx));
-    const ny = Math.max(0, Math.min(GRID_ROWS - 1, y + dy));
-    return ny * GRID_COLS + nx;
+    const ROAD_TYPES = new Set(['road', 'road-h', 'road-x']);
+
+    // Build candidate moves: all 8 neighbours + stay
+    const candidates = [];
+    for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+            const nx = Math.max(0, Math.min(GRID_COLS - 1, x + dx));
+            const ny = Math.max(0, Math.min(GRID_ROWS - 1, y + dy));
+            const ncell = ny * GRID_COLS + nx;
+            // Skip road cells — surveyors explore terrain, not roads
+            if (terrain && ROAD_TYPES.has(terrain[ncell])) continue;
+            candidates.push(ncell);
+        }
+    }
+    if (candidates.length === 0) return cellId; // fully surrounded by roads, stay put
+
+    // Bias towards undiscovered deposit cells: weight a candidate higher if
+    // there is an undiscovered deposit within SURVEYOR_DISCOVER_RADIUS of it.
+    const weights = candidates.map(c => {
+        let w = 1;
+        if (deposits && discoveredSet) {
+            for (const d of deposits) {
+                if (!discoveredSet.has(d.cellId) && chebyshevDist(c, d.cellId) <= SURVEYOR_DISCOVER_RADIUS + 1) {
+                    w += 4; // strong pull towards undiscovered deposit clusters
+                }
+            }
+        }
+        return w;
+    });
+
+    // Weighted random selection
+    const total = weights.reduce((s, w) => s + w, 0);
+    let r = Math.random() * total;
+    for (let i = 0; i < candidates.length; i++) {
+        r -= weights[i];
+        if (r <= 0) return candidates[i];
+    }
+    return candidates[candidates.length - 1];
 }
 
 function setBuildingRules(type, cost, constructionMs, maintenanceCost) {
@@ -949,18 +982,19 @@ async function processRunEconomy(io, run) {
         expiredSurveyorOwners.push(...expiredRes.rows.map(r => r.player_id));
         await db.query('DELETE FROM surveyors WHERE run_id = $1 AND expires_at <= NOW()', [run.id]);
         for (const sv of surveyorsResult.rows) {
-            const newCell = surveyorRandomWalk(sv.cell_id);
+            // Load this player's discovered deposits for biased walk
+            const discRes = await db.query(
+                'SELECT discovered_deposits FROM run_player_state WHERE run_id = $1 AND player_id = $2',
+                [run.id, sv.player_id]
+            );
+            const discoveredSet = new Set(Array.isArray(discRes.rows[0]?.discovered_deposits) ? discRes.rows[0].discovered_deposits : []);
+            const newCell = surveyorRandomWalk(sv.cell_id, terrain, deposits, discoveredSet);
             const nearbyIds = (deposits || [])
                 .filter(d => chebyshevDist(d.cellId, newCell) <= SURVEYOR_DISCOVER_RADIUS)
                 .map(d => d.cellId);
             await db.query('UPDATE surveyors SET cell_id = $1 WHERE id = $2', [newCell, sv.id]);
             if (nearbyIds.length > 0) {
-                // Read existing discoveries so we can diff for notifications
-                const beforeRes = await db.query(
-                    'SELECT discovered_deposits FROM run_player_state WHERE run_id = $1 AND player_id = $2',
-                    [run.id, sv.player_id]
-                );
-                const before = new Set(Array.isArray(beforeRes.rows[0]?.discovered_deposits) ? beforeRes.rows[0].discovered_deposits : []);
+                const before = discoveredSet;
                 const newlyFound = nearbyIds.filter(id => !before.has(id));
 
                 await db.query(

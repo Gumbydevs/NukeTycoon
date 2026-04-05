@@ -655,6 +655,11 @@ body.mobile-menu-open .dropdown { display: none !important; }
                 top  0.9s cubic-bezier(0.4, 0, 0.2, 1);
     /* animation-delay set per-instance via inline style in JS */
 }
+/* Inner span handles horizontal flip independently of the wander animation */
+.surveyor-marker > span {
+    display: inline-block;
+    transition: transform 0.3s ease;
+}
 @keyframes surveyor-wander {
     0%   { transform: translate(-50%, -50%); }
     20%  { transform: translate(-110%, -80%); }

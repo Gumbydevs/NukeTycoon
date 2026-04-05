@@ -2332,6 +2332,13 @@ function renderSurveyors() {
         if (game._surveyorMarkerMap.has(sv.id)) {
             // Move existing marker — CSS transition animates left/top smoothly
             const el = game._surveyorMarkerMap.get(sv.id);
+            const prevX = parseFloat(el.style.left) || x;
+            // Flip inner span horizontally when moving right (emoji faces left by default)
+            const inner = el.querySelector('span');
+            if (inner) {
+                if (x > prevX + 1) inner.style.transform = 'scaleX(-1)';
+                else if (x < prevX - 1) inner.style.transform = 'scaleX(1)';
+            }
             el.style.left = x + 'px';
             el.style.top  = y + 'px';
             el._svData = sv;
@@ -2339,7 +2346,10 @@ function renderSurveyors() {
             // Create new marker; suppress transition for initial placement
             const el = document.createElement('div');
             el.className = 'surveyor-marker';
-            el.textContent = '\uD83D\uDEB6'; // 🚶
+            // Inner span holds emoji — flip transform handled here independently of wander animation
+            const inner = document.createElement('span');
+            inner.textContent = '\uD83D\uDEB6'; // 🚶
+            el.appendChild(inner);
             el.style.transitionProperty = 'none';
             el.style.left = x + 'px';
             el.style.top  = y + 'px';
