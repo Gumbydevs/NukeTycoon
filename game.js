@@ -2962,9 +2962,9 @@ function placeOrSelect(id) {
             addNotification('danger', '⚠️ Not connected to server.');
         }
     } else {
-        // For building placement, check that cell is empty
-        // Use trimmed innerHTML to avoid invisible whitespace counting as occupied
-        if (cell.innerHTML && cell.innerHTML.trim() !== '') return; // Already occupied
+        // For building placement, check that cell is empty (ignore deposit-flag spans)
+        const nonFlagContent = cell.innerHTML.replace(/<span[^>]*class="deposit-flag"[^>]*>.*?<\/span>/gi, '').trim();
+        if (nonFlagContent !== '') return; // Already occupied
         if (socket?.connected && _authJWT) {
             // Optimistic local render — show Workers En Route immediately while server confirms
             const _type = game.selectedMode;
