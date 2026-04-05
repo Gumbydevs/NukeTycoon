@@ -668,6 +668,7 @@ app.post('/admin/api/full-db-reset', requireAdmin, async (_req, res) => {
         await db.query('DELETE FROM run_players');
         await db.query('DELETE FROM economy_snapshots');
         await db.query('DELETE FROM buildings');
+        await db.query('DELETE FROM nuke_launches');
         await db.query('DELETE FROM runs');
         // Reset player balances
         await db.query('UPDATE players SET token_balance = 50000');
@@ -912,6 +913,7 @@ app.post('/admin/api/wipe-old-runs', requireAdmin, async (_req, res) => {
         await db.query('DELETE FROM surveyors WHERE run_id = ANY($1)', [ids]);
         await db.query('DELETE FROM buildings WHERE run_id = ANY($1)', [ids]);
         await db.query('DELETE FROM run_player_state WHERE run_id = ANY($1)', [ids]);
+        await db.query('DELETE FROM nuke_launches WHERE run_id = ANY($1)', [ids]);
         await db.query('DELETE FROM run_players WHERE run_id = ANY($1)', [ids]);
         const r = await db.query('DELETE FROM runs WHERE id = ANY($1)', [ids]);
         res.json({ ok: true, deleted: r.rowCount });
@@ -990,6 +992,7 @@ app.post('/admin/api/wipe-all-players', requireAdmin, async (_req, res) => {
         await db.query('DELETE FROM run_players');
         await db.query('DELETE FROM economy_snapshots');
         await db.query('DELETE FROM buildings');
+        await db.query('DELETE FROM nuke_launches');
         await db.query('DELETE FROM runs');
         await db.query('DELETE FROM auth_codes');
         const result = await db.query('DELETE FROM players');
