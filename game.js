@@ -6940,7 +6940,7 @@ function addButtonTooltips() {
                     const cost = (svCfg.cost || 500).toLocaleString();
                     const mins = Math.round((svCfg.durationMs || 300000) / 60000);
                     content = '<div style="font-weight:700;">\uD83D\uDEB6 Hire Surveyor</div>';
-                    content += '<div>Deploy a worker who wanders and reveals hidden uranium deposits.</div>';
+                    content += '<div>Deploy a worker who wanders and reveals uranium deposits.</div>';
                     content += '<div style="color:#aaa;font-size:11px;">Only you see the deposits your surveyor finds.</div>';
                     content += `<div>\uD83D\uDCB0 <span style=\"color:#fff;\">Cost:</span> <span class=\"cost-yellow\">${cost} tokens</span></div>`;
                     content += `<div>\u23F1\uFE0F Duration: ${mins} minute${mins !== 1 ? 's' : ''}</div>`;
