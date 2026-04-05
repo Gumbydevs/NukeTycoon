@@ -198,8 +198,9 @@
             <input id="sabotage_steal_cost" type="number" class="small" />
           </div>
         <div class="row section">
-          <label style="width:160px">Nuke cost % of wallet</label>
-          <input id="sabotage_nuke_cost_pct" type="number" step="0.01" class="small" style="width:100px" />
+          <label style="width:160px;color:#888;text-decoration:line-through" title="No longer used — launch is free; cost is set by Nuke manufacture cost">Nuke cost % of wallet</label>
+          <input id="sabotage_nuke_cost_pct" type="number" step="0.01" class="small" style="width:100px;opacity:0.4" disabled title="Unused — launch is free" />
+          <span class="muted" style="margin-left:8px;color:#f5a623">⚠️ Unused — firing a nuke is free; the manufacture cost below is charged instead</span>
           <label style="width:160px;margin-left:12px">Failure chance</label>
           <input id="sabotage_failure_chance" type="number" step="0.01" class="small" style="width:100px" />
         </div>
