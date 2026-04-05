@@ -65,10 +65,10 @@ let STRIKE_LIMIT_PER_DAY = Number(process.env.STRIKE_LIMIT_PER_DAY || 1);
 let MAINTENANCE_REFUND_PCT = Number(process.env.MAINTENANCE_REFUND_PCT || 0.75);
 
 // ── Surveyor config ──────────────────────────────────────────────────────────
-const SURVEYOR_COST            = Number(process.env.SURVEYOR_COST || 500);
-const SURVEYOR_MAINT_PER_TICK  = Number(process.env.SURVEYOR_MAINT_PER_TICK || 1);
-const SURVEYOR_DURATION_MS     = Number(process.env.SURVEYOR_DURATION_MS || 300000); // 5 min
-const SURVEYOR_DISCOVER_RADIUS = Number(process.env.SURVEYOR_DISCOVER_RADIUS || 2);
+let SURVEYOR_COST            = Number(process.env.SURVEYOR_COST || 500);
+let SURVEYOR_MAINT_PER_TICK  = Number(process.env.SURVEYOR_MAINT_PER_TICK || 1);
+let SURVEYOR_DURATION_MS     = Number(process.env.SURVEYOR_DURATION_MS || 300000); // 5 min
+let SURVEYOR_DISCOVER_RADIUS = Number(process.env.SURVEYOR_DISCOVER_RADIUS || 2);
 
 function chebyshevDist(a, b) {
     const ax = a % GRID_COLS, ay = Math.floor(a / GRID_COLS);
@@ -167,6 +167,11 @@ async function loadRuntimeConfigFromDB() {
                 case 'sabotage.nuke_fallout_duration_ms': SABOTAGE_NUKE_FALLOUT_DURATION_MS = Number(value); break;
                 case 'sabotage.strike_limit_per_day': STRIKE_LIMIT_PER_DAY = Number(value); break;
                 case 'game.maintenance_refund_pct': MAINTENANCE_REFUND_PCT = Number(value); break;
+                // Surveyor tuning
+                case 'surveyor.cost': SURVEYOR_COST = Number(value); break;
+                case 'surveyor.maint_per_tick': SURVEYOR_MAINT_PER_TICK = Number(value); break;
+                case 'surveyor.duration_ms': SURVEYOR_DURATION_MS = Number(value); break;
+                case 'surveyor.discover_radius': SURVEYOR_DISCOVER_RADIUS = Number(value); break;
                 default: {
                     // building.* keys are handled by loadBuildingRulesFromDB earlier
                     break;
@@ -175,6 +180,34 @@ async function loadRuntimeConfigFromDB() {
         });
         // Recompute derived values
         MARKET_PER_SECOND_VOL = MARKET_VOLATILITY / 60;
+
+        // Seed surveyor defaults into server_config so they are persisted and
+        // admin-editable via balance.html. Uses DO NOTHING so existing DB values
+        // (set via the admin panel) are never overwritten on restart.
+        const surveyorDefaults = [
+            ['surveyor.cost',            String(SURVEYOR_COST)],
+            ['surveyor.duration_ms',     String(SURVEYOR_DURATION_MS)],
+            ['surveyor.maint_per_tick',  String(SURVEYOR_MAINT_PER_TICK)],
+            ['surveyor.discover_radius', String(SURVEYOR_DISCOVER_RADIUS)],
+        ];
+        for (const [k, v] of surveyorDefaults) {
+            await db.query(
+                `INSERT INTO server_config (key, value, updated_at) VALUES ($1, $2, NOW())
+                 ON CONFLICT (key) DO NOTHING`,
+                [k, v]
+            );
+        }
+        // Re-read surveyor keys from DB so in-memory vars reflect any admin-saved values
+        const svRes = await db.query("SELECT key, value FROM server_config WHERE key LIKE 'surveyor.%'");
+        svRes.rows.forEach(({ key, value }) => {
+            switch (key) {
+                case 'surveyor.cost':            SURVEYOR_COST            = Number(value); break;
+                case 'surveyor.duration_ms':     SURVEYOR_DURATION_MS     = Number(value); break;
+                case 'surveyor.maint_per_tick':  SURVEYOR_MAINT_PER_TICK  = Number(value); break;
+                case 'surveyor.discover_radius': SURVEYOR_DISCOVER_RADIUS = Number(value); break;
+            }
+        });
+
         console.log('[config] Runtime config loaded from DB');
     } catch (err) {
         console.warn('[config] Could not load runtime config from DB:', err.message);
@@ -1323,6 +1356,12 @@ module.exports = {
             strikeLimitPerDay: STRIKE_LIMIT_PER_DAY,
             maintenanceRefundPct: MAINTENANCE_REFUND_PCT,
         },
+        surveyor: {
+            cost: SURVEYOR_COST,
+            durationMs: SURVEYOR_DURATION_MS,
+            maintPerTick: SURVEYOR_MAINT_PER_TICK,
+            discoverRadius: SURVEYOR_DISCOVER_RADIUS,
+        },
     }),
     getProductionConfig: () => ({
         mineBaseProduction: MINE_BASE_PRODUCTION,
@@ -1348,6 +1387,12 @@ module.exports = {
         durationMs: SURVEYOR_DURATION_MS,
         maintPerTick: SURVEYOR_MAINT_PER_TICK,
         discoverRadius: SURVEYOR_DISCOVER_RADIUS,
+    }),
+    getSurveyorConfigKeys: () => ({
+        'surveyor.cost':           SURVEYOR_COST,
+        'surveyor.duration_ms':    SURVEYOR_DURATION_MS,
+        'surveyor.maint_per_tick': SURVEYOR_MAINT_PER_TICK,
+        'surveyor.discover_radius': SURVEYOR_DISCOVER_RADIUS,
     }),
     setNextRunLength,
     getNextRunLength: () => _nextRunLength,

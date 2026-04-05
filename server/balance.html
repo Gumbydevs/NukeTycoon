@@ -221,6 +221,27 @@
           </div>
         </div>
 
+        <h4 class="section">Surveyor (Fog of War) <button id="toggleSurveyor" class="small btn-ghost" style="margin-left:8px">Expand</button></h4>
+        <div id="surveyorBody">
+          <div class="row section">
+            <label style="width:160px">Hire cost (tokens)</label>
+            <input id="surveyor_cost" type="number" class="small" style="width:120px" />
+          </div>
+          <div class="row section">
+            <label style="width:160px">Duration (ms)</label>
+            <input id="surveyor_duration_ms" type="number" class="small" style="width:140px" />
+            <span class="muted" style="margin-left:6px">default 300000 (5 min)</span>
+          </div>
+          <div class="row section">
+            <label style="width:160px">Maint per tick (tokens)</label>
+            <input id="surveyor_maint_per_tick" type="number" step="0.1" class="small" style="width:120px" />
+          </div>
+          <div class="row section">
+            <label style="width:160px">Discover radius (cells)</label>
+            <input id="surveyor_discover_radius" type="number" class="small" style="width:100px" />
+          </div>
+        </div>
+
         <h4 class="section">Building Rules</h4>
         <div id="buildingRulesWrap" style="margin-top:8px">
           <div style="display:flex;justify-content:flex-start;align-items:center;margin-bottom:6px;gap:12px">
@@ -317,6 +338,13 @@
         $('sabotage_nuke_fallout_duration_ms').value = sb.nukeFalloutDurationMs ?? '';
         $('sabotage_strike_limit_per_day').value = sb.strikeLimitPerDay ?? '';
         $('sabotage_maintenance_refund_pct').value = sb.maintenanceRefundPct ?? '';
+
+        // Surveyor
+        const sv = cfg.surveyor || {};
+        $('surveyor_cost').value = sv.cost ?? '';
+        $('surveyor_duration_ms').value = sv.durationMs ?? '';
+        $('surveyor_maint_per_tick').value = sv.maintPerTick ?? '';
+        $('surveyor_discover_radius').value = sv.discoverRadius ?? '';
 
         // Building rules
         const rules = cfg.buildingRules || {};
@@ -465,6 +493,12 @@
       changes['sabotage.nuke_fallout_duration_ms'] = Number($('sabotage_nuke_fallout_duration_ms').value) || 120000;
       changes['sabotage.strike_limit_per_day'] = Number($('sabotage_strike_limit_per_day').value) || 1;
       changes['game.maintenance_refund_pct'] = Number($('sabotage_maintenance_refund_pct').value) || 0.75;
+
+      // Surveyor
+      changes['surveyor.cost'] = Number($('surveyor_cost').value) || 500;
+      changes['surveyor.duration_ms'] = Number($('surveyor_duration_ms').value) || 300000;
+      changes['surveyor.maint_per_tick'] = Number($('surveyor_maint_per_tick').value) || 1;
+      changes['surveyor.discover_radius'] = Number($('surveyor_discover_radius').value) || 2;
 
       // Building rows
       document.querySelectorAll('#buildingRulesBody input[data-key]').forEach(inp => {
