@@ -641,20 +641,29 @@ body.mobile-menu-open .dropdown { display: none !important; }
 /* Surveyor unit marker */
 .surveyor-marker {
     position: absolute;
-    top: 2px;
-    right: 2px;
-    font-size: 9px;
+    top: 50%;
+    left: 50%;
+    font-size: 11px;
     line-height: 1;
     pointer-events: none;
     z-index: 5;
-    animation: surveyor-bob 1.2s ease-in-out infinite alternate;
+    animation: surveyor-wander 5s ease-in-out infinite;
+    /* animation-delay set per-instance via inline style in JS */
 }
 .surveyor-marker::after {
-    content: '🧭';
+    content: '👷';
+    display: block;
 }
-@keyframes surveyor-bob {
-    from { transform: translateY(0); }
-    to   { transform: translateY(-2px); }
+@keyframes surveyor-wander {
+    0%   { transform: translate(-50%, -50%); }
+    12%  { transform: translate(-90%, -80%); }
+    25%  { transform: translate(10%, -85%); }
+    37%  { transform: translate(40%, -30%); }
+    50%  { transform: translate(20%,  20%); }
+    62%  { transform: translate(-80%,  30%); }
+    75%  { transform: translate(-70%, -40%); }
+    87%  { transform: translate(30%, -60%); }
+    100% { transform: translate(-50%, -50%); }
 }
 
 /* Terrain visuals */

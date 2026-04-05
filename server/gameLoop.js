@@ -938,6 +938,7 @@ async function processRunEconomy(io, run) {
     }
 
     // ── Surveyor movement + deposit discovery ────────────────────────────────
+    const surveyorDiscoveries = []; // { playerId, newCellIds[] } for post-tick notifications
     try {
         await db.query('DELETE FROM surveyors WHERE run_id = $1 AND expires_at <= NOW()', [run.id]);
         for (const sv of surveyorsResult.rows) {
@@ -947,6 +948,14 @@ async function processRunEconomy(io, run) {
                 .map(d => d.cellId);
             await db.query('UPDATE surveyors SET cell_id = $1 WHERE id = $2', [newCell, sv.id]);
             if (nearbyIds.length > 0) {
+                // Read existing discoveries so we can diff for notifications
+                const beforeRes = await db.query(
+                    'SELECT discovered_deposits FROM run_player_state WHERE run_id = $1 AND player_id = $2',
+                    [run.id, sv.player_id]
+                );
+                const before = new Set(Array.isArray(beforeRes.rows[0]?.discovered_deposits) ? beforeRes.rows[0].discovered_deposits : []);
+                const newlyFound = nearbyIds.filter(id => !before.has(id));
+
                 await db.query(
                     `UPDATE run_player_state
                      SET discovered_deposits = (
@@ -958,6 +967,10 @@ async function processRunEconomy(io, run) {
                      WHERE run_id = $2 AND player_id = $3`,
                     [JSON.stringify(nearbyIds), run.id, sv.player_id]
                 );
+
+                if (newlyFound.length > 0) {
+                    surveyorDiscoveries.push({ playerId: sv.player_id, cellIds: newlyFound });
+                }
             }
         }
     } catch (e) {
@@ -965,6 +978,21 @@ async function processRunEconomy(io, run) {
     }
 
     await emitRunSnapshot(io, run.id, 'run:tick');
+
+    // Notify players about newly discovered deposits
+    if (surveyorDiscoveries.length > 0) {
+        try {
+            const sockets = await io.in(`run:${run.id}`).fetchSockets();
+            for (const { playerId, cellIds } of surveyorDiscoveries) {
+                const playerSocket = sockets.find(s => s.playerId === playerId);
+                if (playerSocket) {
+                    playerSocket.emit('surveyor:discovery', { cellIds, count: cellIds.length });
+                }
+            }
+        } catch (e) {
+            console.warn('[surveyor] discovery notify failed:', e && e.message);
+        }
+    }
 
     // Emit any newly-placed buildings so clients receive placement events.
     if (newlyPlaced && Array.isArray(newlyPlaced) && newlyPlaced.length > 0) {
