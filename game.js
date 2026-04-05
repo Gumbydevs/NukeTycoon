@@ -5575,6 +5575,10 @@ function onCellHover(id, e) {
     const player = game.buildings.find(b => b.id === id);
     const enemy = game.enemyBuildings.find(b => b.id === id);
     const deposit = game.deposits.find(d => d.cellId === id);
+    // Helper to append cell number label to tooltip HTML
+    function appendCellNumber(html) {
+        return html + `<div style="position:relative; min-height:18px;"><span style='position:absolute; bottom:2px; right:6px; color:#FFD700; font-size:11px; opacity:0.85; font-family:monospace; pointer-events:none; user-select:none;'>Cell #${id}</span></div>`;
+    }
 
     // If in hireSurveyor placement mode show cost/duration preview
     if (game.selectedMode === 'hireSurveyor' && !player && !enemy) {
@@ -5584,19 +5588,19 @@ function onCellHover(id, e) {
         const mins = Math.round((svCfg.durationMs || 300000) / 60000);
         content = '<div style="font-weight:700;">\uD83D\uDEB6 Deploy Surveyor Here</div>';
         content += '<div>Dispatches a worker who wanders and discovers uranium.</div>';
-        content += `<div style="color:#FFD700;">\uD83D\uDCB0 Cost: ${cost} tokens</div>`;
+        content += `<div style=\"color:#FFD700;\">\uD83D\uDCB0 Cost: ${cost} tokens</div>`;
         content += `<div>\u23F1\uFE0F Duration: ${mins} minute${mins !== 1 ? 's' : ''}</div>`;
-        content += `<div style="color:#aaa;font-size:11px;">\uD83D\uDD0D Discovers within ${radius}-cell radius</div>`;
-        showTooltipAt(rect.right + 8, rect.top, content);
+        content += `<div style=\"color:#aaa;font-size:11px;\">\uD83D\uDD0D Discovers within ${radius}-cell radius</div>`;
+        showTooltipAt(rect.right + 8, rect.top, appendCellNumber(content));
         return;
     }
 
     // If hovering over a deposit cell (no buildings), show deposit info
     if (!player && !enemy && deposit && !game.selectedMode) {
-        content = `<div style="font-weight:700; color:#FFD700;">🚩 Uranium Deposit</div>` +
-            `<div style="color:#FFA500; margin-top:4px;">Build mines here for 1.5x yield!</div>` +
-            `<div style="color:#AAA; font-size:12px; margin-top:4px;">1 tile: 1.25x | 2 tiles: 0.7x | 3+: 0.1x</div>`;
-        showTooltipAt(rect.right + 8, rect.top, content);
+        content = `<div style=\"font-weight:700; color:#FFD700;\">🚩 Uranium Deposit</div>` +
+            `<div style=\"color:#FFA500; margin-top:4px;\">Build mines here for 1.5x yield!</div>` +
+            `<div style=\"color:#AAA; font-size:12px; margin-top:4px;\">1 tile: 1.25x | 2 tiles: 0.7x | 3+: 0.1x</div>`;
+        showTooltipAt(rect.right + 8, rect.top, appendCellNumber(content));
         return;
     }
 
@@ -5641,7 +5645,7 @@ function onCellHover(id, e) {
             content += `<div style="color:${hasRoad ? '#4CAF50' : '#888'};">` +
                 `🛣️ Road access: ${hasRoad ? '+15% throughput if built here ✓' : 'no road bonus here'}</div>`;
         }
-        showTooltipAt(rect.right + 8, rect.top, content);
+        showTooltipAt(rect.right + 8, rect.top, appendCellNumber(content));
         return;
     }
 
@@ -5684,7 +5688,7 @@ function onCellHover(id, e) {
             content += `<div style="color:${hasRoad ? '#4CAF50' : '#888'};">` +
                 `🛣️ Road access: ${hasRoad ? '+15% throughput ✓' : 'none'}</div>`;
         }
-        showTooltipAt(rect.right + 8, rect.top, content);
+        showTooltipAt(rect.right + 8, rect.top, appendCellNumber(content));
         return;
     }
 
@@ -5715,23 +5719,24 @@ function onCellHover(id, e) {
             statusLine +
             `<div style="margin-top:6px; color:#ff6b6b;">💥 Sabotage cost: ${sabotageCost.toLocaleString()} tokens</div>` +
             `<div style="color:#aaa; font-size:11px;">Click to open sabotage menu</div>`;
-        showTooltipAt(rect.right + 8, rect.top, content);
+        showTooltipAt(rect.right + 8, rect.top, appendCellNumber(content));
         return;
     }
 
     // Road cell — show bonus hint even on empty road tiles
     if (game.terrain && (game.terrain[id] === 'road' || game.terrain[id] === 'road-h' || game.terrain[id] === 'road-x')) {
-        content = `<div style="font-weight:700; color:#aaa;">🛣️ Road Tile</div>` +
+        content = `<div style=\"font-weight:700; color:#aaa;\">🛣️ Road Tile</div>` +
             `<div>Buildings close to a road gain logistics bonuses.</div>` +
-            `<div style="color:#4CAF50;">☢️ Adjacent Reactors: +22% income</div>` +
-            `<div style="color:#4CAF50;">🏭 Adjacent Plants: +15% throughput</div>`;
+            `<div style=\"color:#4CAF50;\">☢️ Adjacent Reactors: +22% income</div>` +
+            `<div style=\"color:#4CAF50;\">🏭 Adjacent Plants: +15% throughput</div>`;
 
-        showTooltipAt(rect.right + 8, rect.top, content);
+        showTooltipAt(rect.right + 8, rect.top, appendCellNumber(content));
         return;
     }
 
     // empty cell default
-    hideTooltip();
+    // Show just the cell number for empty cells
+    showTooltipAt(rect.right + 8, rect.top, appendCellNumber(''));
 }
 
 function onCellMove(id, e) {
