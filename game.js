@@ -904,7 +904,10 @@ function connectSocket() {
         if (nukeManufacture !== undefined) {
             game.nukeManufacturing = nukeManufacture ? { completesAt: nukeManufacture.completesAt, manufactureMs: nukeManufacture.manufactureMs || 120000 } : null;
         }
-        if (nukeCfgPublic) game.nukeCfg = nukeCfgPublic;
+        if (nukeCfgPublic) {
+            game.nukeCfg = nukeCfgPublic;
+            if (nukeCfgPublic.maxSilos != null) game.maxSilosPerRound = nukeCfgPublic.maxSilos;
+        }
         if (Array.isArray(nukeLaunches)) {
             nukeLaunches.forEach(l => {
                 if (!game.activeLaunches.find(x => x.id === l.id)) {
@@ -3880,6 +3883,10 @@ function updateNukeHUD() {
     const inv = game.nukeInventory || 0;
     const mfg = game.nukeManufacturing;
     const isDropMode = game.selectedMode === 'nuke_drop';
+    const siloCount = game.buildings.filter(b => b.type === 'silo' && !b.isUnderConstruction).length;
+    const maxPerSilo = (game.nukeCfg || {}).maxInventory ?? 3;
+    const maxInv = Math.max(1, siloCount) * maxPerSilo;
+    const siloFull = inv >= maxInv;
 
     let html = '';
 
@@ -3887,7 +3894,7 @@ function updateNukeHUD() {
     html += `<div class="nuke-hud-inv" title="${inv > 0 ? 'Click to enter drop-targeting mode' : 'No nukes. Manufacture one first'}"
         style="cursor:${inv > 0 ? 'pointer' : 'default'}; opacity:${inv > 0 ? '1' : '0.45'};"
         id="nukeInvBtn">`;
-    html += `<span style="font-size:18px;">☢️</span> <span style="font-weight:700;font-size:15px;color:${inv > 0 ? '#ff4444' : '#888'};">× ${inv}</span>`;
+    html += `<span style="font-size:18px;">☢️</span> <span style="font-weight:700;font-size:15px;color:${inv > 0 ? '#ff4444' : '#888'};">× ${inv}</span><span style="color:#555;font-size:12px;"> / ${maxInv}</span>`;
     if (isDropMode) html += ` <span style="color:#ffb84d;font-size:11px;font-weight:700;"> PICK TARGET</span>`;
     html += '</div>';
 
@@ -3925,8 +3932,6 @@ function updateNukeHUD() {
         const buildSecRem = buildSecs % 60;
         const buildTimeStr = buildMin > 0 ? (buildSecRem > 0 ? `${buildMin}m ${buildSecRem}s` : `${buildMin}m`) : `${buildSecs}s`;
         const radiusCells = cfg.falloutRadius ?? 3;
-        const maxInv = cfg.maxInventory ?? 3;
-        const siloFull = inv >= maxInv;
         const cooldownMs = cfg.launchCooldownMs ?? 0;
         const cooldownStr = cooldownMs > 0 ? `${Math.round(cooldownMs / 1000)}s cooldown between launches` : 'No launch cooldown';
         html += `<div id="nukeMfgBtn" class="nuke-hud-mfg-btn" style="opacity:${siloFull ? '0.45' : '1'};cursor:${siloFull ? 'not-allowed' : 'pointer'}">
@@ -3938,7 +3943,7 @@ function updateNukeHUD() {
                 <div class="nuke-mfg-tooltip-row"><span>Requires</span><span>Silo (built)</span></div>
                 <div class="nuke-mfg-tooltip-row"><span>Build time</span><span>${buildTimeStr}</span></div>
                 <div class="nuke-mfg-tooltip-row"><span>Blast radius</span><span>${radiusCells} cells</span></div>
-                <div class="nuke-mfg-tooltip-row"><span>Max stored</span><span>${maxInv} nukes</span></div>
+                <div class="nuke-mfg-tooltip-row"><span>Max stored</span><span>${maxPerSilo}/silo × ${siloCount} = ${maxInv}</span></div>
                 <div class="nuke-mfg-tooltip-row"><span>Cooldown</span><span>${cooldownStr}</span></div>
             </div>
         </div>`;
@@ -3979,6 +3984,12 @@ function updateNukeHUD() {
                 return;
             }
             if (socket?.connected && _authJWT) {
+                const mfgCost = game.nukeCfg?.manufactureCost ?? 1000;
+                if (game.playerWallet < mfgCost) {
+                    addNotification('danger', `💸 Not enough tokens to manufacture a Nuke (need ${mfgCost.toLocaleString()}, have ${game.playerWallet.toLocaleString()}).`);
+                    if (typeof NukeSounds !== 'undefined') NukeSounds.notifDanger();
+                    return;
+                }
                 socket.emit('nuke:manufacture', { jwt: _authJWT });
             }
         };
@@ -4027,7 +4038,7 @@ function showNukeCountdown(launch) {
     header.innerHTML = `${avatarHtml}
         <div>
             <div style="font-size:11px;letter-spacing:2px;color:#ff6666;font-weight:700;">⚡ IMMINENT LAUNCH ⚡</div>
-            <div style="font-size:13px;color:#ffb84d;font-weight:600;">${attackerName} has launched a nuclear warhead</div>
+            <div style="font-size:13px;color:#ffb84d;font-weight:600;">${attackerName} has launched a Nuke</div>
             <div style="font-size:11px;color:#ff8888;">IMPACT IN:</div>
         </div>`;
     overlay.appendChild(header);
@@ -6200,7 +6211,7 @@ function onCellHover(id, e) {
         const icon = (buildingTypes[type] && buildingTypes[type].emoji) ? buildingTypes[type].emoji + ' ' : '';
         const ownerLabel = `<span style="display:inline-flex;align-items:center;gap:6px;color:#4CAF50;">${avatarBadge(game.playerAvatar, 18, game.playerPhoto)} ${escapeHtml(game.playerName || 'You')} <span style="font-size:10px;color:#aaa;">(You)</span></span>`;
         const mcOwned = buildingTypes[type]?.maintenanceCost || 0;
-        content = `<div style="font-weight:700;">${icon}${label} — ${ownerLabel}</div>` +
+        content = `<div style="font-weight:700;">${icon}${label} - ${ownerLabel}</div>` +
             `<div style="color:#ff9944;">⚙️ Operating: ${mcOwned.toLocaleString()} tokens</div>` +
             `<div>📐 Same-type neighbors: ${same} (${same>0? '+'+(same*11)+'%': 'none'})</div>` +
             `<div>⚠️ Nearby enemies: ${pen}</div>`;
@@ -6227,6 +6238,15 @@ function onCellHover(id, e) {
             content += `<div style="color:${hasRoad ? '#4CAF50' : '#888'};">` +
                 `🛣️ Road access: ${hasRoad ? '+15% throughput ✓' : 'none'}</div>`;
         }
+        if (type === 'silo') {
+            const _cfg = game.nukeCfg || {};
+            const _builtSilos = game.buildings.filter(b => b.type === 'silo' && !b.isUnderConstruction).length;
+            const _storagePer = _cfg.maxInventory ?? 3;
+            const _totalCap = Math.max(1, _builtSilos) * _storagePer;
+            const _nukeInv = game.nukeInventory || 0;
+            content += `<div style="margin-top:4px; color:${_nukeInv >= _totalCap ? '#ff6b6b' : '#4CAF50'};">☢️ Nukes stored: ${_nukeInv} / ${_totalCap}</div>`;
+            content += `<div style="color:#aaa; font-size:11px;">${_storagePer}/silo × ${_builtSilos} silo${_builtSilos !== 1 ? 's' : ''}</div>`;
+        }
         showTooltipAt(rect.right + 8, rect.top, content);
         return;
     }
@@ -6250,7 +6270,7 @@ function onCellHover(id, e) {
         let statusLine = '';
         if (enemy.disabled && enemy.disabled.endTime > now) {
             const secsLeft = Math.ceil((enemy.disabled.endTime - now) / 1000);
-            statusLine += `<div style="color:#ffb84d; margin-top:4px;">⏸️ Disabled — ${secsLeft}s remaining (${Math.round((1 - enemy.disabled.multiplier) * 100)}% penalty)</div>`;
+            statusLine += `<div style="color:#ffb84d; margin-top:4px;">⏸️ Disabled - ${secsLeft}s remaining (${Math.round((1 - enemy.disabled.multiplier) * 100)}% penalty)</div>`;
         }
         content = `<div style="font-weight:700;">${icon}${label}</div>` +
             `<div style="margin-top:2px;">Owner: ${ownerTag}</div>` +
@@ -6822,8 +6842,8 @@ function addButtonTooltips() {
                 content += '<div>⚠️ Cost varies by target type.</div>';
             } else if (typeKey === 'silo' || /silo/i.test(typeKey)) {
                 content = '<div style="font-weight:700;">💥 Silo</div>';
-                content += '<div>Missile Silo — the ultimate weapon. Requires at least 1 completed Reactor to build.</div>';
-                content += `<div>💰Build cost: ${buildingTypes.silo.cost} tokens — Construction: ${buildingTypes.silo.constructionTime}s</div>`;
+                content += '<div>Missile Silo - the ultimate weapon. Requires at least 1 completed Reactor to build.</div>';
+                content += `<div>💰Build cost: ${buildingTypes.silo.cost} tokens - Construction: ${buildingTypes.silo.constructionTime}s</div>`;
                 content += `<div>⚠️ Limit: ${game.maxSilosPerRound} per round. Using a nuke costs a large portion of your wallet.</div>`;
             } else if (typeKey === 'dev' || /dev/i.test(typeKey)) {
                 content = '<div style="font-weight:700;">🔧 Dev Tools</div>';
