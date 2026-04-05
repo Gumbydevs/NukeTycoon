@@ -6,7 +6,7 @@ const cors       = require('cors');
 const fs         = require('fs');
 const path       = require('path');
 const db         = require('./db');
-const { setupGameLoop, getActiveRun, createNewRun, endRun, setNextRunLength, getNextRunLength, BUILDING_RULES, setBuildingRules, saveBuildingRulesToDB, loadBuildingRulesFromDB, calculateScores, updateAlltimeMarketRecords, loadRuntimeConfigFromDB, getBalanceConfig } = require('./gameLoop');
+const { setupGameLoop, getActiveRun, createNewRun, endRun, setNextRunLength, getNextRunLength, BUILDING_RULES, setBuildingRules, saveBuildingRulesToDB, loadBuildingRulesFromDB, calculateScores, updateAlltimeMarketRecords, loadRuntimeConfigFromDB, getBalanceConfig, getDepositsForRun, clearDepositCache, emitRunSnapshot } = require('./gameLoop');
 const { verifyJWT, verifyAdminKey, createAdminKey } = require('./auth');
 const { registerHandlers } = require('./socket/handlers');
 
@@ -300,6 +300,18 @@ app.post('/admin/api/balance', requireAdmin, async (req, res) => {
         await client.query('COMMIT');
         // Reload runtime config into game loop and broadcast to clients
         try { await loadBuildingRulesFromDB(); await loadRuntimeConfigFromDB(); } catch (e) { console.warn('Failed to reload runtime config:', e && e.message); }
+        // If deposit settings changed, invalidate the deposit cache for the current run
+        // so it regenerates immediately with the new settings (no full reset needed)
+        const depositKeysChanged = Object.keys(changes).some(k => k === 'deposit.min_clusters' || k === 'deposit.max_extra_clusters');
+        if (depositKeysChanged) {
+            try {
+                const activeRun = await getActiveRun();
+                if (activeRun) {
+                    clearDepositCache(activeRun.id);
+                    console.log(`[admin/balance] Deposit cache cleared for run ${activeRun.id} — will regenerate on next access`);
+                }
+            } catch (e) { console.warn('Failed to clear deposit cache:', e && e.message); }
+        }
         io.emit('run:balance_update', { applied });
         res.json({ ok: true, applied });
     } catch (err) {
@@ -942,6 +954,24 @@ app.post('/admin/api/wipe-fallout-zones', requireAdmin, async (_req, res) => {
         if (!run) { res.status(404).json({ error: 'No active run.' }); return; }
         const result = await db.query('DELETE FROM fallout_zones WHERE run_id = $1', [run.id]);
         res.json({ ok: true, deleted: result.rowCount });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Regenerate deposits for the current run using current balance settings (no run wipe needed)
+app.post('/admin/api/regenerate-deposits', requireAdmin, async (_req, res) => {
+    try {
+        const run = await getActiveRun();
+        if (!run) { res.status(404).json({ error: 'No active run.' }); return; }
+        clearDepositCache(run.id);
+        // Also wipe discovered_deposits for all players in this run so fog-of-war is consistent
+        await db.query(`UPDATE run_player_state SET discovered_deposits = '[]'::jsonb WHERE run_id = $1`, [run.id]);
+        // Trigger a tick snapshot so clients get the updated (empty) deposit list immediately
+        await emitRunSnapshot(io, run.id, 'run:tick');
+        const newDeps = getDepositsForRun(run.id);
+        console.log(`[admin] Deposits regenerated for run ${run.id}: ${newDeps.length} cells`);
+        res.json({ ok: true, depositCells: newDeps.length, runId: run.id });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

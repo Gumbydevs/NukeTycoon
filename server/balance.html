@@ -284,7 +284,7 @@
         <h4 class="section">Uranium Deposits</h4>
         <div class="section-body">
           <div class="row section" style="color:#FFA500;font-size:12px;margin-bottom:6px;">
-            &#9888;&#65039; Deposit settings take effect on the <strong>next new run</strong> (cached per run). Use admin wipe to force a reset.
+            &#9888;&#65039; Deposit settings take effect <strong>immediately</strong> when you save (deposit cache is invalidated for the current run). Use <button id="regenDepositsBtn" class="small" style="margin-left:4px;margin-right:4px">Regenerate Deposits Now</button> to apply without saving other changes.
           </div>
           <div class="row section">
             <label style="width:160px">Min cluster centres</label>
@@ -296,6 +296,7 @@
             <input id="deposit_max_extra_clusters" type="number" min="0" step="1" class="small" style="width:100px" />
             <span class="muted" style="margin-left:6px">Random bonus clusters added (0–N). Total = min + rand(0..max). Default 6 &rarr; 8 to 14 clusters per run.</span>
           </div>
+          <div id="regenDepositMsg" style="font-size:12px;margin-top:4px;color:#aaa"></div>
         </div>
 
         <h4 class="section">Building Rules</h4>
@@ -595,6 +596,15 @@
         await loadAll();
         loadBenchmarks();
       }catch(err){ $('msg').textContent = '❌ ' + err.message; }
+    });
+
+    $('regenDepositsBtn').addEventListener('click', async () => {
+      const msgEl = $('regenDepositMsg');
+      try {
+        msgEl.textContent = 'Regenerating…';
+        const res = await api('/admin/api/regenerate-deposits', { method: 'POST' });
+        msgEl.textContent = `✅ Done — ${res.depositCells} deposit cells generated. Player discovery progress reset.`;
+      } catch(err) { msgEl.textContent = '❌ ' + err.message; }
     });
 
     $('viewAuditBtn').addEventListener('click', async () => {

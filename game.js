@@ -939,8 +939,8 @@ function connectSocket() {
         addNotification('warning', `⏰ Your surveyor${plural}'s contract has ended. Hire another to keep discovering uranium!`);
     });
 
-    socket.on('debug:all-deposits-response', ({ deposits: allDeps }) => {
-        showAllDepositsOverlay(true, allDeps || []);
+    socket.on('debug:all-deposits-response', ({ deposits: allDeps, count, uniqueCells, minClusters, maxExtraClusters }) => {
+        showAllDepositsOverlay(true, allDeps || [], { count, uniqueCells, minClusters, maxExtraClusters });
     });
 
     // Server says these buildings finished construction
@@ -2372,7 +2372,7 @@ function renderDeposits() {
  * D+P debug overlay: show ALL deposits server-side (including undiscovered).
  * allDeposits is the full server-side list returned by debug:all-deposits-response.
  */
-function showAllDepositsOverlay(show, allDeposits) {
+function showAllDepositsOverlay(show, allDeposits, stats) {
     const grid = document.getElementById('gameGrid');
     if (!grid) return;
     const OVERLAY_ID = 'debug-deposit-overlay';
@@ -2414,7 +2414,8 @@ function showAllDepositsOverlay(show, allDeposits) {
     // Label
     const lbl = document.createElement('div');
     lbl.style.cssText = 'position:absolute;top:4px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:#FFD700;font-size:11px;padding:3px 10px;border-radius:4px;border:1px solid #FFD700;white-space:nowrap;';
-    lbl.textContent = '\uD83D\uDD0D Deposit Debug (D+P) — gold=discovered, red=undiscovered';
+    const statsStr = stats ? ` | ${stats.uniqueCells ?? '?'} unique cells (min=${stats.minClusters ?? '?'} max=${stats.maxExtraClusters ?? '?'})` : '';
+    lbl.textContent = `\uD83D\uDD0D Deposit Debug (D+P) \u2014 gold=discovered, red=undiscovered${statsStr}`;
     overlay.appendChild(lbl);
 }
 

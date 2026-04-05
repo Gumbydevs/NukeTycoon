@@ -448,6 +448,7 @@ function generateDepositsForRun(runId, terrain, width = GRID_COLS, height = GRID
     const rand = createSeededRandom(`deposits:${width}x${height}`, runId);
     const deposits = [];
     const numDeposits = DEPOSIT_MIN_CLUSTERS + Math.floor(rand() * (DEPOSIT_MAX_EXTRA_CLUSTERS + 1));
+    console.log(`[generateDepositsForRun] run=${runId} DEPOSIT_MIN_CLUSTERS=${DEPOSIT_MIN_CLUSTERS} DEPOSIT_MAX_EXTRA_CLUSTERS=${DEPOSIT_MAX_EXTRA_CLUSTERS} numDeposits=${numDeposits}`);
 
     for (let d = 0; d < numDeposits; d++) {
         const cx = 2 + Math.floor(rand() * (width - 4));
@@ -1786,6 +1787,7 @@ module.exports = {
     getNextRunLength: () => _nextRunLength,
     getTerrainForRun: getOrGenerateTerrain,
     getDepositsForRun: getOrGenerateDeposits,
+    clearDepositCache: (runId) => { _depositsCache.delete(runId); },
     getNukeConfig: () => ({ countdownMs: NUKE_COUNTDOWN_MS, manufactureMs: NUKE_MANUFACTURE_MS, manufactureCost: NUKE_MANUFACTURE_COST, falloutRadius: SABOTAGE_NUKE_FALLOUT_RADIUS, maxInventory: NUKE_MAX_INVENTORY, launchCooldownMs: NUKE_LAUNCH_COOLDOWN_MS, maxSilos: NUKE_MAX_SILOS }),
     processNukeLaunches,
     processNukeManufactures,

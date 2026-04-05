@@ -1,6 +1,6 @@
 const { sendOTP, verifyOTP, verifyJWT, generateJWT, signupWithPassword, loginWithPassword } = require('../auth');
 const db = require('../db');
-const { getActiveRun, getRunSnapshot, ensureRunPlayerState, BUILDING_RULES, getBuyIn, getBuildSlots, getMarketPoolBurnRate, getGridSize, getSabotageConfig, getNukeConfig, detonateNukeLaunch, getProductionConfig, emitRunSnapshot, getSurveyorConfig, getDepositsForRun } = require('../gameLoop');
+const { getActiveRun, getRunSnapshot, ensureRunPlayerState, BUILDING_RULES, getBuyIn, getBuildSlots, getMarketPoolBurnRate, getGridSize, getSabotageConfig, getNukeConfig, detonateNukeLaunch, getProductionConfig, emitRunSnapshot, getSurveyorConfig, getDepositsForRun, getBalanceConfig } = require('../gameLoop');
 
 const DEFAULT_AVATAR = '☢️';
 const VALID_AVATARS = new Set(['☢️', '🧑‍🚀', '👩‍🔬', '👨‍🔬', '🤖', '🦊', '🐺', '🐉']);
@@ -1581,7 +1581,10 @@ function registerHandlers(io, socket) {
             const run = await getActiveRun();
             if (!run) { socket.emit('debug:all-deposits-response', { deposits: [], runId: null }); return; }
             const deposits = getDepositsForRun(run.id);
-            socket.emit('debug:all-deposits-response', { deposits, runId: run.id });
+            const cfg = getBalanceConfig();
+            const uniqueCells = new Set(deposits.map(d => d.cellId)).size;
+            console.log(`[debug:all-deposits] run=${run.id} total=${deposits.length} unique=${uniqueCells} minClusters=${cfg.deposit.minClusters} maxExtra=${cfg.deposit.maxExtraClusters}`);
+            socket.emit('debug:all-deposits-response', { deposits, runId: run.id, count: deposits.length, uniqueCells, minClusters: cfg.deposit.minClusters, maxExtraClusters: cfg.deposit.maxExtraClusters });
         } catch (e) {
             socket.emit('debug:all-deposits-response', { deposits: [], error: e.message });
         }
