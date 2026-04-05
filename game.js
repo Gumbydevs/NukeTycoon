@@ -3899,11 +3899,11 @@ function updateNukeHUD() {
     const hud = document.getElementById('nuke-hud');
     if (!hud) return;
 
-    const hasSilo = game.buildings.some(b => b.type === 'silo' && !b.isUnderConstruction);
+    const hasSilo = game.buildings.some(b => b.type === 'silo' && !b.isUnderConstruction && !b._queued);
     const inv = game.nukeInventory || 0;
     const mfg = game.nukeManufacturing;
     const isDropMode = game.selectedMode === 'nuke_drop';
-    const siloCount = game.buildings.filter(b => b.type === 'silo' && !b.isUnderConstruction).length;
+    const siloCount = game.buildings.filter(b => b.type === 'silo' && !b.isUnderConstruction && !b._queued).length;
     const maxPerSilo = (game.nukeCfg || {}).maxInventory ?? 3;
     const maxInv = Math.max(1, siloCount) * maxPerSilo;
     const siloFull = inv >= maxInv;
