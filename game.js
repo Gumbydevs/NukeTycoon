@@ -7439,6 +7439,7 @@ function initChatUI() {
         const text = input ? input.value.trim() : '';
         if (!text) return;
         socket.emit('chat:message', { jwt: _authJWT, text });
+        if (typeof NukeSounds !== 'undefined') NukeSounds.chatSend();
         if (input) input.value = '';
     }
     if (sendBtn) sendBtn.addEventListener('click', doSend);
