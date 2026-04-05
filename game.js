@@ -837,7 +837,7 @@ function connectSocket() {
         applyServerScores(scores);
     });
 
-    socket.on('run:tick', ({ run, playerState, yourWallet, scores, falloutZones, nuclearThreats, serverTime, deposits, surveyors, nukeManufacture, nukeLaunches }) => {
+    socket.on('run:tick', ({ run, playerState, yourWallet, scores, falloutZones, nuclearThreats, serverTime, deposits, surveyors, nukeManufacture, nukeCfgPublic, nukeLaunches }) => {
         // Store server clock for interpolation
         if (serverTime) {
             game._serverTime = serverTime;
@@ -904,6 +904,7 @@ function connectSocket() {
         if (nukeManufacture !== undefined) {
             game.nukeManufacturing = nukeManufacture ? { completesAt: nukeManufacture.completesAt, manufactureMs: nukeManufacture.manufactureMs || 120000 } : null;
         }
+        if (nukeCfgPublic) game.nukeCfg = nukeCfgPublic;
         if (Array.isArray(nukeLaunches)) {
             nukeLaunches.forEach(l => {
                 if (!game.activeLaunches.find(x => x.id === l.id)) {
@@ -3884,34 +3885,39 @@ function updateNukeHUD() {
 
         // Progressive phase messages matching manufacture stages
         const _phases = [
-            { above: 0.86, icon: '⚗️',  text: 'Sourcing fissile material...' },
-            { above: 0.72, icon: '☢️',  text: 'Enriching uranium core...' },
-            { above: 0.57, icon: '🔬', text: 'Precision machining components...' },
-            { above: 0.42, icon: '💣', text: 'Assembling warhead casing...' },
-            { above: 0.27, icon: '🚀', text: 'Loading onto delivery system...' },
-            { above: 0.13, icon: '🔗', text: 'Mating warhead to missile...' },
-            { above: 0.03, icon: '🔐', text: 'Entering arming codes...' },
+            { above: 0.86, text: 'Sourcing fissile material' },
+            { above: 0.72, text: 'Enriching uranium core' },
+            { above: 0.57, text: 'Machining components' },
+            { above: 0.42, text: 'Assembling warhead casing' },
+            { above: 0.27, text: 'Loading onto delivery system' },
+            { above: 0.13, text: 'Mating warhead to missile' },
+            { above: 0.03, text: 'Entering arming codes' },
         ];
-        let phaseIcon = '✅';
-        let phaseText = 'Final checks...';
+        let phaseText = 'Final checks';
         for (const p of _phases) {
-            if (pct > p.above) { phaseIcon = p.icon; phaseText = p.text; break; }
+            if (pct > p.above) { phaseText = p.text; break; }
         }
 
         html += `<div class="nuke-hud-mfg">
-            <span class="nuke-mfg-phase">${phaseIcon} ${phaseText}</span>
+            <span class="nuke-mfg-phase">${phaseText}...</span>
             <span style="color:#888;font-size:10px;margin-left:4px;">${secs}s</span>
         </div>`;
     } else if (hasSilo && socket?.connected) {
+        const cfg = game.nukeCfg || {};
+        const costTokens = cfg.manufactureCost ?? 1000;
+        const buildSecs = Math.round((cfg.manufactureMs || 120000) / 1000);
+        const buildMin = Math.floor(buildSecs / 60);
+        const buildSecRem = buildSecs % 60;
+        const buildTimeStr = buildMin > 0 ? (buildSecRem > 0 ? `${buildMin}m ${buildSecRem}s` : `${buildMin}m`) : `${buildSecs}s`;
+        const radiusCells = cfg.falloutRadius ?? 3;
         html += `<div id="nukeMfgBtn" class="nuke-hud-mfg-btn">
-            <span style="font-size:11px;color:#aaa;">⚙️ Manufacture</span>
+            <span style="font-size:11px;color:#aaa;">Manufacture</span>
             <div class="nuke-mfg-tooltip">
-                <div class="nuke-mfg-tooltip-title">☢️ MANUFACTURE WARHEAD</div>
-                <div class="nuke-mfg-tooltip-row"><span>Cost</span><span style="color:#4dff88;">FREE</span></div>
+                <div class="nuke-mfg-tooltip-title">MANUFACTURE WARHEAD</div>
+                <div class="nuke-mfg-tooltip-row"><span>Cost</span><span style="color:#ffb84d;">${costTokens} tokens</span></div>
                 <div class="nuke-mfg-tooltip-row"><span>Requires</span><span>Silo (built)</span></div>
-                <div class="nuke-mfg-tooltip-row"><span>Build time</span><span>~${Math.round((game.nukeManufacturing?.manufactureMs || 120000) / 60000)} min</span></div>
-                <div class="nuke-mfg-tooltip-row"><span>Blast radius</span><span>3 cells</span></div>
-                <div class="nuke-mfg-tooltip-note">Destroys all buildings in blast radius. One in the chamber at a time.</div>
+                <div class="nuke-mfg-tooltip-row"><span>Build time</span><span>${buildTimeStr}</span></div>
+                <div class="nuke-mfg-tooltip-row"><span>Blast radius</span><span>${radiusCells} cells</span></div>
             </div>
         </div>`;
     }

@@ -570,7 +570,23 @@ app.get('/api/notifications', requireJwtPlayer, async (req, res) => {
         try {
             console.log(`[api] /api/notifications returning ${rows.rows.length} rows for player=${player.id}`);
         } catch (e) {}
-        res.json({ notifications: rows.rows });
+        // sanitize notification text before returning to client
+        const sanitized = (rows.rows || []).map((n) => {
+            const out = Object.assign({}, n);
+            try {
+                const payload = (typeof n.payload === 'string') ? JSON.parse(n.payload) : n.payload;
+                if (payload && typeof payload.msg === 'string') {
+                    // remove tilde and dash characters, collapse spaces
+                    out.payload = Object.assign({}, payload, { msg: payload.msg.replace(/[~\-\u2013\u2014]/g, '').replace(/\s+/g, ' ').trim() });
+                } else {
+                    out.payload = payload;
+                }
+            } catch (e) {
+                out.payload = n.payload;
+            }
+            return out;
+        });
+        res.json({ notifications: sanitized });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

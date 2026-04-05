@@ -16,6 +16,13 @@ function gridDist(a, b) {
     return Math.abs((a % cols) - (b % cols)) + Math.abs(Math.floor(a / cols) - Math.floor(b / cols));
 }
 
+// Strip tilde (~), hyphen-minus (-), en-dash (–) and em-dash (—) from notification text
+function sanitizeNotificationText(text) {
+    if (!text || typeof text !== 'string') return text;
+    // remove the characters, collapse whitespace, and trim
+    return text.replace(/[~\-\u2013\u2014]/g, '').replace(/\s+/g, ' ').trim();
+}
+
 /**
  * Insert a warning notification into the DB for every player currently
  * enrolled in a run, excluding the attacker. Used for run-wide alerts
@@ -537,7 +544,17 @@ function registerHandlers(io, socket) {
                     expiresAt: sv.expires_at,
                 })),
                 chatMessages: chatRows,
-                notifications: notesRes.rows || [],
+                notifications: (notesRes.rows || []).map((n) => {
+                    const out = Object.assign({}, n);
+                    try {
+                        const payload = (typeof n.payload === 'string') ? JSON.parse(n.payload) : n.payload;
+                        if (payload && typeof payload.msg === 'string') {
+                            payload.msg = sanitizeNotificationText(payload.msg);
+                        }
+                        out.payload = payload;
+                    } catch (e) { /* leave as-is if parsing fails */ }
+                    return out;
+                }),
                 buildQueue: queueRes.rows || [],
                 surveyorConfig: getSurveyorConfig(),
             });
@@ -988,6 +1005,18 @@ function registerHandlers(io, socket) {
             }
             const nukeCfg = getNukeConfig();
             const manufactureMs = nukeCfg.manufactureMs || 120000;
+            const manufactureCost = nukeCfg.manufactureCost || 0;
+            // Deduct manufacture cost from player's wallet
+            if (manufactureCost > 0) {
+                const walletCheck = await db.query('SELECT token_balance FROM players WHERE id = $1', [player.id]);
+                const balance = parseInt(walletCheck.rows[0]?.token_balance, 10) || 0;
+                if (balance < manufactureCost) {
+                    socket.emit('error', { message: `Insufficient tokens. Manufacture costs ${manufactureCost} tokens.` });
+                    if (typeof ack === 'function') ack({ ok: false, error: 'Insufficient tokens.' });
+                    return;
+                }
+                await db.query('UPDATE players SET token_balance = token_balance - $1 WHERE id = $2', [manufactureCost, player.id]);
+            }
             const completesAt = new Date(Date.now() + manufactureMs);
             await db.query(
                 `INSERT INTO nuke_manufacture (run_id, player_id, silo_id, completes_at)
