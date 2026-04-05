@@ -22,38 +22,6 @@
         </defs>
     </svg>
 
-    <!-- Mushroom clouds: live outside #loginModal so overflow:hidden doesn't clip fixed children -->
-    <div class="mcloud mcloud--left" aria-hidden="true">
-        <div class="mc-cap-wrap">
-            <div class="mc-dome"></div>
-            <div class="mc-lobe mc-lobe-1"></div>
-            <div class="mc-lobe mc-lobe-2"></div>
-            <div class="mc-lobe mc-lobe-3"></div>
-            <div class="mc-lobe mc-lobe-4"></div>
-            <div class="mc-lobe mc-lobe-5"></div>
-            <div class="mc-fire-core"></div>
-            <div class="mc-skirt"></div>
-        </div>
-        <div class="mc-neck"></div>
-        <div class="mc-stem"><div class="mc-stem-glow"></div></div>
-        <div class="mc-base"><div class="mc-base-fire"></div></div>
-    </div>
-    <div class="mcloud mcloud--right" aria-hidden="true">
-        <div class="mc-cap-wrap">
-            <div class="mc-dome"></div>
-            <div class="mc-lobe mc-lobe-1"></div>
-            <div class="mc-lobe mc-lobe-2"></div>
-            <div class="mc-lobe mc-lobe-3"></div>
-            <div class="mc-lobe mc-lobe-4"></div>
-            <div class="mc-lobe mc-lobe-5"></div>
-            <div class="mc-fire-core"></div>
-            <div class="mc-skirt"></div>
-        </div>
-        <div class="mc-neck"></div>
-        <div class="mc-stem"><div class="mc-stem-glow"></div></div>
-        <div class="mc-base"><div class="mc-base-fire"></div></div>
-    </div>
-
     <!-- ═══════════════════════════════════════════════════════════
          LANDING PAGE  (hidden once authenticated via body.authenticated)
          ═══════════════════════════════════════════════════════════ -->
@@ -61,6 +29,38 @@
 
         <!-- Particle canvas (money / fallout) -->
         <canvas id="landingCanvas"></canvas>
+
+        <!-- Mushroom clouds inside landing page so they render above the solid background -->
+        <div class="mcloud mcloud--left" aria-hidden="true">
+            <div class="mc-cap-wrap">
+                <div class="mc-dome"></div>
+                <div class="mc-lobe mc-lobe-1"></div>
+                <div class="mc-lobe mc-lobe-2"></div>
+                <div class="mc-lobe mc-lobe-3"></div>
+                <div class="mc-lobe mc-lobe-4"></div>
+                <div class="mc-lobe mc-lobe-5"></div>
+                <div class="mc-fire-core"></div>
+                <div class="mc-skirt"></div>
+            </div>
+            <div class="mc-neck"></div>
+            <div class="mc-stem"><div class="mc-stem-glow"></div></div>
+            <div class="mc-base"><div class="mc-base-fire"></div></div>
+        </div>
+        <div class="mcloud mcloud--right" aria-hidden="true">
+            <div class="mc-cap-wrap">
+                <div class="mc-dome"></div>
+                <div class="mc-lobe mc-lobe-1"></div>
+                <div class="mc-lobe mc-lobe-2"></div>
+                <div class="mc-lobe mc-lobe-3"></div>
+                <div class="mc-lobe mc-lobe-4"></div>
+                <div class="mc-lobe mc-lobe-5"></div>
+                <div class="mc-fire-core"></div>
+                <div class="mc-skirt"></div>
+            </div>
+            <div class="mc-neck"></div>
+            <div class="mc-stem"><div class="mc-stem-glow"></div></div>
+            <div class="mc-base"><div class="mc-base-fire"></div></div>
+        </div>
 
         <!-- ── Header bar ─────────────────────────────────────── -->
         <header class="lp-header">
