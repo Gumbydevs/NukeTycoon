@@ -1,5 +1,27 @@
 CHANGELOG
 
+2026-04-05
+Major update: Full Nuclear Weapons System
+• Implemented complete server-authoritative nuke manufacture pipeline: players initiate manufacture from a completed Silo, cost is deducted from the wallet immediately with a spend animation, and the server tracks manufacture progress via a countdown timer.
+• Added nuke inventory management: server emits nuke:manufacture_started and nuke:manufacture_complete events; client syncs inventory count from run:tick playerState and displays a live progress bar with phase-labelled manufacture stages (Enriching core → Machining parts → Casing assembly → Mounting to missile → Warhead integration → Arming sequence).
+• Built a dedicated Nuke HUD panel showing inventory count, manufacture progress, and drop-targeting mode toggle; panel is conditionally rendered based on Silo ownership.
+• Implemented nuke drop-targeting mode: clicking the inventory button in the HUD enters targeting mode with a PICK TARGET indicator; any cell click while in this mode emits nuke:launch to the server with the JWT and target cell ID.
+• Added server-side nuke:incoming broadcast: all connected clients receive a countdown overlay showing the attacker photo/avatar, attacker name, and a live per-second countdown with colour ramp (green → yellow → red) and size escalation on final seconds.
+• Countdown banner dismisses cleanly when the timer reaches zero — removed the cartoon 💥 emoji flash that was appearing near the notification display.
+• Implemented handleNukeDetonation on the client: destroys buildings in the affected cells, applies nuke-crater class with timed removal, spawns the canvas explosion overlay, plays the nuclear sound, creates a local fallout zone, updates proximity calculations, and notifies the player with attacker/defender/spectator contextual messages.
+• Rebuilt the top-down canvas mushroom cloud explosion overlay (spawnNukeExplosionOverlay) to faithfully match the landing page animation viewed from directly above:
+  - Total duration extended from 4.6 s to 9.5 s for a slow, cinematic billow and gradual dissipation.
+  - White-hot fire core (mc-fire-core equivalent) holds opacity until t = 0.78 with a breathing sin oscillation matching the CSS fire-core-pulse keyframe.
+  - Base fireball (mc-base-fire equivalent) holds through t = 0.82 with subtle flicker oscillation.
+  - Mushroom cap torus (mc-dome + mc-skirt top-down) keeps full warm fire colours until a single shared global fade envelope kicks in at t = 0.68, so the centre no longer disappears prematurely.
+  - Dome-glow and lobe-pulse oscillations added via sin() at different frequencies, replicating the CSS brightness animations from the landing page cloud.
+  - Five cauliflower lobes (mc-lobe-1 through mc-lobe-5) orbit the torus with slow rotation, individual pulse, and warm-to-smoke colour interpolation.
+  - Outer base smoke starts earlier (t = 0.18), persists the full duration, and fades with the global envelope for a coherent slow dissipation.
+  - Shockwave ring expands quickly and finishes early, keeping visual focus on the billowing cloud thereafter.
+• Added fallout zone visualization: affected cells display a fallout overlay driven by server-authoritative radius and duration; own buildings inside the zone are flagged and proximity bonuses are recalculated.
+• Nuke launch guards added: warns if no nuke is in inventory, if not connected to the server, or if the player lacks a completed Silo.
+• Nuclear sound (NukeSounds.nuclear()) triggered on detonation for all clients.
+
 2026-04-04
 Major update: Mine Deposits, Fog of War, Surveyors, and Economy Tracker
 • Added mine deposit system with configurable clusters, visual flags, and enhanced deposit rendering logic.
