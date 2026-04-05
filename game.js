@@ -7547,15 +7547,15 @@ function renderChatMessage(msg) {
     const isSelf = pid === getLocalPlayerId();
     const div = document.createElement('div');
     div.className = 'chat-msg' + (isSelf ? ' chat-msg--self' : '');
-    const ts = new Date(msg.ts);
-    const timeStr = ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const ts = new Date(typeof msg.ts === 'string' ? parseInt(msg.ts, 10) : msg.ts);
+    const timeStr = isNaN(ts.getTime()) ? '' : ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     // Always use avatarPhoto if present, fallback to avatar emoji only if no photo
     let avatarPhoto = msg.avatarPhoto || msg.avatar_photo || null;
     if (isSelf && game.playerPhoto) avatarPhoto = game.playerPhoto;
     const avatarHtml = avatarPhoto && (avatarPhoto.startsWith('data:image/') || avatarPhoto.startsWith('https://'))
         ? `<img src="${escapeHtml(avatarPhoto)}" class="chat-msg-avatar chat-msg-avatar--photo" alt="avatar" />`
         : `<span class="chat-msg-avatar">${escapeHtml(msg.avatar || '☢️')}</span>`;
-    const nameHtml = isSelf ? '' : `<span class="chat-msg-name">${escapeHtml(msg.username)}</span>`;
+    const nameHtml = `<span class="chat-msg-name">${escapeHtml(msg.username || 'Unknown')}</span>`;
     let bodyHtml = '';
     const gif = msg.gifUrl || msg.gif_url || null;
     if (gif && /^https:\/\/(media\.giphy\.com|media\.tenor\.com)\//i.test(gif)) {

@@ -1502,7 +1502,7 @@ body.mobile-menu-open .dropdown { display: none !important; }
     from { opacity: 0; transform: translateY(4px); }
     to   { opacity: 1; transform: none; }
 }
-.chat-msg--self { flex-direction: row-reverse; border-left-color: rgba(255,184,77,0.4); background: #111; }
+.chat-msg--self { flex-direction: row-reverse; background: #111; }
 .chat-msg-avatar {
     font-size: 18px;
     flex-shrink: 0;
