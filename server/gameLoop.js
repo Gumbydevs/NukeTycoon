@@ -1558,7 +1558,7 @@ async function detonateNukeLaunch(io, run, launch) {
     await db.query(
         `INSERT INTO fallout_zones (run_id, created_by, center_cell_id, radius, multiplier, expires_at)
          VALUES ($1, $2, $3, $4, $5, $6)`,
-        [run.id, launch.attacker_id, cellId, 5, 0.5, new Date(Date.now() + falloutDurationMs)]
+        [run.id, launch.attacker_id, cellId, falloutRadius, 0.5, new Date(Date.now() + falloutDurationMs)]
     );
 
     // Record strike in player state

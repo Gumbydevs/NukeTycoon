@@ -5433,12 +5433,14 @@ function updateFalloutVisualization() {
     game.falloutZones.forEach(zone => {
         if (zone.endTime > now) {
             const zoneCoords = getCoords(zone.id);
-            // Mark all cells within fallout radius
+            // Mark all cells within fallout radius (Manhattan distance — matches server logic)
             for (let x = Math.max(0, zoneCoords.x - zone.radius); x <= Math.min(19, zoneCoords.x + zone.radius); x++) {
                 for (let y = Math.max(0, zoneCoords.y - zone.radius); y <= Math.min(19, zoneCoords.y + zone.radius); y++) {
-                    const cellId = y * 20 + x;
-                    const cell = grid.querySelector(`[data-id="${cellId}"]`);
-                    if (cell) cell.classList.add('in-fallout');
+                    if (Math.abs(x - zoneCoords.x) + Math.abs(y - zoneCoords.y) <= zone.radius) {
+                        const cellId = y * 20 + x;
+                        const cell = grid.querySelector(`[data-id="${cellId}"]`);
+                        if (cell) cell.classList.add('in-fallout');
+                    }
                 }
             }
         }
