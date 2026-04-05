@@ -868,8 +868,8 @@ body.mobile-menu-open .dropdown { display: none !important; }
 
 .legend-toggle {
     position: fixed;
-    right: 20px;
-    bottom: 20px;
+    left: 10px;
+    top: 62px;
     width: 44px;
     height: 44px;
     background: #111;
@@ -924,7 +924,7 @@ body.mobile-menu-open .dropdown { display: none !important; }
 #liveSidebar {
     position: fixed;
     left: 10px;
-    top: 110px; /* lowered to sit below the stats bar */
+    top: 116px; /* lowered to sit below the ? help button and stats bar */
     z-index: 180;
     display: flex;
     align-items: flex-start;
@@ -964,7 +964,7 @@ body.mobile-menu-open .dropdown { display: none !important; }
 .leaderboard-item .score { color:#4CAF50; font-weight:700; min-width:48px; text-align:right; }
 
 @media (max-width: 900px) {
-    #liveSidebar { left: 6px; top: 86px; }
+    #liveSidebar { left: 6px; top: 116px; }
     #liveSidebar .live-panel { min-width: 180px; max-height: 50vh; }
 }
 
