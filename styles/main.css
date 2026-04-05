@@ -1912,6 +1912,31 @@ body.mobile-menu-open .dropdown { display: none !important; }
 .mcloud--left  { left: -800px; }
 .mcloud--right { right: -800px; transform: scaleX(-1); transform-origin: center bottom; }
 
+@media (max-width: 1600px) {
+    .mcloud--left  { left: -680px; }
+    .mcloud--right { right: -680px; }
+}
+@media (max-width: 1400px) {
+    .mcloud--left  { left: -560px; }
+    .mcloud--right { right: -560px; }
+}
+@media (max-width: 1200px) {
+    .mcloud--left  { left: -440px; }
+    .mcloud--right { right: -440px; }
+}
+@media (max-width: 1050px) {
+    .mcloud--left  { left: -340px; }
+    .mcloud--right { right: -340px; }
+}
+@media (max-width: 900px) {
+    .mcloud--left  { left: -260px; }
+    .mcloud--right { right: -260px; }
+}
+@media (max-width: 750px) {
+    .mcloud--right { display: none; }
+    .mcloud--left  { left: calc(50% - 220px); }
+}
+
 /* ── CAP WRAP: the whole mushroom head ── */
 .mc-cap-wrap {
     position: relative;
