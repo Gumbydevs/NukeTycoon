@@ -1191,9 +1191,14 @@ function connectSocket() {
     });
 
     // Manufacture started confirmation
-    socket.on('nuke:manufacture_started', ({ completesAt, manufactureMs }) => {
+    socket.on('nuke:manufacture_started', ({ completesAt, manufactureMs, manufactureCost }) => {
         game.nukeManufacturing = { completesAt };
         updateNukeHUD();
+        // Show spend animation on the wallet immediately
+        if (manufactureCost > 0) {
+            const walletEl = document.getElementById('wallet');
+            if (walletEl) showFloatingText('-' + manufactureCost.toLocaleString(), '#ff6b6b', walletEl);
+        }
         const secs = Math.round((manufactureMs || 120000) / 1000);
         addNotification('info', `☢️ Nuke manufacture started. Ready in ${secs}s.`);
     });

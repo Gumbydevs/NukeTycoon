@@ -1016,6 +1016,7 @@ function registerHandlers(io, socket) {
                     return;
                 }
                 await db.query('UPDATE players SET token_balance = token_balance - $1 WHERE id = $2', [manufactureCost, player.id]);
+                socket.emit('player:wallet_update', { token_balance: balance - manufactureCost });
             }
             const completesAt = new Date(Date.now() + manufactureMs);
             await db.query(
@@ -1023,7 +1024,7 @@ function registerHandlers(io, socket) {
                  VALUES ($1, $2, $3, $4)`,
                 [run.id, player.id, siloId, completesAt]
             );
-            socket.emit('nuke:manufacture_started', { completesAt: completesAt.toISOString(), manufactureMs });
+            socket.emit('nuke:manufacture_started', { completesAt: completesAt.toISOString(), manufactureMs, manufactureCost });
             if (typeof ack === 'function') ack({ ok: true, completesAt: completesAt.toISOString() });
             console.log(`[nuke] manufacture started player=${player.username} completesAt=${completesAt.toISOString()}`);
         });
