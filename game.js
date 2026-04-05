@@ -6350,7 +6350,7 @@ function addButtonTooltips() {
                     content = '<div style="font-weight:700;">\uD83D\uDEB6 Hire Surveyor</div>';
                     content += '<div>Deploy a worker who wanders and reveals hidden uranium deposits.</div>';
                     content += '<div style="color:#aaa;font-size:11px;">Only you see the deposits your surveyor finds.</div>';
-                    content += `<div style="color:#FFD700;">\uD83D\uDCB0 Cost: ${cost} tokens</div>`;
+                    content += `<div>\uD83D\uDCB0 <span style=\"color:#fff;\">Cost:</span> <span class=\"cost-yellow\">${cost} tokens</span></div>`;
                     content += `<div>\u23F1\uFE0F Duration: ${mins} minute${mins !== 1 ? 's' : ''}</div>`;
                 } else if (typeKey === 'sabotage' || /sabotage/i.test(typeKey)) {
                     content = '<div style="font-weight:700;">\uD83D\uDCA5 Sabotage</div>';
@@ -7330,7 +7330,7 @@ function botSabotagePlayer(bot, targets) {
     resize();
     window.addEventListener('resize', resize);
 
-    const SYMBOLS = ['$', '$', '$', '💵', '💰', '☢', '☢', '💣', '💲'];
+    const SYMBOLS = ['$', '$', '$', '💵', '💰', '☢', '☢', '�', '💲'];
     const particles = [];
     const COUNT = 55;
 
@@ -7427,4 +7427,88 @@ function botSabotagePlayer(bot, targets) {
 
     fetchLandingStats();
     setInterval(fetchLandingStats, 15000);
+})();
+
+/* ══════════════════════════════════════════════════════════════
+   GAME AREA — same particle canvas effect behind the game grid
+   ══════════════════════════════════════════════════════════════ */
+(function initGameBgParticles() {
+    const SYMBOLS = ['$', '$', '$', '💵', '💰', '☢', '☢', '�', '💲'];
+    const COUNT = 55;
+
+    function randomParticle(canvas, forceBottom) {
+        const sym = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
+        return {
+            x: Math.random() * canvas.width,
+            y: forceBottom ? canvas.height + 20 + Math.random() * 200 : Math.random() * canvas.height,
+            vy: -(0.4 + Math.random() * 1.2),
+            vx: (Math.random() - 0.5) * 0.6,
+            alpha: 0.1 + Math.random() * 0.5,
+            size: 10 + Math.random() * 18,
+            rot: Math.random() * Math.PI * 2,
+            rotV: (Math.random() - 0.5) * 0.03,
+            sym,
+            isMoney: sym === '$' || sym === '💵' || sym === '💰' || sym === '💲',
+        };
+    }
+
+    function startGameBgParticles() {
+        const canvas = document.getElementById('gameBgCanvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+
+        function resize() {
+            const parent = canvas.parentElement;
+            canvas.width  = parent ? parent.offsetWidth  : window.innerWidth;
+            canvas.height = parent ? parent.offsetHeight : window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        const particles = [];
+        for (let i = 0; i < COUNT; i++) particles.push(randomParticle(canvas, false));
+
+        let running = true;
+        function tick() {
+            if (!running) return;
+            // Stop if user logs out
+            if (!document.body.classList.contains('authenticated')) { running = false; return; }
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let p of particles) {
+                p.y  += p.vy;
+                p.x  += p.vx;
+                p.rot += p.rotV;
+                if (p.y < -40) Object.assign(p, randomParticle(canvas, true));
+
+                ctx.save();
+                ctx.globalAlpha = p.alpha;
+                ctx.translate(p.x, p.y);
+                ctx.rotate(p.rot);
+                if (p.isMoney) {
+                    ctx.font = `bold ${p.size}px monospace`;
+                    ctx.fillStyle = '#ffb84d';
+                } else {
+                    ctx.font = `${p.size}px sans-serif`;
+                    ctx.fillStyle = '#ff6020';
+                }
+                ctx.fillText(p.sym, 0, 0);
+                ctx.restore();
+            }
+            requestAnimationFrame(tick);
+        }
+        tick();
+    }
+
+    // Start when authenticated; observe in case auth happens after page load
+    if (document.body.classList.contains('authenticated')) {
+        startGameBgParticles();
+    } else {
+        const observer = new MutationObserver(() => {
+            if (document.body.classList.contains('authenticated')) {
+                observer.disconnect();
+                startGameBgParticles();
+            }
+        });
+        observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    }
 })();
