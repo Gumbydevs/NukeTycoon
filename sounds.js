@@ -362,6 +362,76 @@ const NukeSounds = (() => {
         _tone(660, 'sine',     t + 0.20, 0.24, 0.11, { attack: 0.006 });
     }
 
+    /**
+     * Incoming chat message from another player — warm bubbly pop.
+     * Two soft rounded notes: C6 then G5, like a gentle messenger ping.
+     */
+    function chatReceive() {
+        const ctx = _init(); if (!ctx || !_enabled) return;
+        const t = ctx.currentTime;
+        _tone(1046.50, 'sine',     t,        0.13, 0.09, { attack: 0.005 });
+        _tone(783.99,  'triangle', t + 0.07, 0.12, 0.07, { attack: 0.005 });
+    }
+
+    /**
+     * Chat message sent by the local player — smooth outgoing swoosh.
+     * G5 rising to A5 with a tiny C6 sparkle at the end.
+     * Similar vibe to chatReceive but outward-feeling — shorter, breezier.
+     */
+    function chatSend() {
+        const ctx = _init(); if (!ctx || !_enabled) return;
+        const t = ctx.currentTime;
+        _tone(783.99,  'sine', t,        0.17, 0.07, { attack: 0.008, freqRamp: 880 });
+        _tone(1046.50, 'sine', t + 0.11, 0.09, 0.05, { attack: 0.004 });
+    }
+
+    /**
+     * Nuke manufacture initiated — deep industrial reactor startup.
+     * Sub-bass power-up rumble + mechanical body + engagement chime.
+     * Conveys: "something powerful is now being built."
+     */
+    function nukeManufactureStart() {
+        const ctx = _init(); if (!ctx || !_enabled) return;
+        const t = ctx.currentTime;
+        // Sub-bass power-up: low sine sweeping up
+        _tone(44,  'sine',     t,        0.55, 0.28, { attack: 0.015, freqRamp: 80  });
+        // Mechanical body: sawtooth whirr
+        _tone(120, 'sawtooth', t,        0.38, 0.07, { attack: 0.012, freqRamp: 180 });
+        // Industrial noise texture
+        _noise(t + 0.05, 0.28, 0.07, { filterType: 'bandpass', filterFreq: 300, Q: 0.6 });
+        // Engagement chime — "locked in" feel
+        _tone(880, 'triangle', t + 0.40, 0.20, 0.07, { attack: 0.015 });
+        _tone(1108,'sine',     t + 0.46, 0.16, 0.04, { attack: 0.010 });
+    }
+
+    /**
+     * Nuke countdown tick — precision clock click for final seconds.
+     * Crisp bandpass noise burst + brief high sine. Short, punchy, not harsh.
+     * Designed to play each second when ≤ 5s remain.
+     */
+    function nukeCountdownTick() {
+        const ctx = _init(); if (!ctx || !_enabled) return;
+        const t = ctx.currentTime;
+        _noise(t, 0.028, 0.20, { filterType: 'bandpass', filterFreq: 2400, Q: 9 });
+        _tone(1600, 'sine', t, 0.022, 0.08, { attack: 0.001 });
+    }
+
+    /**
+     * Nuke launch warning siren — deep warm foghorn double-pulse.
+     * Low sine sweep + triangle harmonic. Two gentle bellows.
+     * NOT harsh or grating — warm, low-pitched, satisfying.
+     */
+    function nukeLaunchWarning() {
+        const ctx = _init(); if (!ctx || !_enabled) return;
+        const t = ctx.currentTime;
+        // Pulse 1
+        _tone(90,  'sine',     t,        0.85, 0.18, { attack: 0.080, freqRamp: 145 });
+        _tone(180, 'triangle', t,        0.85, 0.09, { attack: 0.080, freqRamp: 290 });
+        // Short gap, then Pulse 2 — slightly louder/deeper for urgency
+        _tone(85,  'sine',     t + 1.15, 0.85, 0.22, { attack: 0.075, freqRamp: 140 });
+        _tone(170, 'triangle', t + 1.15, 0.85, 0.11, { attack: 0.075, freqRamp: 280 });
+    }
+
     // ── Volume / mute control ────────────────────────────────────────────
     function setVolume(v) {
         _volume = Math.min(1, Math.max(0, Number(v) || 0));
@@ -398,6 +468,11 @@ const NukeSounds = (() => {
         authSuccess,
         codeSent,
         lobbyJoin,
+        chatReceive,
+        chatSend,
+        nukeManufactureStart,
+        nukeCountdownTick,
+        nukeLaunchWarning,
         setVolume,
         setEnabled,
         isEnabled,
