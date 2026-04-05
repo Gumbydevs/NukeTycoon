@@ -1046,6 +1046,18 @@ function connectSocket() {
                 calculateProximity();
                 addNotification('success', `🛠️ ${displayNames[building.type] || building.type} construction started.`);
                 updateUI();
+            } else if (_existingBld && _existingBld._queued) {
+                // Queued building was promoted to active construction
+                delete _existingBld._queued;
+                delete _existingBld._queuePosition;
+                game._buildQueue = (game._buildQueue || []).filter(q => q.cellId != building.cell_id);
+                applyServerBuildingTiming(_existingBld, building);
+                if (building.type === 'storage') game.maxStorage += 1000;
+                renderBuilding(_existingBld.id, _existingBld.type, true, _existingBld);
+                scheduleConstructionTimers(_existingBld, true);
+                calculateProximity();
+                addNotification('success', `🛠️ ${displayNames[building.type] || building.type} construction started.`);
+                updateUI();
             } else if (!_existingBld) {
                 console.log('[building:placed] raw server row keys:', Object.keys(building), 'construction_ends_at:', building.construction_ends_at, 'placed_at:', building.placed_at);
                 const bObj = applyServerBuildingTiming({
@@ -3881,11 +3893,11 @@ function updateNukeHUD() {
     const hud = document.getElementById('nuke-hud');
     if (!hud) return;
 
-    const hasSilo = game.buildings.some(b => b.type === 'silo' && !b.isUnderConstruction);
+    const hasSilo = game.buildings.some(b => b.type === 'silo' && !b.isUnderConstruction && !b._queued);
     const inv = game.nukeInventory || 0;
     const mfg = game.nukeManufacturing;
     const isDropMode = game.selectedMode === 'nuke_drop';
-    const siloCount = game.buildings.filter(b => b.type === 'silo' && !b.isUnderConstruction).length;
+    const siloCount = game.buildings.filter(b => b.type === 'silo' && !b.isUnderConstruction && !b._queued).length;
     const maxPerSilo = (game.nukeCfg || {}).maxInventory ?? 3;
     const maxInv = Math.max(1, siloCount) * maxPerSilo;
     const siloFull = inv >= maxInv;
