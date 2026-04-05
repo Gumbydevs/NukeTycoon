@@ -1863,7 +1863,9 @@ body.mobile-menu-open .dropdown { display: none !important; }
 .mcloud {
     position: fixed;
     bottom: 0;
-    z-index: 1000;
+    /* place behind the landing page (which uses z-index: 999) so
+       the hero text and auth card are not occluded by the clouds */
+    z-index: 900;
     pointer-events: none;
     display: flex;
     flex-direction: column;
