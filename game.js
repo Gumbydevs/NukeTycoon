@@ -919,6 +919,10 @@ function connectSocket() {
         addNotification('warning', `⏰ Your surveyor${plural}'s contract has ended. Hire another to keep discovering uranium!`);
     });
 
+    socket.on('debug:all-deposits-response', ({ deposits: allDeps }) => {
+        showAllDepositsOverlay(true, allDeps || []);
+    });
+
     // Server says these buildings finished construction
     socket.on('building:construction_complete', ({ buildings: completed, serverTime }) => {
         if (serverTime) {
@@ -2291,9 +2295,9 @@ function renderDeposits() {
 
 /**
  * D+P debug overlay: show ALL deposits server-side (including undiscovered).
- * A separate overlay div is used so it can be torn down without touching real deposit state.
+ * allDeposits is the full server-side list returned by debug:all-deposits-response.
  */
-function showAllDepositsOverlay(show) {
+function showAllDepositsOverlay(show, allDeposits) {
     const grid = document.getElementById('gameGrid');
     if (!grid) return;
     const OVERLAY_ID = 'debug-deposit-overlay';
@@ -2302,10 +2306,6 @@ function showAllDepositsOverlay(show) {
         if (overlay) overlay.remove();
         return;
     }
-    // Use server terrain to derive all possible deposit cells.
-    // game._serverDeposits contains the FULL list (before fog-of-war filter).
-    // If not available, fall back to game.deposits (already-discovered ones).
-    const allDeposits = game._serverDeposits || game.deposits || [];
     const discoveredSet = new Set((game.deposits || []).map(d => d.cellId));
     if (!overlay) {
         overlay = document.createElement('div');
@@ -2316,7 +2316,7 @@ function showAllDepositsOverlay(show) {
         overlay.innerHTML = '';
     }
     const gridRect = grid.getBoundingClientRect();
-    allDeposits.forEach(deposit => {
+    (allDeposits || []).forEach(deposit => {
         const cell = grid.querySelector(`[data-id="${deposit.cellId}"]`);
         if (!cell) return;
         const r = cell.getBoundingClientRect();
@@ -2641,7 +2641,14 @@ function initMenu() {
             toggleChatPanel();
         }
         _keysHeld.add(e.key.toLowerCase());
-        if (_keysHeld.has('d') && _keysHeld.has('p')) showAllDepositsOverlay(true);
+        if (_keysHeld.has('d') && _keysHeld.has('p')) {
+            // Request full deposit list from server (bypasses fog-of-war) then render overlay
+            if (socket && socket.connected) {
+                socket.emit('debug:all-deposits');
+            } else {
+                showAllDepositsOverlay(true, []);
+            }
+        }
     });
     document.addEventListener('keyup', (e) => {
         _keysHeld.delete(e.key.toLowerCase());

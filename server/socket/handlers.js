@@ -1343,6 +1343,21 @@ function registerHandlers(io, socket) {
             console.warn('last_seen update failed:', err.message);
         }
     });
+
+    // ── Debug: return ALL deposits for the active run (bypasses fog-of-war filter)
+    // Used by the client D+P debug overlay. Deposits are deterministically seeded from
+    // run.id so this data is not truly secret, but it's kept behind a socket event
+    // (requires an active socket connection = authenticated player in the run).
+    socket.on('debug:all-deposits', async () => {
+        try {
+            const run = await getActiveRun();
+            if (!run) { socket.emit('debug:all-deposits-response', { deposits: [], runId: null }); return; }
+            const deposits = getDepositsForRun(run.id);
+            socket.emit('debug:all-deposits-response', { deposits, runId: run.id });
+        } catch (e) {
+            socket.emit('debug:all-deposits-response', { deposits: [], error: e.message });
+        }
+    });
 }
 
 module.exports = { registerHandlers };

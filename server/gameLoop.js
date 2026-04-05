@@ -992,6 +992,7 @@ async function processRunEconomy(io, run) {
         expiredSurveyorOwners.push(...expiredRes.rows.map(r => r.player_id));
         await db.query('DELETE FROM surveyors WHERE run_id = $1 AND expires_at <= NOW()', [run.id]);
         if (shouldMoveSurveyors) {
+        console.log(`[surveyor] tick run=${run.id} surveyors=${surveyorsResult.rows.length} totalDeposits=${deposits.length} radius=${SURVEYOR_DISCOVER_RADIUS}`);
         for (const sv of surveyorsResult.rows) {
             // Load this player's discovered deposits for biased walk
             const discRes = await db.query(
@@ -1003,6 +1004,7 @@ async function processRunEconomy(io, run) {
             const nearbyIds = (deposits || [])
                 .filter(d => chebyshevDist(d.cellId, newCell) <= SURVEYOR_DISCOVER_RADIUS)
                 .map(d => d.cellId);
+            console.log(`[surveyor] sv=${sv.id} player=${sv.player_id} ${sv.cell_id}->${newCell} nearbyDeposits=${nearbyIds.length}`);
             await db.query('UPDATE surveyors SET cell_id = $1 WHERE id = $2', [newCell, sv.id]);
             if (nearbyIds.length > 0) {
                 const before = discoveredSet;
