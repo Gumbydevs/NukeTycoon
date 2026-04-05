@@ -4012,7 +4012,7 @@ function updateNukeHUD() {
                     if (typeof NukeSounds !== 'undefined') NukeSounds.notifDanger();
                     return;
                 }
-                if (typeof NukeSounds !== 'undefined') NukeSounds.nukeManufactureStart();
+                if (typeof NukeSounds !== 'undefined') { NukeSounds.prime(); NukeSounds.nukeManufactureStart(); }
                 socket.emit('nuke:manufacture', { jwt: _authJWT });
             }
         };
@@ -5320,6 +5320,8 @@ function constructionAnimLoop() {
                     setTimeout(() => cell.classList.remove('build-complete'), 900);
                     if (typeof NukeSounds !== 'undefined') NukeSounds.buildComplete();
                     addNotification('success', `✅ ${displayNames[b.type] || b.type} construction complete!`);
+                    // Refresh nuke HUD if a silo just finished (unlocks manufacture panel)
+                    if (b.type === 'silo') updateNukeHUD();
                     // Fill any newly-freed slots from the queue
                     setTimeout(() => {
                         const _freeSlots = (game.buildSlots ?? 1) - game.buildings.filter(b2 => b2.isUnderConstruction).length;
@@ -7443,7 +7445,7 @@ function initChatUI() {
         const text = input ? input.value.trim() : '';
         if (!text) return;
         socket.emit('chat:message', { jwt: _authJWT, text });
-        if (typeof NukeSounds !== 'undefined') NukeSounds.chatSend();
+        if (typeof NukeSounds !== 'undefined') { NukeSounds.prime(); NukeSounds.chatSend(); }
         if (input) input.value = '';
     }
     if (sendBtn) sendBtn.addEventListener('click', doSend);
