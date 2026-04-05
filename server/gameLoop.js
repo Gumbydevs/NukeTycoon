@@ -764,7 +764,7 @@ async function emitRunSnapshot(io, runId, eventName = 'run:tick') {
         }));
         // Nuke manufacture state for this player
         const myManufacture = (snapshot.nukeManufactures || []).find(m => m.player_id === roomSocket.playerId) || null;
-        const nukeManufacture = myManufacture ? { id: myManufacture.id, completesAt: myManufacture.completes_at } : null;
+        const nukeManufacture = myManufacture ? { id: myManufacture.id, completesAt: myManufacture.completes_at, manufactureMs: NUKE_MANUFACTURE_MS } : null;
 
         roomSocket.emit(eventName, {
             run: snapshot.run,

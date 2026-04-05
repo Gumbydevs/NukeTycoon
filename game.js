@@ -902,7 +902,7 @@ function connectSocket() {
             game.nukeInventory = playerState.nuke_inventory;
         }
         if (nukeManufacture !== undefined) {
-            game.nukeManufacturing = nukeManufacture ? { completesAt: nukeManufacture.completesAt } : null;
+            game.nukeManufacturing = nukeManufacture ? { completesAt: nukeManufacture.completesAt, manufactureMs: nukeManufacture.manufactureMs || 120000 } : null;
         }
         if (Array.isArray(nukeLaunches)) {
             nukeLaunches.forEach(l => {
@@ -3879,12 +3879,40 @@ function updateNukeHUD() {
     if (mfg) {
         const remaining = Math.max(0, new Date(mfg.completesAt).getTime() - (serverNow ? serverNow() : Date.now()));
         const secs = Math.ceil(remaining / 1000);
-        html += `<div class="nuke-hud-mfg" title="Manufacturing in progress">
-            <span style="color:#ffa500;font-size:11px;">⚙️ Arming warhead… ${secs}s</span>
+        const totalMs = mfg.manufactureMs || 120000;
+        const pct = remaining / totalMs; // 1.0 = just started, 0.0 = done
+
+        // Progressive phase messages matching manufacture stages
+        const _phases = [
+            { above: 0.86, icon: '⚗️',  text: 'Sourcing fissile material...' },
+            { above: 0.72, icon: '☢️',  text: 'Enriching uranium core...' },
+            { above: 0.57, icon: '🔬', text: 'Precision machining components...' },
+            { above: 0.42, icon: '💣', text: 'Assembling warhead casing...' },
+            { above: 0.27, icon: '🚀', text: 'Loading onto delivery system...' },
+            { above: 0.13, icon: '🔗', text: 'Mating warhead to missile...' },
+            { above: 0.03, icon: '🔐', text: 'Entering arming codes...' },
+        ];
+        let phaseIcon = '✅';
+        let phaseText = 'Final checks...';
+        for (const p of _phases) {
+            if (pct > p.above) { phaseIcon = p.icon; phaseText = p.text; break; }
+        }
+
+        html += `<div class="nuke-hud-mfg">
+            <span class="nuke-mfg-phase">${phaseIcon} ${phaseText}</span>
+            <span style="color:#888;font-size:10px;margin-left:4px;">${secs}s</span>
         </div>`;
     } else if (hasSilo && socket?.connected) {
-        html += `<div id="nukeMfgBtn" class="nuke-hud-mfg-btn" title="Manufacture a nuke in your Silo">
+        html += `<div id="nukeMfgBtn" class="nuke-hud-mfg-btn">
             <span style="font-size:11px;color:#aaa;">⚙️ Manufacture</span>
+            <div class="nuke-mfg-tooltip">
+                <div class="nuke-mfg-tooltip-title">☢️ MANUFACTURE WARHEAD</div>
+                <div class="nuke-mfg-tooltip-row"><span>Cost</span><span style="color:#4dff88;">FREE</span></div>
+                <div class="nuke-mfg-tooltip-row"><span>Requires</span><span>Silo (built)</span></div>
+                <div class="nuke-mfg-tooltip-row"><span>Build time</span><span>~${Math.round((game.nukeManufacturing?.manufactureMs || 120000) / 60000)} min</span></div>
+                <div class="nuke-mfg-tooltip-row"><span>Blast radius</span><span>3 cells</span></div>
+                <div class="nuke-mfg-tooltip-note">Destroys all buildings in blast radius. One in the chamber at a time.</div>
+            </div>
         </div>`;
     }
 
