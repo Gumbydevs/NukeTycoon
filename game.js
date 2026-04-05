@@ -502,6 +502,10 @@ function connectSocket() {
         }
     });
 
+    socket.on('building:queue_error', ({ message }) => {
+        addNotification('danger', `❌ ${message}`);
+    });
+
     socket.on('building:queued', ({ cellId, playerId, type }) => {
         // Render queued ghost when server confirms queue entry
         const localId = getLocalPlayerId();
@@ -3078,6 +3082,13 @@ function placeOrSelect(id) {
                 const _maxQ = game.buildQueueMax ?? 3;
                 if (game._buildQueue.length >= _maxQ) {
                     addNotification('danger', `🚫 Build queue full (max ${_maxQ}). Wait for a slot to open.`);
+                    game.selectedMode = null;
+                    return;
+                }
+                // Wallet check before queuing — same feedback as the direct-place path
+                const _qCost = buildingTypes[_type]?.cost || 0;
+                if (Number.isFinite(_qCost) && Number.isFinite(game.playerWallet) && game.playerWallet < _qCost) {
+                    addNotification('danger', `💸 Not enough tokens to queue ${displayNames[_type] || _type} (need ${_qCost.toLocaleString()}, have ${game.playerWallet.toLocaleString()}).`);
                     game.selectedMode = null;
                     return;
                 }
