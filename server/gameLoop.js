@@ -979,14 +979,30 @@ async function processRunEconomy(io, run) {
 
     await emitRunSnapshot(io, run.id, 'run:tick');
 
-    // Notify players about newly discovered deposits
+    // Notify players about newly discovered deposits (live + persisted)
     if (surveyorDiscoveries.length > 0) {
         try {
             const sockets = await io.in(`run:${run.id}`).fetchSockets();
             for (const { playerId, cellIds } of surveyorDiscoveries) {
+                const count = cellIds.length;
+                const msg = `🚶 Your surveyor discovered ${count} uranium deposit${count === 1 ? '' : 's'}! 🚩 Flagged on your map.`;
+                const payload = JSON.stringify({ msg, cellIds, ts: Date.now() });
+                // Persist to notifications table so it appears on relog
+                try {
+                    const emailRes = await db.query('SELECT email FROM players WHERE id = $1', [playerId]);
+                    const email = (emailRes.rows[0]?.email || '').toLowerCase();
+                    await db.query(
+                        `INSERT INTO notifications (run_id, player_id, email, type, payload)
+                         VALUES ($1, $2, $3, $4, $5)`,
+                        [run.id, playerId, email, 'info', payload]
+                    );
+                } catch (e) {
+                    console.warn('[surveyor] notification persist failed:', e && e.message);
+                }
+                // Also push live to connected socket
                 const playerSocket = sockets.find(s => s.playerId === playerId);
                 if (playerSocket) {
-                    playerSocket.emit('surveyor:discovery', { cellIds, count: cellIds.length });
+                    playerSocket.emit('surveyor:discovery', { cellIds, count });
                 }
             }
         } catch (e) {

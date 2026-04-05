@@ -651,7 +651,7 @@ body.mobile-menu-open .dropdown { display: none !important; }
     /* animation-delay set per-instance via inline style in JS */
 }
 .surveyor-marker::after {
-    content: '👷';
+    content: '�';
     display: block;
 }
 @keyframes surveyor-wander {

@@ -901,15 +901,15 @@ function connectSocket() {
 
     socket.on('surveyor:placed', ({ surveyorId, cellId, expiresAt }) => {
         const expTime = expiresAt ? new Date(expiresAt).toLocaleTimeString() : 'a while';
-        addNotification('success', `👷 Surveyor deployed at cell ${cellId}! Exploring until ${expTime}.`);
+        addNotification('success', `� Surveyor deployed at cell ${cellId}! Exploring until ${expTime}.`);
     });
 
     socket.on('surveyor:discovery', ({ cellIds, count }) => {
-        addNotification('success', `👷 Surveyor found ${count} uranium deposit${count === 1 ? '' : 's'}! 🚩 Flags revealed on your map.`);
+        addNotification('success', `🚶 Surveyor found ${count} uranium deposit${count === 1 ? '' : 's'}! 🚩 Flags revealed on your map.`);
     });
 
     socket.on('surveyor:error', ({ message }) => {
-        addNotification('danger', `👷 Surveyor: ${message}`);
+        addNotification('danger', `🚶 Surveyor: ${message}`);
         game.selectedMode = null;
     });
 
