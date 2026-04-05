@@ -110,6 +110,7 @@ CREATE TABLE IF NOT EXISTS run_player_state (
 CREATE INDEX IF NOT EXISTS idx_run_player_state_run_player ON run_player_state(run_id, player_id);
 ALTER TABLE run_player_state ADD COLUMN IF NOT EXISTS discovered_deposits JSONB DEFAULT '[]';
 ALTER TABLE run_player_state ADD COLUMN IF NOT EXISTS nuke_inventory INTEGER DEFAULT 0;
+ALTER TABLE run_player_state ADD COLUMN IF NOT EXISTS last_nuke_fired_at TIMESTAMPTZ DEFAULT NULL;
 
 -- ── Nuke manufacture queue (per player, per run) ─────────────────────────────
 CREATE TABLE IF NOT EXISTS nuke_manufacture (

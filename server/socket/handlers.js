@@ -993,6 +993,19 @@ function registerHandlers(io, socket) {
                 return;
             }
             const siloId = siloRes.rows[0].id;
+            // Check inventory not already at max
+            const nukeCfg = getNukeConfig();
+            const maxInventory = nukeCfg.maxInventory || 3;
+            const invRes = await db.query(
+                'SELECT nuke_inventory FROM run_player_state WHERE run_id = $1 AND player_id = $2',
+                [run.id, player.id]
+            );
+            const currentInventory = parseInt(invRes.rows[0]?.nuke_inventory, 10) || 0;
+            if (currentInventory >= maxInventory) {
+                socket.emit('error', { message: `Silo full. Maximum ${maxInventory} nuke(s) can be stored.` });
+                if (typeof ack === 'function') ack({ ok: false, error: 'Silo full.' });
+                return;
+            }
             // Check not already manufacturing
             const inProgressRes = await db.query(
                 'SELECT id FROM nuke_manufacture WHERE run_id = $1 AND player_id = $2 AND completes_at > NOW()',
@@ -1003,7 +1016,6 @@ function registerHandlers(io, socket) {
                 if (typeof ack === 'function') ack({ ok: false, error: 'Already manufacturing.' });
                 return;
             }
-            const nukeCfg = getNukeConfig();
             const manufactureMs = nukeCfg.manufactureMs || 120000;
             const manufactureCost = nukeCfg.manufactureCost || 0;
             // Deduct manufacture cost from player's wallet
@@ -1056,7 +1068,7 @@ function registerHandlers(io, socket) {
             }
             await ensureRunPlayerState(run.id, player.id);
             const stateRes = await db.query(
-                'SELECT nuke_inventory FROM run_player_state WHERE run_id = $1 AND player_id = $2',
+                'SELECT nuke_inventory, last_nuke_fired_at FROM run_player_state WHERE run_id = $1 AND player_id = $2',
                 [run.id, player.id]
             );
             const inventory = parseInt(stateRes.rows[0]?.nuke_inventory, 10) || 0;
@@ -1065,12 +1077,24 @@ function registerHandlers(io, socket) {
                 if (typeof ack === 'function') ack({ ok: false, error: 'No inventory.' });
                 return;
             }
-            // Decrement inventory — launch is free; cost was already paid at manufacture time
+            // Cooldown check
+            const nukeCfg = getNukeConfig();
+            const cooldownMs = nukeCfg.launchCooldownMs || 0;
+            if (cooldownMs > 0 && stateRes.rows[0]?.last_nuke_fired_at) {
+                const lastFired = new Date(stateRes.rows[0].last_nuke_fired_at).getTime();
+                const elapsed = Date.now() - lastFired;
+                if (elapsed < cooldownMs) {
+                    const secsRemaining = Math.ceil((cooldownMs - elapsed) / 1000);
+                    socket.emit('error', { message: `Launch on cooldown. Try again in ${secsRemaining}s.` });
+                    if (typeof ack === 'function') ack({ ok: false, error: 'Cooldown active.' });
+                    return;
+                }
+            }
+            // Decrement inventory and record fire time — launch is free; cost was already paid at manufacture time
             await db.query(
-                'UPDATE run_player_state SET nuke_inventory = nuke_inventory - 1, updated_at = NOW() WHERE run_id = $1 AND player_id = $2',
+                'UPDATE run_player_state SET nuke_inventory = nuke_inventory - 1, last_nuke_fired_at = NOW(), updated_at = NOW() WHERE run_id = $1 AND player_id = $2',
                 [run.id, player.id]
             );
-            const nukeCfg = getNukeConfig();
             const countdownMs = nukeCfg.countdownMs || 15000;
             const detonatesAt = new Date(Date.now() + countdownMs);
             const launchRes = await db.query(
