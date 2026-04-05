@@ -471,7 +471,14 @@ function generateDepositsForRun(runId, terrain, width = GRID_COLS, height = GRID
         }
     }
 
-    return deposits;
+    // Deduplicate: keep the highest-quality entry per cell
+    const best = new Map();
+    for (const d of deposits) {
+        if (!best.has(d.cellId) || d.quality > best.get(d.cellId).quality) {
+            best.set(d.cellId, d);
+        }
+    }
+    return [...best.values()];
 }
 
 function getCoords(id) {

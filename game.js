@@ -2390,19 +2390,36 @@ function showAllDepositsOverlay(show, allDeposits, stats) {
     } else {
         overlay.innerHTML = '';
     }
+    // Use the first cell in the grid to measure actual rendered cell size + gap,
+    // then compute all dot positions mathematically. This is scroll-proof because
+    // it never calls getBoundingClientRect on individual cells, so off-screen cells
+    // are still placed correctly relative to the grid origin.
+    const firstCell = grid.querySelector('[data-id="0"]');
+    if (!firstCell) return;
+    const firstRect = firstCell.getBoundingClientRect();
     const gridRect = grid.getBoundingClientRect();
+    const cellW = firstRect.width;
+    const cellH = firstRect.height;
+    // Measure gap by comparing cell 0 and cell 1 origins
+    const secondCell = grid.querySelector('[data-id="1"]');
+    const stride = secondCell ? (secondCell.getBoundingClientRect().left - firstRect.left) : cellW;
+    const gap = stride - cellW;
+    const COLS = 20;
     (allDeposits || []).forEach(deposit => {
-        const cell = grid.querySelector(`[data-id="${deposit.cellId}"]`);
-        if (!cell) return;
-        const r = cell.getBoundingClientRect();
+        const col = deposit.cellId % COLS;
+        const row = Math.floor(deposit.cellId / COLS);
         const dot = document.createElement('div');
         const discovered = discoveredSet.has(deposit.cellId);
+        const leftPx = col * (cellW + gap) + cellW * 0.15;
+        const topPx  = row * (cellH + gap) + cellH * 0.15;
         dot.style.cssText = [
             'position:absolute',
-            `left:${r.left - gridRect.left + r.width * 0.15}px`,
-            `top:${r.top - gridRect.top + r.height * 0.15}px`,
-            `width:${r.width * 0.7}px`,
-            `height:${r.height * 0.7}px`,
+            `left:${leftPx}px`,
+            `top:${topPx}px`,
+            `width:${cellW * 0.7}px`,
+            `height:${cellH * 0.7}px`,
+            // Account for any grid scroll offset so dots appear correctly
+            // (the grid is position:relative so absolute children dont scroll with grid-area)
             `background:${discovered ? 'rgba(255,215,0,0.55)' : 'rgba(255,80,80,0.45)'}`,
             `border:2px solid ${discovered ? '#FFD700' : '#ff4444'}`,
             'border-radius:3px',
@@ -6812,6 +6829,7 @@ function _escHtmlEcon(s) {
 function addButtonTooltips() {
     const buttons = document.querySelectorAll('.btn');
     buttons.forEach(btn => {
+        if (btn.id === 'chatToggleBtn') return; // chat button has own tooltip via title
         btn.addEventListener('mouseenter', (e) => {
             const typeKey = btn.dataset.type || btn.textContent.trim();
             const label = displayNames[typeKey] || btn.textContent.trim();
