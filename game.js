@@ -1183,6 +1183,7 @@ function connectSocket() {
         if (!game.activeLaunches.find(l => l.id === launch.id)) {
             game.activeLaunches.push(launch);
         }
+        if (typeof NukeSounds !== 'undefined') NukeSounds.nukeLaunchWarning();
         showNukeCountdown(launch);
     });
 
@@ -1374,6 +1375,7 @@ function connectSocket() {
 
         const pid = msg.playerId || msg.player_id;
         if (pid && pid !== getLocalPlayerId()) {
+            if (typeof NukeSounds !== 'undefined') NukeSounds.chatReceive();
             const preview = msg.text ? `${msg.username}: ${msg.text}` : `${msg.username} sent a GIF`;
             addNotification('info', `💬 ${preview}`, { chatId: msg.id, from: msg.username, ts: msg.ts || Date.now() });
         }
@@ -4010,6 +4012,7 @@ function updateNukeHUD() {
                     if (typeof NukeSounds !== 'undefined') NukeSounds.notifDanger();
                     return;
                 }
+                if (typeof NukeSounds !== 'undefined') NukeSounds.nukeManufactureStart();
                 socket.emit('nuke:manufacture', { jwt: _authJWT });
             }
         };
@@ -4106,6 +4109,7 @@ function showNukeCountdown(launch) {
                 // Pulse animation
                 countEl.style.transform = 'scale(1.05)';
                 setTimeout(() => { if (countEl) countEl.style.transform = 'scale(1)'; }, 150);
+                if (typeof NukeSounds !== 'undefined') NukeSounds.nukeCountdownTick();
             } else {
                 // Detonate — remove banner immediately, explosion handled by spawnNukeExplosionOverlay
                 if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
@@ -7529,6 +7533,7 @@ function fetchGifs() {
         btn.addEventListener('click', () => {
             if (!socket?.connected || !_authJWT) return;
             socket.emit('chat:message', { jwt: _authJWT, text: '', gifUrl: url });
+            if (typeof NukeSounds !== 'undefined') NukeSounds.chatSend();
             const gifPicker = document.getElementById('chatGifPicker');
             if (gifPicker) gifPicker.style.display = 'none';
         });
