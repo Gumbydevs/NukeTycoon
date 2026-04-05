@@ -387,21 +387,39 @@ const NukeSounds = (() => {
 
     /**
      * Nuke manufacture initiated — deep industrial reactor startup.
-     * Sub-bass power-up rumble + mechanical body + engagement chime.
-     * Conveys: "something powerful is now being built."
+     * Industrial steam-release + mechanical engagement sequence.
+     * Layer 1: Steam hiss — bandpass noise burst, sharp attack, slow bleed-off
+     * Layer 2: Pressure thud — low sine valve-slam on the release
+     * Layer 3: Mechanical ratchet — 4 rapid clicks like a mechanism locking
+     * Layer 4: Rising whirr — sawtooth sweep building to engagement
+     * Layer 5: Confirmation ping — clean triangle "ready" chime
      */
     function nukeManufactureStart() {
         const ctx = _init(); if (!ctx || !_enabled) return;
+        _resume();
         const t = ctx.currentTime;
-        // Sub-bass power-up: low sine sweeping up
-        _tone(44,  'sine',     t,        0.55, 0.28, { attack: 0.015, freqRamp: 80  });
-        // Mechanical body: sawtooth whirr
-        _tone(120, 'sawtooth', t,        0.38, 0.07, { attack: 0.012, freqRamp: 180 });
-        // Industrial noise texture
-        _noise(t + 0.05, 0.28, 0.07, { filterType: 'bandpass', filterFreq: 300, Q: 0.6 });
-        // Engagement chime — "locked in" feel
-        _tone(880, 'triangle', t + 0.40, 0.20, 0.07, { attack: 0.015 });
-        _tone(1108,'sine',     t + 0.46, 0.16, 0.04, { attack: 0.010 });
+
+        // ── Steam burst — initial pressure release hiss ──────────────────
+        _noise(t,        0.50, 0.22, { filterType: 'bandpass', filterFreq: 1800, Q: 0.6 });
+        // Secondary steam tail — softer, slightly lower frequency, longer bleed
+        _noise(t + 0.06, 0.70, 0.10, { filterType: 'bandpass', filterFreq: 900,  Q: 0.4 });
+
+        // ── Pressure valve thud — low sine slam on steam release ─────────
+        _tone(120, 'sine', t, 0.18, 0.28, { attack: 0.004, freqRamp: 60 });
+
+        // ── Mechanical ratchet — 4 rapid-fire clicks like cogs engaging ──
+        [0.08, 0.145, 0.205, 0.26].forEach(off => {
+            _noise(t + off, 0.025, 0.28, { filterType: 'bandpass', filterFreq: 3200, Q: 14 });
+        });
+
+        // ── Rising machine whirr — sawtooth sweeping up as reactor spins ─
+        _tone(140, 'sawtooth', t + 0.18, 0.55, 0.09, { attack: 0.020, freqRamp: 440 });
+        // Harmonic layer on top of whirr — triangle octave
+        _tone(280, 'triangle', t + 0.22, 0.45, 0.06, { attack: 0.018, freqRamp: 660 });
+
+        // ── Confirmation ping — "locked and loaded" ──────────────────────
+        _tone(880,  'triangle', t + 0.62, 0.22, 0.11, { attack: 0.010 });
+        _tone(1320, 'sine',     t + 0.70, 0.18, 0.07, { attack: 0.008 });
     }
 
     /**
@@ -427,9 +445,15 @@ const NukeSounds = (() => {
         // Pulse 1
         _tone(90,  'sine',     t,        0.85, 0.18, { attack: 0.080, freqRamp: 145 });
         _tone(180, 'triangle', t,        0.85, 0.09, { attack: 0.080, freqRamp: 290 });
-        // Short gap, then Pulse 2 — slightly louder/deeper for urgency
+        // Pulse 2 — slightly louder
         _tone(85,  'sine',     t + 1.15, 0.85, 0.22, { attack: 0.075, freqRamp: 140 });
         _tone(170, 'triangle', t + 1.15, 0.85, 0.11, { attack: 0.075, freqRamp: 280 });
+        // Pulse 3
+        _tone(90,  'sine',     t + 2.30, 0.85, 0.18, { attack: 0.080, freqRamp: 145 });
+        _tone(180, 'triangle', t + 2.30, 0.85, 0.09, { attack: 0.080, freqRamp: 290 });
+        // Pulse 4 — final, loudest
+        _tone(85,  'sine',     t + 3.45, 0.85, 0.26, { attack: 0.075, freqRamp: 140 });
+        _tone(170, 'triangle', t + 3.45, 0.85, 0.13, { attack: 0.075, freqRamp: 280 });
     }
 
     // ── Volume / mute control ────────────────────────────────────────────
