@@ -1,6 +1,21 @@
 CHANGELOG
 
 2026-04-04
+Major update: Mine Deposits, Fog of War, Surveyors, and Economy Tracker
+• Added mine deposit system with configurable clusters, visual flags, and enhanced deposit rendering logic.
+• Implemented fog-of-war for deposits, with debug overlays to visualize discovered and undiscovered deposits.
+• Introduced surveyor units for deposit discovery, including hiring, movement, notifications, and management UI.
+• Surveyors feature configurable move intervals, directional animations, expiration notifications, and improved marker animations.
+• Added admin tools for surveyor deletion, full database reset, and enhanced audit logging.
+• Improved tooltip system with cell number display and cost styling for token balances.
+• Enhanced chat, notification, and photo/avatar systems: profile photo upload, avatar_photo in all queries, photos in chat/lobbies, and improved chat message handling and notification persistence.
+• Added cancel-queue and demolish functionality for player-owned buildings, with new popups and server-side handling.
+• Improved help modal visuals and content for better player guidance.
+• Added scripts for token counting, unmatched braces detection, and brace matching.
+• Implemented all-time economy stats: ATH/ATL charts, Hall of Fame, admin reset, and a new economy tracker system with web dashboard, in-game modal, daily snapshots, and Chart.js charts.
+• Numerous bug fixes, UI improvements, and refactors for performance, clarity, and reliability across the game and admin tools.
+
+2026-04-04
 Enhanced version fetching and changelog loading with improved error handling and content type checks.
 Improved changelog API to return structured JSON errors when the file is missing.
 Made the version endpoint read from multiple package.json locations to ensure a version is available.

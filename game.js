@@ -5735,8 +5735,9 @@ function onCellHover(id, e) {
     }
 
     // empty cell default
-    // Show just the cell number for empty cells
-    showTooltipAt(rect.right + 8, rect.top, appendCellNumber(''));
+    // Show just the cell number for empty cells (always visible)
+    const cellLabel = `<div style="font-weight:700; color:#FFD700; text-align:center; padding:4px 0;">Cell #${id}</div>`;
+    showTooltipAt(rect.right + 8, rect.top, appendCellNumber(cellLabel));
 }
 
 function onCellMove(id, e) {
