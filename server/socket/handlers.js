@@ -889,7 +889,8 @@ function registerHandlers(io, socket) {
 
             // Deduct cost and insert surveyor row
             await db.query('UPDATE players SET token_balance = token_balance - $1 WHERE id = $2', [cost, player.id]);
-            const expiresAt = new Date(Date.now() + durationMs);
+            const safeDurationMs = (Number.isFinite(durationMs) && durationMs > 0) ? durationMs : 300000;
+            const expiresAt = new Date(Date.now() + safeDurationMs);
             const svRes = await db.query(
                 'INSERT INTO surveyors (run_id, player_id, cell_id, expires_at) VALUES ($1,$2,$3,$4) RETURNING id, cell_id, expires_at',
                 [run.id, player.id, cellId, expiresAt]

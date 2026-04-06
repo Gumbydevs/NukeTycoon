@@ -242,7 +242,7 @@ async function loadRuntimeConfigFromDB() {
                 // Surveyor tuning
                 case 'surveyor.cost': SURVEYOR_COST = Number(value); break;
                 case 'surveyor.maint_per_tick': SURVEYOR_MAINT_PER_TICK = Number(value); break;
-                case 'surveyor.duration_ms': SURVEYOR_DURATION_MS = Number(value); break;
+                case 'surveyor.duration_ms': { const n = Number(value); SURVEYOR_DURATION_MS = (Number.isFinite(n) && n > 0) ? n : SURVEYOR_DURATION_MS; break; }
                 case 'surveyor.discover_radius': SURVEYOR_DISCOVER_RADIUS = Number(value); break;
                 case 'surveyor.move_every_n_ticks': SURVEYOR_MOVE_EVERY_N_TICKS = Math.max(0.1, Number(value)); break;
                 case 'surveyor.magnetism': SURVEYOR_MAGNETISM = Math.max(0, Number(value)); break;
@@ -282,7 +282,7 @@ async function loadRuntimeConfigFromDB() {
         svRes.rows.forEach(({ key, value }) => {
             switch (key) {
                 case 'surveyor.cost':                 SURVEYOR_COST                = Number(value); break;
-                case 'surveyor.duration_ms':           SURVEYOR_DURATION_MS         = Number(value); break;
+                case 'surveyor.duration_ms':           { const n = Number(value); SURVEYOR_DURATION_MS = (Number.isFinite(n) && n > 0) ? n : SURVEYOR_DURATION_MS; break; }
                 case 'surveyor.maint_per_tick':        SURVEYOR_MAINT_PER_TICK      = Number(value); break;
                 case 'surveyor.discover_radius':       SURVEYOR_DISCOVER_RADIUS     = Number(value); break;
                 case 'surveyor.move_every_n_ticks':    SURVEYOR_MOVE_EVERY_N_TICKS  = Math.max(0.1, Number(value)); break;
