@@ -677,15 +677,19 @@ app.post('/admin/api/full-db-reset', requireAdmin, async (_req, res) => {
         // End all active runs
         await db.query("UPDATE runs SET status = 'ended', ended_at = NOW() WHERE status = 'active'");
         // Wipe ALL per-run data (every historical run).
-        // Delete from child tables first to avoid FK constraint errors (e.g., build_queue -> runs).
+        // Delete from child tables first to avoid FK constraint errors.
+        // IMPORTANT: run_players must be deleted BEFORE run_player_state; the game
+        // loop's ensureRunPlayerStates() queries run_players to decide what to insert —
+        // if run_players is gone first it inserts nothing, preventing a race where
+        // run_player_state gets re-populated between the DELETE and DELETE FROM runs.
         await db.query('DELETE FROM sabotage_events');
         await db.query('DELETE FROM fallout_zones');
         await db.query('DELETE FROM build_queue');
         await db.query('DELETE FROM chat_messages');
         await db.query('DELETE FROM notifications');
-        await db.query('DELETE FROM run_player_state');
         await db.query('DELETE FROM surveyors');
-        await db.query('DELETE FROM run_players');
+        await db.query('DELETE FROM run_players');       // must come before run_player_state
+        await db.query('DELETE FROM run_player_state');
         await db.query('DELETE FROM economy_snapshots');
         await db.query('DELETE FROM nuke_manufacture');
         await db.query('DELETE FROM buildings');
@@ -930,13 +934,13 @@ app.post('/admin/api/wipe-old-runs', requireAdmin, async (_req, res) => {
         await db.query('DELETE FROM build_queue WHERE run_id = ANY($1)', [ids]);
         await db.query('DELETE FROM chat_messages WHERE run_id = ANY($1)', [ids]);
         await db.query('DELETE FROM notifications WHERE run_id = ANY($1)', [ids]);
-        await db.query('DELETE FROM economy_snapshots WHERE run_id = ANY($1)', [ids]);
         await db.query('DELETE FROM surveyors WHERE run_id = ANY($1)', [ids]);
+        await db.query('DELETE FROM run_players WHERE run_id = ANY($1)', [ids]);       // before run_player_state
+        await db.query('DELETE FROM run_player_state WHERE run_id = ANY($1)', [ids]);
+        await db.query('DELETE FROM economy_snapshots WHERE run_id = ANY($1)', [ids]);
         await db.query('DELETE FROM nuke_manufacture WHERE run_id = ANY($1)', [ids]);
         await db.query('DELETE FROM buildings WHERE run_id = ANY($1)', [ids]);
-        await db.query('DELETE FROM run_player_state WHERE run_id = ANY($1)', [ids]);
         await db.query('DELETE FROM nuke_launches WHERE run_id = ANY($1)', [ids]);
-        await db.query('DELETE FROM run_players WHERE run_id = ANY($1)', [ids]);
         const r = await db.query('DELETE FROM runs WHERE id = ANY($1)', [ids]);
         res.json({ ok: true, deleted: r.rowCount });
     } catch (err) {
@@ -1023,14 +1027,17 @@ app.post('/admin/api/set-player-balance', requireAdmin, async (req, res) => {
 app.post('/admin/api/wipe-all-players', requireAdmin, async (_req, res) => {
     try {
         await db.query("UPDATE runs SET status = 'ended', ended_at = COALESCE(ended_at, NOW()) WHERE status = 'active'");
-        // Delete child per-run data first to avoid FK constraint errors
+        // Delete child per-run data first to avoid FK constraint errors.
+        // run_players must come before run_player_state to eliminate the ensureRunPlayerStates race.
+        // surveyors added here (FK to runs, was previously missing).
         await db.query('DELETE FROM sabotage_events');
         await db.query('DELETE FROM fallout_zones');
         await db.query('DELETE FROM build_queue');
         await db.query('DELETE FROM chat_messages');
         await db.query('DELETE FROM notifications');
+        await db.query('DELETE FROM surveyors');
+        await db.query('DELETE FROM run_players');       // must come before run_player_state
         await db.query('DELETE FROM run_player_state');
-        await db.query('DELETE FROM run_players');
         await db.query('DELETE FROM economy_snapshots');
         await db.query('DELETE FROM nuke_manufacture');
         await db.query('DELETE FROM buildings');
