@@ -1039,6 +1039,21 @@ function connectSocket() {
     socket.on('building:placed', ({ building, ownerName, placedBy }) => {
         const isMyBuilding = placedBy === getLocalPlayerId();
         if (isMyBuilding) {
+            // If this building was queued, remove it from the queue now that it's starting construction
+            const _qIdx = (game._buildQueue || []).findIndex(q => q.cellId == building.cell_id);
+            if (_qIdx !== -1) {
+                game._buildQueue.splice(_qIdx, 1);
+                // Remove the queued ghost (will be replaced by a real under-construction building below)
+                const _ghostIdx = game.buildings.findIndex(b => b.id == building.cell_id && b._queued);
+                if (_ghostIdx !== -1) game.buildings.splice(_ghostIdx, 1);
+                // Re-number remaining queue ghosts
+                let _pos = 1;
+                (game._buildQueue || []).forEach(q => {
+                    const _g = game.buildings.find(b => b.id === q.cellId && b._queued);
+                    if (_g) { _g._queuePosition = _pos; renderQueuedGhost(q.cellId, q.type, _pos); }
+                    _pos++;
+                });
+            }
             // Server confirmed our placement — render it locally now
             const _existingBld = game.buildings.find(b => b.id === building.cell_id);
             if (_existingBld && _existingBld._pendingServerConfirm) {
