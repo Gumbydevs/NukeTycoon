@@ -723,7 +723,7 @@ async function getRunSnapshot(runId) {
     };
 }
 
-async function emitRunSnapshot(io, runId, eventName = 'run:tick') {
+async function emitRunSnapshot(io, runId, eventName = 'run:tick', opts = {}) {
     const snapshot = await getRunSnapshot(runId);
     if (!snapshot?.run) return null;
 
@@ -731,12 +731,15 @@ async function emitRunSnapshot(io, runId, eventName = 'run:tick') {
     const stateByPlayer = new Map(snapshot.playerStates.map((state) => [state.player_id, state]));
     const playerById = new Map(snapshot.players.map((player) => [player.id, player]));
 
-    // Detect buildings that just completed construction (within last 2 seconds)
     const serverNow = Date.now();
+
+    // Detect buildings that just completed construction.
+    // Window = 2× ECONOMY_TICK_MS so we never miss a completion at the boundary.
+    const completionWindow = ECONOMY_TICK_MS * 2;
     const justCompleted = (snapshot.buildings || []).filter(b => {
         if (!b.construction_ends_at) return false;
         const endsAt = new Date(b.construction_ends_at).getTime();
-        return endsAt <= serverNow && endsAt > serverNow - 2000;
+        return endsAt <= serverNow && endsAt > serverNow - completionWindow;
     });
 
     // Persist notifications for building completions for owners who are offline
@@ -768,42 +771,111 @@ async function emitRunSnapshot(io, runId, eventName = 'run:tick') {
         }
     }
 
+    // ── Delta-compression helpers ─────────────────────────────────────────────
+    // Build the current nuke-config string once (it never changes mid-run unless
+    // an admin edits it, so the per-socket hash comparison catches that case).
+    const nukeCfgPublic = {
+        manufactureCost: NUKE_MANUFACTURE_COST,
+        manufactureMs:   NUKE_MANUFACTURE_MS,
+        falloutRadius:   SABOTAGE_NUKE_FALLOUT_RADIUS,
+        maxInventory:    NUKE_MAX_INVENTORY,
+        launchCooldownMs: NUKE_LAUNCH_COOLDOWN_MS,
+        maxSilos:        NUKE_MAX_SILOS,
+    };
+    const nukeCfgStr = JSON.stringify(nukeCfgPublic);
+
+    // Precompute the slim run object (only the fields that change every tick).
+    // The full run object is sent on full-refresh ticks and includes static
+    // metadata like run_length, total_token_supply, day_duration_ms, etc.
+    const runLive = {
+        market_price:      snapshot.run.market_price,
+        market_prev_price: snapshot.run.market_prev_price,
+        market_token_pool: snapshot.run.market_token_pool,
+        tokens_issued:     snapshot.run.tokens_issued,
+    };
+
+    // When called from event handlers (building placed, nuke detonated, etc.)
+    // always send the full payload so the client is immediately consistent.
+    const forceFullPayload = opts.force === true || eventName !== 'run:tick';
+
     sockets.forEach((roomSocket) => {
+        // ── Per-socket tick counter ───────────────────────────────────────────
+        // Increment on every periodic run:tick. Event-driven calls (force=true)
+        // don't count against the slow-refresh budget.
+        if (!forceFullPayload) {
+            roomSocket._snapCount = (roomSocket._snapCount || 0) + 1;
+        }
+        // Full refresh every 5 periodic ticks ≈ every 10 s at 2 s/tick.
+        // Also forced on the very first tick for a new socket (_snapCount===1).
+        const isFullTick = forceFullPayload || (roomSocket._snapCount || 0) <= 1 || (roomSocket._snapCount % 5) === 0;
+
         const pState = stateByPlayer.get(roomSocket.playerId) || null;
         const discoveredSet = new Set(pState?.discovered_deposits || []);
         const visibleDeposits = (snapshot.deposits || []).filter(d => discoveredSet.has(d.cellId));
+
+        // ── Delta: deposits (only send when the player's visible set changed) ──
+        const depositFp = visibleDeposits.map(d => d.cellId).join(',');
+        let depositsPayload;
+        if (isFullTick || roomSocket._depositFp !== depositFp) {
+            depositsPayload = visibleDeposits;
+            roomSocket._depositFp = depositFp;
+        }
+        // undefined means omit from payload — client keeps its last known value
+
+        // ── Delta: nukeCfgPublic (only send when admin has changed it) ────────
+        let nukeCfgPayload;
+        if (isFullTick || roomSocket._nukeCfgStr !== nukeCfgStr) {
+            nukeCfgPayload = nukeCfgPublic;
+            roomSocket._nukeCfgStr = nukeCfgStr;
+        }
+
         const surveyorList = (snapshot.surveyors || []).map(sv => ({
             id: sv.id,
             playerId: sv.player_id,
             cellId: sv.cell_id,
             expiresAt: sv.expires_at,
         }));
+
         // Nuke manufacture state for this player
         const myManufacture = (snapshot.nukeManufactures || []).find(m => m.player_id === roomSocket.playerId) || null;
-        const nukeManufacture = myManufacture ? { id: myManufacture.id, completesAt: myManufacture.completes_at, manufactureMs: NUKE_MANUFACTURE_MS } : null;
-        const nukeCfgPublic = { manufactureCost: NUKE_MANUFACTURE_COST, manufactureMs: NUKE_MANUFACTURE_MS, falloutRadius: SABOTAGE_NUKE_FALLOUT_RADIUS, maxInventory: NUKE_MAX_INVENTORY, launchCooldownMs: NUKE_LAUNCH_COOLDOWN_MS, maxSilos: NUKE_MAX_SILOS };
+        const nukeManufacture = myManufacture
+            ? { id: myManufacture.id, completesAt: myManufacture.completes_at, manufactureMs: NUKE_MANUFACTURE_MS }
+            : null;
 
-        roomSocket.emit(eventName, {
-            run: snapshot.run,
-            scores: snapshot.scores,
+        // ── Build payload: slim on periodic ticks, full on refresh/events ─────
+        const payload = {
+            // Fast-path fields — always present
+            run:         isFullTick ? snapshot.run : runLive,
             playerState: pState,
-            yourWallet: parseInt(playerById.get(roomSocket.playerId)?.token_balance, 10) || 0,
-            falloutZones: snapshot.falloutZones,
+            yourWallet:  parseInt(playerById.get(roomSocket.playerId)?.token_balance, 10) || 0,
+            serverTime:  serverNow,
+            // Fallout + threats are small and can change any tick (nuke detonation)
+            falloutZones:   snapshot.falloutZones,
             nuclearThreats: snapshot.nuclearThreats,
-            serverTime: serverNow,
-            deposits: visibleDeposits,
+            // Surveyor positions update every SURVEYOR_MOVE_EVERY_N_TICKS seconds
             surveyors: surveyorList,
-            nukeManufacture,
-            nukeCfgPublic,
+            // Active nuke launches are always small (empty most of the time)
             nukeLaunches: (snapshot.nukeLaunches || []).map(l => ({
-                id: l.id,
+                id:           l.id,
                 attackerName: l.attacker_name,
                 attackerAvatar: l.attacker_avatar,
-                attackerPhoto: l.attacker_photo,
+                attackerPhoto:  l.attacker_photo,
                 targetCellId: l.target_cell_id,
-                detonatesAt: l.detonates_at,
+                detonatesAt:  l.detonates_at,
             })),
-        });
+        };
+
+        // Slow-path fields — only on full ticks (saves ~40% per periodic tick)
+        if (isFullTick) {
+            payload.scores         = snapshot.scores;
+            payload.nukeManufacture = nukeManufacture;
+        }
+
+        // Delta fields — only when changed
+        if (depositsPayload !== undefined) payload.deposits = depositsPayload;
+        if (nukeCfgPayload  !== undefined) payload.nukeCfgPublic = nukeCfgPayload;
+
+        roomSocket.emit(eventName, payload);
 
         // Notify about just-completed buildings
         if (justCompleted.length > 0) {
@@ -1461,7 +1533,7 @@ async function advanceDay(io, run) {
         scores,
     });
 
-    await emitRunSnapshot(io, run.id, 'run:tick');
+    await emitRunSnapshot(io, run.id, 'run:tick', { force: true });
     console.log(`📅 Run #${run.run_number} → day ${newDay} (next: ${nextDayAt.toISOString()})`);
 }
 
@@ -1646,6 +1718,10 @@ function getSabotageConfig() {
     };
 }
 
+// Economy tick interval in ms. 2 000 ms halves bandwidth vs 1 000 ms while
+// keeping production/income visually smooth (change is imperceptible at ≥2 s).
+const ECONOMY_TICK_MS = 2000;
+
 function setupGameLoop(io) {
     setInterval(async () => {
         try {
@@ -1658,7 +1734,7 @@ function setupGameLoop(io) {
         } catch (err) {
             console.error('Economy tick error:', err);
         }
-    }, 1000);
+    }, ECONOMY_TICK_MS);
 
     setInterval(async () => {
         try {

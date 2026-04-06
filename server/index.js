@@ -163,8 +163,16 @@ const io = new Server(server, {
     // Heartbeat to prevent Railway/proxy idle-timeout disconnects
     pingInterval: 25000,
     pingTimeout: 20000,
-    // Keep socket payloads small — disable per-message compression overhead
-    perMessageDeflate: false,
+    // Enable WebSocket per-message deflate compression to reduce Railway egress.
+    // Repetitive JSON (run:tick payloads) compresses 60–75% with zlib level 3.
+    // threshold=512 skips compression for tiny frames (heartbeats/acks) so the
+    // CPU overhead is zero for non-game traffic.
+    httpCompression: true,
+    perMessageDeflate: {
+        zlibDeflateOptions: { level: 3 },
+        zlibInflateOptions: { chunkSize: 16 * 1024 },
+        threshold: 512,
+    },
 });
 
 app.use(cors({
@@ -971,7 +979,7 @@ app.post('/admin/api/regenerate-deposits', requireAdmin, async (_req, res) => {
         // Also wipe discovered_deposits for all players in this run so fog-of-war is consistent
         await db.query(`UPDATE run_player_state SET discovered_deposits = '[]'::jsonb WHERE run_id = $1`, [run.id]);
         // Trigger a tick snapshot so clients get the updated (empty) deposit list immediately
-        await emitRunSnapshot(io, run.id, 'run:tick');
+        await emitRunSnapshot(io, run.id, 'run:tick', { force: true });
         const newDeps = getDepositsForRun(run.id);
         console.log(`[admin] Deposits regenerated for run ${run.id}: ${newDeps.length} cells`);
         res.json({ ok: true, depositCells: newDeps.length, runId: run.id });

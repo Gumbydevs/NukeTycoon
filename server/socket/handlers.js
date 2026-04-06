@@ -69,34 +69,15 @@ async function requireAuth(socket, jwt, cb) {
     await cb(decoded, result.rows[0]);
 }
 
+// emitRunEconomy: used by event-driven handlers (building placed/demolished,
+// sabotage, market buy/sell, etc.) to push a full authoritative run:tick to all
+// connected clients. Delegates entirely to emitRunSnapshot so:
+//  • only one getRunSnapshot() DB call is made (not two)
+//  • the full payload (deposits, surveyors, nuke state, …) is always sent
+//  • the delta logic in emitRunSnapshot resets per-socket state on force ticks
 async function emitRunEconomy(io, runId) {
     if (!runId) return;
-
-    const snapshot = await getRunSnapshot(runId);
-    if (!snapshot?.run) return;
-
-    io.to(`run:${runId}`).emit('run:economy_update', {
-        runId: snapshot.run.id,
-        day: snapshot.run.current_day,
-        runLength: snapshot.run.run_length,
-        prizePool: parseInt(snapshot.run.prize_pool, 10) || 0,
-        scores: snapshot.scores,
-        nuclearThreats: snapshot.nuclearThreats,
-    });
-
-    const stateByPlayer = new Map(snapshot.playerStates.map((state) => [state.player_id, state]));
-    const playerById = new Map(snapshot.players.map((player) => [player.id, player]));
-    const sockets = await io.in(`run:${runId}`).fetchSockets();
-    sockets.forEach((roomSocket) => {
-        roomSocket.emit('run:tick', {
-            run: snapshot.run,
-            scores: snapshot.scores,
-            playerState: stateByPlayer.get(roomSocket.playerId) || null,
-            yourWallet: parseInt(playerById.get(roomSocket.playerId)?.token_balance, 10) || 0,
-            falloutZones: snapshot.falloutZones,
-            nuclearThreats: snapshot.nuclearThreats,
-        });
-    });
+    await emitRunSnapshot(io, runId, 'run:tick', { force: true });
 }
 
 function registerHandlers(io, socket) {
@@ -950,7 +931,7 @@ function registerHandlers(io, socket) {
 
             // Broadcast updated snapshot so all players see the surveyor and the hiring
             // player's visible deposits update
-            await emitRunSnapshot(io, run.id, 'run:tick');
+            await emitRunSnapshot(io, run.id, 'run:tick', { force: true });
             if (typeof ack === 'function') ack({ ok: true });
         });
     });
